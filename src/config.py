@@ -117,6 +117,20 @@ class Settings:
         default_factory=lambda: os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
     )
 
+    # -- Twilio / WhatsApp (only required by the WhatsApp capture layer) ------
+    # Obtain credentials from https://console.twilio.com/
+    twilio_account_sid: str = field(
+        default_factory=lambda: os.getenv("TWILIO_ACCOUNT_SID", "")
+    )
+    twilio_auth_token: str = field(
+        default_factory=lambda: os.getenv("TWILIO_AUTH_TOKEN", "")
+    )
+    # The Twilio sandbox/production WhatsApp sender number.
+    # Must include the "whatsapp:" prefix, e.g. "whatsapp:+14155238886".
+    twilio_whatsapp_from: str = field(
+        default_factory=lambda: os.getenv("TWILIO_WHATSAPP_FROM", "")
+    )
+
     # -- Family Members ----------------------------------------------------
     # Parsed from FAMILY_MEMBER_N_ID / FAMILY_MEMBER_N_NAME env vars.
     # When set, only these users can interact with the bot.
@@ -196,6 +210,21 @@ class Settings:
             raise EnvironmentError(
                 "Missing required environment variable: TELEGRAM_BOT_TOKEN\n"
                 "Create a bot via @BotFather on Telegram and set the token in your .env file."
+            )
+
+    def validate_twilio(self) -> None:
+        """Raise if required Twilio credentials are missing."""
+        missing = []
+        if not self.twilio_account_sid:
+            missing.append("TWILIO_ACCOUNT_SID")
+        if not self.twilio_auth_token:
+            missing.append("TWILIO_AUTH_TOKEN")
+        if not self.twilio_whatsapp_from:
+            missing.append("TWILIO_WHATSAPP_FROM")
+        if missing:
+            raise EnvironmentError(
+                f"Missing required Twilio environment variable(s): {', '.join(missing)}\n"
+                "Obtain these from https://console.twilio.com/ and set them in your .env file."
             )
 
     def validate_llm_backend(self) -> None:

@@ -39,3 +39,10 @@ APScheduler>=3.10.0
 
 # Slack capture layer
 slack-bolt>=1.18.0
+
+# WhatsApp capture layer (via Twilio)
+twilio>=9.0.0
+flask>=3.0.0
+
+# PDF text extraction (pdfplumber, used by WhatsApp and Telegram capture layers)
+pdfplumber>=0.10.0
