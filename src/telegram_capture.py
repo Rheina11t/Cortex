@@ -385,10 +385,125 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 # ---------------------------------------------------------------------------
+# Intent detection: determine if a message is a query or something to capture
+# ---------------------------------------------------------------------------
+
+_QUESTION_WORDS = (
+    "what", "who", "where", "when", "how", "which", "do", "does", "did", "is", "are",
+    "was", "were", "can", "could", "should", "would", "have", "has",
+)
+_QUERY_PHRASES = (
+    "do we have", "do i have", "have we got", "what is", "tell me",
+    "remind me", "show me", "find", "search", "look up",
+)
+
+def _is_query(text: str) -> bool:
+    """Return True if the text is likely a question/query, not something to be stored."""
+    text_lower = text.lower()
+    if text_lower.endswith("?"):
+        return True
+    if text_lower.startswith(_QUESTION_WORDS):
+        return True
+    if any(phrase in text_lower for phrase in _QUERY_PHRASES):
+        return True
+
+    # Fallback to a quick LLM check for ambiguous cases
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_embedding_base_url,
+        )
+        response = client.chat.completions.create(
+            model="gpt-4.1-nano",  # Use a fast, cheap model for this
+            temperature=0.0,
+            max_tokens=5,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Is the following user message a question/query, or is it information to be stored? Reply with only the word \'query\' or \'capture\'."
+                },
+                {"role": "user", "content": text},
+            ],
+        )
+        reply = response.choices[0].message.content or ""
+        logger.info("Intent detection for ", reply)
+        return "query" in reply.lower()
+    except Exception as exc:
+        logger.warning("Intent detection LLM call failed: %s", exc)
+        return False  # Default to capture if intent detection fails
+
+# ---------------------------------------------------------------------------
+# Query handler: search for answers and synthesise a reply
+# ---------------------------------------------------------------------------
+
+_SYNTHESIS_PROMPT = '''You are Family Brain, a personal AI assistant. Based on these stored memories, answer the user's question concisely. Question: {question}
+
+Relevant memories:
+{memories}
+
+Answer:'''
+
+async def _answer_query(raw_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle a message that has been identified as a query."""
+    if update.message is None:
+        return
+
+    thinking_msg = await update.message.reply_text("🔍 Searching the family brain…")
+
+    try:
+        # Step 1: Perform semantic search
+        results = brain.semantic_search(raw_text, match_threshold=0.4, match_count=5)
+
+        if not results:
+            await thinking_msg.edit_text(
+                "I don't have anything stored about that yet. "
+                "Send me the information and I'll remember it for next time."
+            )
+            return
+
+        # Step 2: Synthesise an answer from the results
+        memories_str = "\n---\n".join(
+            "Memory ID: {}\nContent: {}".format(r.get("id"), r.get("content"))
+            for r in results
+        )
+        prompt = _SYNTHESIS_PROMPT.format(question=raw_text, memories=memories_str)
+
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_embedding_base_url,
+        )
+        response = client.chat.completions.create(
+            model=settings.llm_model,
+            temperature=0.1,
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant for a family."},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        answer = response.choices[0].message.content or "I found some information but couldn't synthesise an answer."
+
+        # Step 3: Format and send the reply
+        source_ids = ", ".join("`{}`".format(r.get("id")) for r in results)
+        reply = "{}\n\n*Sources:* {}".format(_escape(answer), source_ids)
+
+        await thinking_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN_V2)
+        logger.info("Answered query with %d sources", len(results))
+
+    except Exception as exc:
+        logger.error("Failed to answer query: %s\n%s", exc, traceback.format_exc())
+        await thinking_msg.edit_text(
+            f"⚠️ Failed to answer query\\.\n\n`{_escape(str(exc))}`",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Message handler: capture text memories
 # ---------------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Process every text message sent to the bot."""
+    """Process every text message sent to the bot, routing to query or capture."""
     if update.message is None or update.effective_user is None:
         return
 
@@ -398,7 +513,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not raw_text:
         return
 
-    # Auth check
+    # --- Auth check ---
     family_name = _get_family_name(user.id)
     if family_name is None:
         logger.warning("Rejected message from unauthorised user id=%s", user.id)
@@ -408,27 +523,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return
 
-    # First-time welcome for new family members
+    # --- First-time welcome ---
     if user.id not in _WELCOMED_USERS and FAMILY_MEMBERS:
         _WELCOMED_USERS.add(user.id)
-        if len(_WELCOMED_USERS) == 1 or family_name != list(FAMILY_MEMBERS.values())[0]:
-            # Don't send welcome for the primary user's first message
-            # but do send for secondary users
-            if user.id != list(FAMILY_MEMBERS.keys())[0]:
-                await update.message.reply_text(
-                    f"👋 Welcome to Family Brain, {family_name}! "
-                    "Everything you send here will be stored in the shared family knowledge base. "
-                    "Send me text, photos, or PDFs — I'll capture and categorise them all. "
-                    "Your memories will be tagged with your name so we know who captured what."
-                )
+        if user.id != list(FAMILY_MEMBERS.keys())[0]:
+            await update.message.reply_text(
+                f"👋 Welcome to Family Brain, {family_name}! "
+                "I can answer questions based on what you've told me, or I can store new information. "
+                "Just send me a message, photo, or PDF."
+            )
 
     logger.info(
         "Received message from %s (id=%s): %d chars",
         family_name, user.id, len(raw_text),
     )
 
-    thinking_msg = await update.message.reply_text("🧠 Capturing memory…")
+    # --- Intent detection: Query vs Capture ---
+    if _is_query(raw_text):
+        await _answer_query(raw_text, update, context)
+        return
 
+    # --- Default to capture flow ---
+    thinking_msg = await update.message.reply_text("🧠 Capturing memory…")
     try:
         # Step 1: Extract metadata via LLM
         extracted = brain.extract_metadata(raw_text)
@@ -464,26 +580,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 event_data, family_name
             )
             if event_id:
-                event_info = f"\n📅 *Event detected:* {_escape(event_data.get('event_name', ''))}"
-                event_info += f" on {_escape(event_data.get('event_date', ''))}"
+                _ename = event_data.get('event_name', '')
+                _edate = event_data.get('event_date', '')
+                event_info = f'\n\U0001f4c5 *Event detected:* {_escape(_ename)} on {_escape(_edate)}'
             if conflict_warning:
-                event_info += f"\n\n{_escape(conflict_warning)}"
+                event_info += '\n\n' + _escape(conflict_warning)
 
         # Step 5: Build confirmation
-        tags_str = ", ".join(f"`{_escape(t)}`" for t in tags) if tags else "_none_"
+        tags_str = ", ".join(f'`{_escape(t)}`' for t in tags) if tags else "_none_"
         action_str = (
-            "\n".join(f"  • {_escape(item)}" for item in action_items)
+            "\n".join(f'  • {_escape(item)}' for item in action_items)
             if action_items
             else "_none_"
         )
 
         confirmation = (
-            f"✅ *Memory captured by {_escape(family_name)}\\!*\n\n"
-            f"📂 *Category:* {_escape(category)}\n"
-            f"🏷 *Tags:* {tags_str}\n"
-            f"🎯 *Action items:* {action_str}\n"
-            f"🆔 *ID:* `{_escape(str(memory_id))}`"
-            f"{event_info}"
+            f'✅ *Memory captured by {_escape(family_name)}\\\!*\n\n'
+            f'📂 *Category:* {_escape(category)}\n'
+            f'🏷 *Tags:* {tags_str}\n'
+            f'🎯 *Action items:* {action_str}\n'
+            f'🆔 *ID:* `{_escape(str(memory_id))}`'
+            f'{event_info}'
         )
 
         await thinking_msg.edit_text(confirmation, parse_mode=ParseMode.MARKDOWN_V2)
@@ -492,7 +609,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as exc:
         logger.error("Failed to capture memory: %s\n%s", exc, traceback.format_exc())
         await thinking_msg.edit_text(
-            f"⚠️ Failed to capture memory\\.\n\n`{_escape(str(exc))}`",
+            f'⚠️ Failed to capture memory\\.\n\n`{_escape(str(exc))}`',
             parse_mode=ParseMode.MARKDOWN_V2,
         )
 

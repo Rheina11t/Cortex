@@ -629,20 +629,136 @@ def handle_whatsapp() -> Response:
 
 
 # ---------------------------------------------------------------------------
+# Intent detection: determine if a message is a query or something to capture
+# ---------------------------------------------------------------------------
+
+_QUESTION_WORDS = (
+    "what", "who", "where", "when", "how", "which", "do", "does", "did", "is", "are",
+    "was", "were", "can", "could", "should", "would", "have", "has",
+)
+_QUERY_PHRASES = (
+    "do we have", "do i have", "have we got", "what is", "tell me",
+    "remind me", "show me", "find", "search", "look up",
+)
+
+def _is_query(text: str) -> bool:
+    """Return True if the text is likely a question/query, not something to be stored."""
+    text_lower = text.lower()
+    if text_lower.endswith("?"):
+        return True
+    if text_lower.startswith(_QUESTION_WORDS):
+        return True
+    if any(phrase in text_lower for phrase in _QUERY_PHRASES):
+        return True
+
+    # Fallback to a quick LLM check for ambiguous cases
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_embedding_base_url,
+        )
+        response = client.chat.completions.create(
+            model="gpt-4.1-nano",  # Use a fast, cheap model for this
+            temperature=0.0,
+            max_tokens=5,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Is the following user message a question/query, or is it information to be stored? Reply with only the word \'query\' or \'capture\'."
+                },
+                {"role": "user", "content": text},
+            ],
+        )
+        reply = response.choices[0].message.content or ""
+        return "query" in reply.lower()
+    except Exception as exc:
+        logger.warning("Intent detection LLM call failed: %s", exc)
+        return False  # Default to capture if intent detection fails
+
+# ---------------------------------------------------------------------------
+# Query handler: search for answers and synthesise a reply
+# ---------------------------------------------------------------------------
+
+_SYNTHESIS_PROMPT = '''You are Family Brain, a personal AI assistant. Based on these stored memories, answer the user's question concisely. Question: {question}
+
+Relevant memories:
+{memories}
+
+Answer:'''
+
+def _answer_query(text: str) -> Response:
+    """Handle a message that has been identified as a query."""
+    twiml = MessagingResponse()
+    logger.info("Handling message as a query: %s", text)
+
+    try:
+        # Step 1: Perform semantic search
+        results = brain.semantic_search(text, match_threshold=0.4, match_count=5)
+
+        if not results:
+            twiml.message(
+                "I don't have anything stored about that yet. "
+                "Send me the information and I'll remember it for next time."
+            )
+            return Response(str(twiml), mimetype="application/xml")
+
+        # Step 2: Synthesise an answer from the results
+        memories_str = "\n---\n".join(
+            "Memory ID: {}\nContent: {}".format(r.get("id"), r.get("content"))
+            for r in results
+        )
+        prompt = _SYNTHESIS_PROMPT.format(question=text, memories=memories_str)
+
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_embedding_base_url,
+        )
+        response = client.chat.completions.create(
+            model=settings.llm_model,
+            temperature=0.1,
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant for a family."},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        answer = response.choices[0].message.content or "I found some information but couldn't synthesise an answer."
+
+        # Step 3: Format and send the reply
+        source_ids = ", ".join(str(r.get("id")) for r in results)
+        reply = "{}\n\nSources: {}".format(answer, source_ids)
+
+        twiml.message(reply)
+        logger.info("Answered query with %d sources", len(results))
+
+    except Exception as exc:
+        logger.error("Failed to answer query: %s\n%s", exc, traceback.format_exc())
+        twiml.message(f"⚠️ Failed to answer query: {exc}")
+
+    return Response(str(twiml), mimetype="application/xml")
+
+
+# ---------------------------------------------------------------------------
 # Text message handler
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
-    """Process a plain text WhatsApp message — same flow as Telegram text handler."""
-    twiml = MessagingResponse()
-
+    """Process a plain text WhatsApp message, routing to query or capture."""
     if not text:
+        twiml = MessagingResponse()
         twiml.message(
-            "Hi! Send me a text, photo, or PDF and I'll capture it in the Family Brain."
+            "Hi! Send me a question, a thought, a photo, or a PDF and I'll either answer it or store it in the Family Brain."
         )
         return Response(str(twiml), mimetype="application/xml")
 
     logger.info("Processing text message from %s (%s): %d chars", family_name, from_number, len(text))
 
+    # --- Intent detection: Query vs Capture ---
+    if _is_query(text):
+        return _answer_query(text)
+
+    # --- Default to capture flow ---
+    twiml = MessagingResponse()
     try:
         # Step 1: Extract metadata via LLM
         extracted = brain.extract_metadata(text)
