@@ -1,0 +1,32 @@
+# Family Brain – Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core database and AI clients
+supabase>=2.0.0
+openai>=1.12.0
+
+# Anthropic Claude support (required when LLM_BACKEND=anthropic)
+anthropic>=0.25.0
+
+# MCP server framework (includes FastMCP and all transports)
+mcp[cli]>=1.2.0
+
+# Telegram capture layer
+python-telegram-bot>=21.0.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# HTTP/SSE transport: production ASGI server
+uvicorn[standard]>=0.29.0
+
+# Google Vision API (optional – for photo/document OCR)
+# Install only if using GOOGLE_VISION_KEY_PATH:
+# pip install google-cloud-vision
+google-cloud-vision>=3.5.0
+
+# PDF text extraction (for document ingestion via Telegram)
+PyPDF2>=3.0.0
+
+# Date parsing for family scheduling, maintenance, and health tracking
+python-dateutil>=2.8.0
