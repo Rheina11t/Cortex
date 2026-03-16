@@ -175,13 +175,13 @@ def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Document type detection prompt
 # ---------------------------------------------------------------------------
-_DOC_TYPE_SYSTEM_PROMPT = """\
+_DOC_TYPE_SYSTEM_PROMPT ="""\
 You are a document classification assistant for a Family Brain system.
 
 Given extracted text from a document (photo or PDF), you MUST return a JSON object with:
 
 {
-  "cleaned_content": "<concise summary of the document's key information>",
+  "cleaned_content": "<concise summary of the document\'s key information>",
   "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
@@ -194,7 +194,15 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 
 Rules:
 - Return ONLY valid JSON. No markdown fences, no commentary.
-- key_fields should extract the most important structured data (amounts, dates, reference numbers, addresses, etc.)
+- `key_fields` should extract the most important structured data.
+- For financial documents (insurance, invoices, utilities), you MUST extract the following fields if present:
+  - `provider_name`: The name of the company providing the service.
+  - `policy_number`: The policy number.
+  - `reference_number`: Any other reference or account number.
+  - `bank_account_number`: The bank account number for payments.
+  - `sort_code`: The sort code for payments.
+  - `direct_debit_amount`: The amount of the direct debit.
+  - `payment_frequency`: How often the payment is made (e.g., monthly, annually).
 - If a field has no value, use an empty list [] or empty string "" or empty object {}.
 - Keep cleaned_content as a faithful, concise summary.
 """
@@ -557,19 +565,31 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         memory_id = record.get("id", "n/a")
 
-        # Build summary of key fields
+        # Route financial details to recurring_bills table
+        financial_summary = _maybe_store_financial_details(
+            doc_type, key_fields, cleaned_content, family_name
+        )
+
+        # Build summary of key fields (up to 8, always show bank/sort if present)
         key_summary = ""
         if key_fields:
-            key_lines = [f"  • {k}: {v}" for k, v in list(key_fields.items())[:5]]
+            priority_keys = {"bank_account_number", "sort_code"}
+            priority_items = [(k, v) for k, v in key_fields.items() if k in priority_keys]
+            other_items = [(k, v) for k, v in key_fields.items() if k not in priority_keys]
+            combined = other_items[:8] + [i for i in priority_items if i not in other_items[:8]]
+            key_lines = [f"  \u2022 {k}: {v}" for k, v in combined[:8]]
             key_summary = "\n" + "\n".join(_escape(line) for line in key_lines)
 
+        financial_note = f"\n{_escape(financial_summary)}" if financial_summary else ""
+
         confirmation = (
-            f"✅ *Got it — {_escape(doc_type)} document captured\\!*\n\n"
-            f"👤 *Captured by:* {_escape(family_name)}\n"
-            f"📄 *Type:* {_escape(doc_type)}\n"
-            f"🏷 *Tags:* {', '.join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_'}\n"
-            f"🆔 *ID:* `{_escape(str(memory_id))}`"
+            f"\u2705 *Got it \u2014 {_escape(doc_type)} document captured\\!*\n\n"
+            f"\U0001f464 *Captured by:* {_escape(family_name)}\n"
+            f"\U0001f4c4 *Type:* {_escape(doc_type)}\n"
+            f"\U0001f3f7 *Tags:* {', '.join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_'}\n"
+            f"\U0001f194 *ID:* `{_escape(str(memory_id))}`"
             f"{key_summary}"
+            f"{financial_note}"
         )
 
         await thinking_msg.edit_text(confirmation, parse_mode=ParseMode.MARKDOWN_V2)
@@ -672,19 +692,32 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         memory_id = record.get("id", "n/a")
 
+        # Route financial details to recurring_bills table
+        financial_summary = _maybe_store_financial_details(
+            doc_type, key_fields, cleaned_content, family_name
+        )
+
+        # Build summary of key fields (up to 8, always show bank/sort if present)
         key_summary = ""
         if key_fields:
-            key_lines = [f"  • {k}: {v}" for k, v in list(key_fields.items())[:5]]
+            priority_keys = {"bank_account_number", "sort_code"}
+            priority_items = [(k, v) for k, v in key_fields.items() if k in priority_keys]
+            other_items = [(k, v) for k, v in key_fields.items() if k not in priority_keys]
+            combined = other_items[:8] + [i for i in priority_items if i not in other_items[:8]]
+            key_lines = [f"  \u2022 {k}: {v}" for k, v in combined[:8]]
             key_summary = "\n" + "\n".join(_escape(line) for line in key_lines)
 
+        financial_note = f"\n{_escape(financial_summary)}" if financial_summary else ""
+
         confirmation = (
-            f"✅ *Got it — {_escape(doc_type)} document captured\\!*\n\n"
-            f"👤 *Captured by:* {_escape(family_name)}\n"
-            f"📄 *File:* {_escape(file_name)}\n"
-            f"📂 *Type:* {_escape(doc_type)}\n"
-            f"🏷 *Tags:* {', '.join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_'}\n"
-            f"🆔 *ID:* `{_escape(str(memory_id))}`"
+            f"\u2705 *Got it \u2014 {_escape(doc_type)} document captured\\!*\n\n"
+            f"\U0001f464 *Captured by:* {_escape(family_name)}\n"
+            f"\U0001f4c4 *File:* {_escape(file_name)}\n"
+            f"\U0001f4c2 *Type:* {_escape(doc_type)}\n"
+            f"\U0001f3f7 *Tags:* {', '.join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_'}\n"
+            f"\U0001f194 *ID:* `{_escape(str(memory_id))}`"
             f"{key_summary}"
+            f"{financial_note}"
         )
 
         await thinking_msg.edit_text(confirmation, parse_mode=ParseMode.MARKDOWN_V2)
@@ -827,6 +860,169 @@ def _extract_doc_meta_anthropic(text: str) -> dict[str, Any]:
             "action_items": [],
             "key_fields": {},
         }
+
+
+# ---------------------------------------------------------------------------
+# Financial details router: store to recurring_bills if applicable
+# ---------------------------------------------------------------------------
+
+# Document types that may carry financial / billing information
+_FINANCIAL_DOC_TYPES = {"insurance", "utility", "invoice", "contract", "pension", "other"}
+
+# key_fields key fragments that indicate a monetary amount
+_AMOUNT_KEY_FRAGMENTS = ("amount", "premium", "payment", "cost", "price", "fee", "gbp", "£")
+
+
+def _parse_amount(raw: str) -> Optional[float]:
+    """Extract a float from a raw amount string such as '£12.50/month' or '12.50'."""
+    if not raw:
+        return None
+    # Strip currency symbols, commas, and trailing text after the first number
+    cleaned = re.sub(r"[£$€,]", "", str(raw))
+    match = re.search(r"\d+(?:\.\d+)?", cleaned)
+    if match:
+        try:
+            return float(match.group())
+        except ValueError:
+            return None
+    return None
+
+
+def _map_doc_type_to_category(doc_type: str, cleaned_content: str) -> str:
+    """Map a document_type string to a valid recurring_bills category."""
+    dt = doc_type.lower()
+    if dt == "insurance":
+        return "insurance"
+    if dt == "pension":
+        return "other"
+    if dt == "utility":
+        content_lower = cleaned_content.lower()
+        if any(w in content_lower for w in ("broadband", "internet", "fibre", "bt ", "sky ", "virgin")):
+            return "broadband"
+        if any(w in content_lower for w in ("water", "sewage", "thames", "anglian", "severn")):
+            return "water"
+        # Default utility → energy
+        return "energy"
+    if dt in ("invoice", "contract"):
+        return "other"
+    return "other"
+
+
+def _maybe_store_financial_details(
+    doc_type: str,
+    key_fields: dict[str, Any],
+    cleaned_content: str,
+    family_name: str,
+) -> str:
+    """Attempt to store financial details in the recurring_bills table.
+
+    Returns a brief human-readable summary string if a bill was stored,
+    or an empty string if nothing was stored.  Failures are caught and
+    logged so they never interrupt the main photo/document flow.
+    """
+    try:
+        # Only act on financially relevant document types
+        if doc_type.lower() not in _FINANCIAL_DOC_TYPES:
+            return ""
+
+        # Locate an amount field in key_fields
+        amount_raw: Optional[str] = None
+        amount_key: Optional[str] = None
+        for k, v in key_fields.items():
+            if any(frag in k.lower() for frag in _AMOUNT_KEY_FRAGMENTS):
+                amount_raw = str(v)
+                amount_key = k
+                break
+
+        if amount_raw is None:
+            # No monetary field found — nothing to store
+            return ""
+
+        amount_gbp = _parse_amount(amount_raw)
+        if amount_gbp is None:
+            return ""
+
+        # --- Derive bill fields from key_fields ---
+
+        # Provider
+        provider = (
+            key_fields.get("provider_name")
+            or key_fields.get("provider")
+            or key_fields.get("insurer")
+            or key_fields.get("company")
+            or ""
+        )
+
+        # Account / policy reference
+        account_ref = (
+            key_fields.get("policy_number")
+            or key_fields.get("reference_number")
+            or key_fields.get("account_number")
+            or key_fields.get("account_ref")
+            or ""
+        )
+
+        # Payment method — default to "direct debit" when banking details present
+        has_bank_details = bool(
+            key_fields.get("bank_account_number") or key_fields.get("sort_code")
+        )
+        payment_method = (
+            key_fields.get("payment_method")
+            or ("direct debit" if has_bank_details else "")
+        )
+
+        # Payment frequency
+        frequency_raw = (
+            key_fields.get("payment_frequency")
+            or key_fields.get("frequency")
+            or "monthly"
+        )
+        # Normalise to the allowed CHECK values
+        freq_map = {
+            "week": "weekly", "weekly": "weekly",
+            "fortnight": "fortnightly", "fortnightly": "fortnightly", "bi-weekly": "fortnightly",
+            "month": "monthly", "monthly": "monthly",
+            "quarter": "quarterly", "quarterly": "quarterly",
+            "year": "annually", "annual": "annually", "annually": "annually", "yearly": "annually",
+        }
+        frequency = freq_map.get(str(frequency_raw).lower().strip(), "monthly")
+
+        # Bill name: prefer provider, else doc_type
+        bill_name = str(provider).strip() if provider else doc_type.capitalize()
+
+        # Category
+        category = _map_doc_type_to_category(doc_type, cleaned_content)
+
+        # Notes: include family member and any bank details for audit trail
+        notes_parts = [f"Captured by {family_name} via Telegram"]
+        if key_fields.get("bank_account_number"):
+            notes_parts.append(f"Bank account: {key_fields['bank_account_number']}")
+        if key_fields.get("sort_code"):
+            notes_parts.append(f"Sort code: {key_fields['sort_code']}")
+        notes = "; ".join(notes_parts)
+
+        # Store the bill
+        record = brain.add_recurring_bill(
+            name=bill_name,
+            category=category,
+            amount_gbp=amount_gbp,
+            frequency=frequency,
+            provider=str(provider),
+            account_ref=str(account_ref),
+            payment_method=str(payment_method),
+            auto_pay=has_bank_details,
+            notes=notes,
+        )
+        bill_id = record.get("id", "n/a")
+        logger.info(
+            "Financial details stored in recurring_bills (id=%s, name=%s, amount=%.2f)",
+            bill_id, bill_name, amount_gbp,
+        )
+        return f"💳 Recurring bill stored: {bill_name} £{amount_gbp:.2f}/{frequency} (id: {bill_id})"
+
+    except Exception as exc:
+        logger.warning("_maybe_store_financial_details failed (non-fatal): %s", exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------
