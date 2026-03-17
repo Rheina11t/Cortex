@@ -210,21 +210,22 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 }}
 
 Rules:
+- CRITICAL: You MUST extract every labelled field you can see in the document text into key_fields. If a label like 'MOT test number', 'Location of the test', 'Testing organisation', or 'Inspector name' appears in the text, its value MUST appear in key_fields. Failure to include labelled fields is an error.
 - Return ONLY valid JSON. No markdown fences, no commentary.
 - `key_fields` should extract the most important structured data.
-- For vehicle documents (mot_certificate, vehicle):
-  - `mot_test_number`: The MOT test number (e.g. "1778 7252 2687")
-  - `test_location`: The address where the test was carried out
-  - `testing_organisation`: The name of the testing centre (e.g. "Kwik Fit")
-  - `inspector_name`: The name of the inspector
-  - `earliest_retest_date`: The earliest date the vehicle can be presented for retest
-  - `vehicle_identification_number`: The VIN
-  - `registration_number`: The vehicle registration
-  - `make_and_model`: Make and model of the vehicle
-  - `test_result`: Pass or Fail
-  - `mileage`: Mileage at time of test
-  - `date_of_test`: Date of the test in YYYY-MM-DD
-  - `expiry_date`: MOT expiry date in YYYY-MM-DD
+- For vehicle documents (mot_certificate, vehicle), you MUST extract ALL of the following fields if present in the text. Do NOT omit any field that appears in the document:
+  - `mot_test_number`: REQUIRED for mot_certificate — the MOT test number (a long number, e.g. "1778 7252 2687"). Look for "MOT test number" label in the text.
+  - `test_location`: REQUIRED for mot_certificate — the full address where the test was carried out. Look for "Location of the test" label.
+  - `testing_organisation`: REQUIRED for mot_certificate — the name of the testing centre. Look for "Testing organisation" label (e.g. "Kwik Fit", "V102841 KWIK FIT").
+  - `inspector_name`: REQUIRED for mot_certificate — the inspector's name. Look for the name after the testing organisation code.
+  - `earliest_retest_date`: The earliest date the vehicle can be presented for retest in YYYY-MM-DD format.
+  - `vehicle_identification_number`: The VIN number.
+  - `registration_number`: The vehicle registration plate.
+  - `make_and_model`: Make and model of the vehicle.
+  - `test_result`: Pass or Fail.
+  - `mileage`: Mileage at time of test.
+  - `date_of_test`: Date of the test in YYYY-MM-DD.
+  - `expiry_date`: MOT expiry date in YYYY-MM-DD.
 - For financial documents (insurance, invoices, utilities), you MUST extract the following fields if present:
   - `provider_name`: The name of the company providing the service.
   - `policy_number`: The policy number.
