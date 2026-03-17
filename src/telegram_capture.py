@@ -362,6 +362,23 @@ def _check_conflicts_and_store_event(
         try:
             result = db.table("family_events").insert(row).execute()
             event_id = result.data[0].get("id") if result.data else None
+
+            # Also push to Google Calendar
+            try:
+                from . import google_calendar
+                gcal_event_id = google_calendar.create_event(
+                    event_name=event_name,
+                    event_date=event_date,
+                    event_time=event_time if event_time else None,
+                    location=event_data.get("location", ""),
+                    description=f"Captured by {sender_name} via Family Brain",
+                    family_member=family_member,
+                )
+                if gcal_event_id:
+                    logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
+            except Exception as exc:
+                logger.warning("Google Calendar push failed: %s", exc)
+
             return event_id, conflict_msg
         except Exception as exc:
             logger.warning("Event storage failed (table may not exist yet): %s", exc)
