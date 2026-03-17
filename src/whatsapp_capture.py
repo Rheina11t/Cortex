@@ -673,12 +673,10 @@ def handle_whatsapp() -> Response:
 # ---------------------------------------------------------------------------
 
 _QUESTION_WORDS = (
-    "what", "who", "where", "when", "how", "which", "do", "does", "did", "is", "are",
-    "was", "were", "can", "could", "should", "would", "have", "has",
+    "when", "where", "what", "who", "which", "how", "why", "did", "do", "does", "is", "are", "was", "were", "have", "has", "had", "can", "could", "would", "should", "tell", "show", "find", "search", "look", "remind", "recall", "remember"
 )
 _QUERY_PHRASES = (
-    "do we have", "do i have", "have we got", "what is", "tell me",
-    "remind me", "show me", "find", "search", "look up",
+    "when did", "where did", "what did", "who did", "have i", "do i", "did i", "do we", "did we", "have we", "is my", "are my", "was my", "were my"
 )
 
 def _is_query(text: str, from_number: str) -> bool:
@@ -710,7 +708,7 @@ def _is_query(text: str, from_number: str) -> bool:
             messages=[
                 {
                     "role": "system",
-                    "content": "Is the following user message a question/query, or is it information to be stored? Reply with only the word \'query\' or \'capture\'."
+                    "content": "Is this message a QUESTION/QUERY asking for information, or is it a STATEMENT providing information to store? Reply with only 'query' or 'store'."
                 },
                 {"role": "user", "content": text},
             ],

@@ -130,12 +130,22 @@ def _ocr_google_vision(image_bytes: bytes) -> str:
     }
     url = f"https://vision.googleapis.com/v1/images:annotate?key={_GOOGLE_VISION_KEY}"
     resp = _requests.post(url, json=payload, timeout=30)
+    logger.info("Google Vision API request sent, HTTP status: %d", resp.status_code)
+
+    if resp.status_code in (400, 403):
+        error_data = resp.json()
+        error_message = error_data.get("error", {}).get("message", "Unknown error")
+        logger.error("Google Vision API error (%d): %s", resp.status_code, error_message)
+        raise RuntimeError(f"Google Vision API error: {error_message}")
+
     resp.raise_for_status()
     data = resp.json()
 
     annotations = data.get("responses", [{}])[0].get("textAnnotations", [])
     if annotations:
         return annotations[0].get("description", "").strip()
+
+    logger.warning("Google Vision returned no text annotations. Full response: %s", data)
     return ""
 
 
@@ -413,12 +423,10 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ---------------------------------------------------------------------------
 
 _QUESTION_WORDS = (
-    "what", "who", "where", "when", "how", "which", "do", "does", "did", "is", "are",
-    "was", "were", "can", "could", "should", "would", "have", "has",
+    "when", "where", "what", "who", "which", "how", "why", "did", "do", "does", "is", "are", "was", "were", "have", "has", "had", "can", "could", "would", "should", "tell", "show", "find", "search", "look", "remind", "recall", "remember"
 )
 _QUERY_PHRASES = (
-    "do we have", "do i have", "have we got", "what is", "tell me",
-    "remind me", "show me", "find", "search", "look up",
+    "when did", "where did", "what did", "who did", "have i", "do i", "did i", "do we", "did we", "have we", "is my", "are my", "was my", "were my"
 )
 
 def _is_query(text: str, user_id: int) -> bool:
@@ -450,7 +458,7 @@ def _is_query(text: str, user_id: int) -> bool:
             messages=[
                 {
                     "role": "system",
-                    "content": "Is the following user message a question/query, or is it information to be stored? Reply with only the word \'query\' or \'capture\'."
+                    "content": "Is this message a QUESTION/QUERY asking for information, or is it a STATEMENT providing information to store? Reply with only 'query' or 'store'."
                 },
                 {"role": "user", "content": text},
             ],
