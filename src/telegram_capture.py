@@ -452,8 +452,20 @@ async def _answer_query(raw_text: str, update: Update, context: ContextTypes.DEF
     thinking_msg = await update.message.reply_text("🔍 Searching the family brain…")
 
     try:
-        # Step 1: Perform semantic search
+        # Step 1: Perform semantic search, with a fallback to metadata search
         results = brain.semantic_search(raw_text, match_threshold=0.4, match_count=5)
+        if not results:
+            # Fallback for exact-match queries on policy numbers, etc.
+            logger.info("Semantic search returned no results; trying metadata query for: %s", raw_text)
+            try:
+                # This is a broad search across all metadata values.
+                # It relies on the user's query being a plausible substring.
+                metadata_results = brain.query_by_metadata(raw_text, limit=3)
+                if metadata_results:
+                    logger.info("Metadata fallback search found %d results", len(metadata_results))
+                    results.extend(metadata_results)
+            except Exception as meta_exc:
+                logger.warning("Metadata fallback search failed: %s", meta_exc)
 
         if not results:
             await thinking_msg.edit_text(
@@ -672,10 +684,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         metadata["family_member"] = family_name
         metadata["document_type"] = doc_type
 
+        # Enrich content with key fields for better searchability
+        enriched_content = _enrich_content_with_key_fields(
+            cleaned_content, key_fields, doc_type
+        )
+
         # Generate embedding and store
-        embedding = brain.generate_embedding(cleaned_content)
+        embedding = brain.generate_embedding(enriched_content)
         record = brain.store_memory(
-            content=cleaned_content,
+            content=enriched_content,
             embedding=embedding,
             metadata=metadata,
         )
@@ -799,10 +816,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         metadata["document_type"] = doc_type
         metadata["file_name"] = file_name
 
+        # Enrich content with key fields for better searchability
+        enriched_content = _enrich_content_with_key_fields(
+            cleaned_content, key_fields, doc_type
+        )
+
         # Generate embedding and store
-        embedding = brain.generate_embedding(cleaned_content)
+        embedding = brain.generate_embedding(enriched_content)
         record = brain.store_memory(
-            content=cleaned_content,
+            content=enriched_content,
             embedding=embedding,
             metadata=metadata,
         )
@@ -977,6 +999,24 @@ def _extract_doc_meta_anthropic(text: str) -> dict[str, Any]:
             "action_items": [],
             "key_fields": {},
         }
+
+
+# ---------------------------------------------------------------------------
+# Content enrichment helper
+# ---------------------------------------------------------------------------
+def _enrich_content_with_key_fields(
+    cleaned_content: str, key_fields: dict, doc_type: str
+) -> str:
+    """Enrich content summary with a structured block of key-value fields."""
+    if not key_fields:
+        return cleaned_content
+
+    # Format key fields into a pipe-separated string
+    details = " | ".join(
+        "{}: {}".format(k.replace("_", " ").title(), v) for k, v in key_fields.items() if v
+    )
+
+    return "{}\n\nKey details for this {} document:\n{}".format(cleaned_content, doc_type, details)
 
 
 # ---------------------------------------------------------------------------

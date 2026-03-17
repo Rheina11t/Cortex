@@ -384,6 +384,24 @@ def _extract_doc_meta_anthropic(text: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Content enrichment helper
+# ---------------------------------------------------------------------------
+def _enrich_content_with_key_fields(
+    cleaned_content: str, key_fields: dict, doc_type: str
+) -> str:
+    """Enrich content summary with a structured block of key-value fields."""
+    if not key_fields:
+        return cleaned_content
+
+    # Format key fields into a pipe-separated string
+    details = " | ".join(
+        "{}: {}".format(k.replace("_", " ").title(), v) for k, v in key_fields.items() if v
+    )
+
+    return "{}\n\nKey details for this {} document:\n{}".format(cleaned_content, doc_type, details)
+
+
+# ---------------------------------------------------------------------------
 # Financial details router: store to recurring_bills if applicable
 # ---------------------------------------------------------------------------
 
@@ -896,10 +914,13 @@ def _handle_media_message(
         metadata["family_member"] = family_name
         metadata["document_type"] = doc_type
 
-        # --- Generate embedding and store memory ---
-        embedding = brain.generate_embedding(cleaned_content)
+        # --- Enrich content, generate embedding, and store memory ---
+        enriched_content = _enrich_content_with_key_fields(
+            cleaned_content, key_fields, doc_type
+        )
+        embedding = brain.generate_embedding(enriched_content)
         record = brain.store_memory(
-            content=cleaned_content,
+            content=enriched_content,
             embedding=embedding,
             metadata=metadata,
         )
