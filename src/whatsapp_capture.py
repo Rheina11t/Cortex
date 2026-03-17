@@ -171,7 +171,7 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 
 {{
   "cleaned_content": "<concise summary of the document's key information>",
-  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, mot_certificate, vehicle, other>",
+  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, mot_certificate, vehicle, vehicle_finance, contract_hire, finance_agreement, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
   "category": "<one of: idea, meeting-notes, decision, action-item, reference, personal, household, other>",
@@ -185,6 +185,7 @@ Rules:
 - CRITICAL: You MUST extract every labelled field you can see in the document text into key_fields. If a label like 'MOT test number', 'Location of the test', 'Testing organisation', or 'Inspector name' appears in the text, its value MUST appear in key_fields. Failure to include labelled fields is an error.
 - Return ONLY valid JSON. No markdown fences, no commentary.
 - key_fields should extract the most important structured data.
+- IMPORTANT: Letters from Volkswagen Financial Services, VWFS, VW FS, Black Horse, Lex Autolease, Moneybarn, Close Brothers, or any company with "Financial Services" in the name that relates to a vehicle should be classified as `vehicle_finance`, NOT `insurance`. Insurance documents come from insurers like AXA, Aviva, Direct Line, Admiral, etc.
 - For vehicle documents (mot_certificate, vehicle), you MUST extract ALL of the following fields if present in the text. Do NOT omit any field that appears in the document:
   - `mot_test_number`: REQUIRED for mot_certificate — the MOT test number (a long number, e.g. "1778 7252 2687"). Look for "MOT test number" label in the text.
   - `test_location`: REQUIRED for mot_certificate — the full address where the test was carried out. Look for "Location of the test" label.
@@ -198,6 +199,16 @@ Rules:
   - `mileage`: Mileage at time of test.
   - `date_of_test`: Date of the test in YYYY-MM-DD.
   - `expiry_date`: MOT expiry date in YYYY-MM-DD.
+- For vehicle finance documents (vehicle_finance, contract_hire, finance_agreement):
+  - `agreement_number`: The finance agreement or contract number
+  - `vehicle_model`: The vehicle make and model
+  - `registration_number`: The vehicle registration plate
+  - `provider_name`: The finance provider (e.g. "Volkswagen Financial Services", "Black Horse", "Lex Autolease")
+  - `monthly_payment`: Monthly payment amount if present
+  - `contract_end_date`: When the agreement ends
+  - `mileage_allowance`: Annual or total mileage allowance if present
+  - `contact_phone`: Provider contact phone number
+  - `contact_email`: Provider contact email
 - For financial documents (insurance, invoices, utilities), you MUST extract the following fields if present:
   - `provider_name`: The name of the company providing the service.
   - `policy_number`: The policy number.
