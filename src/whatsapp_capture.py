@@ -171,7 +171,7 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 
 {{
   "cleaned_content": "<concise summary of the document's key information>",
-  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, other>",
+  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, mot_certificate, vehicle, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
   "category": "<one of: idea, meeting-notes, decision, action-item, reference, personal, household, other>",
@@ -184,6 +184,19 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 Rules:
 - Return ONLY valid JSON. No markdown fences, no commentary.
 - key_fields should extract the most important structured data.
+- For vehicle documents (mot_certificate, vehicle):
+  - `mot_test_number`: The MOT test number (e.g. "1778 7252 2687")
+  - `test_location`: The address where the test was carried out
+  - `testing_organisation`: The name of the testing centre (e.g. "Kwik Fit")
+  - `inspector_name`: The name of the inspector
+  - `earliest_retest_date`: The earliest date the vehicle can be presented for retest
+  - `vehicle_identification_number`: The VIN
+  - `registration_number`: The vehicle registration
+  - `make_and_model`: Make and model of the vehicle
+  - `test_result`: Pass or Fail
+  - `mileage`: Mileage at time of test
+  - `date_of_test`: Date of the test in YYYY-MM-DD
+  - `expiry_date`: MOT expiry date in YYYY-MM-DD
 - For financial documents (insurance, invoices, utilities), you MUST extract the following fields if present:
   - `provider_name`: The name of the company providing the service.
   - `policy_number`: The policy number.
@@ -193,6 +206,7 @@ Rules:
   - `direct_debit_amount`: The amount of the direct debit.
   - `payment_frequency`: How often the payment is made (e.g., monthly, annually).
 - If a field has no value, use an empty list [] or empty string "" or empty object {{}}.
+- Always extract any reference numbers, certificate numbers, test numbers, or unique identifiers present in the document into key_fields, even if not explicitly listed above.
 - Keep cleaned_content as a faithful, concise summary.
 - For action_items: NEVER include action items for dates that are in the past (before today). Only include action items for future dates or undated items. Today's date is {datetime.now().strftime('%Y-%m-%d')}.
 - NEVER include "make the payment" or "pay the direct debit" as an action item if the payment_method is "direct debit" or "DD" — direct debits are automatic and require no action.
