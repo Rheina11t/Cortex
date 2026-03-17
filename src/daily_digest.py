@@ -33,6 +33,44 @@ from .config import get_settings, logger
 log = logging.getLogger("open_brain.daily_digest")
 
 
+async def _get_ai_summary(memories: list[dict], today_str: str) -> str | None:
+    """Use the LLM to generate a summary of recent memories."""
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=get_settings().openai_api_key,
+            base_url=get_settings().openai_base_url,
+        )
+        memories_str = "\n---\n".join(
+            f"Memory ID: {m.get('id')}\nContent: {m.get('content')}"
+            for m in memories
+        )
+        prompt = f"""You are Family Brain, a personal AI assistant. Given these memories captured in the last 24 hours, produce a concise digest with:
+
+- **KEY THEMES**: Bullet points of main topics.
+- **OPEN ACTION ITEMS**: Only future-dated or undated items — never past dates, never 'make direct debit payment'.
+- **THOUGHT OF THE DAY**: One insight.
+
+Today's date is {today_str}. Never surface action items with dates before today.
+
+Relevant memories:
+{memories_str}
+
+Digest:"""
+
+        response = client.chat.completions.create(
+            model=get_settings().llm_model,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant for a family."},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        return response.choices[0].message.content or None
+    except Exception as exc:
+        log.warning("AI summary generation failed: %s", exc)
+        return None
+
 async def build_digest() -> str:
     """Build the daily digest message as Markdown text."""
     settings = get_settings()
@@ -45,6 +83,22 @@ async def build_digest() -> str:
 
     sections: list[str] = []
     sections.append(f"🧠 *Family Brain — Daily Digest*\n📅 {now.strftime('%A, %B %d, %Y')}\n")
+
+    # ── AI Summary (last 24 hours) ───────────────────────────────────────
+    try:
+        recent = brain.list_recent_memories(limit=50)
+        recent_24h = []
+        for m in recent:
+            created = m.get("created_at", "")
+            if created and created >= yesterday:
+                recent_24h.append(m)
+
+        if len(recent_24h) >= 3:
+            summary = await _get_ai_summary(recent_24h, today_str)
+            if summary:
+                sections.append(summary)
+    except Exception as exc:
+        log.warning("Failed to generate AI summary: %s", exc)
 
     # ── Recent memories (last 24 hours) ──────────────────────────────────
     try:

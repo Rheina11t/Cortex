@@ -164,22 +164,22 @@ def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Document type detection prompt (identical to telegram_capture.py)
 # ---------------------------------------------------------------------------
-_DOC_TYPE_SYSTEM_PROMPT = """\
+_DOC_TYPE_SYSTEM_PROMPT = f"""\
 You are a document classification assistant for a Family Brain system.
 
 Given extracted text from a document (photo or PDF), you MUST return a JSON object with:
 
-{
+{{
   "cleaned_content": "<concise summary of the document's key information>",
   "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
   "category": "<one of: idea, meeting-notes, decision, action-item, reference, personal, household, other>",
   "action_items": ["<any action items or deadlines extracted>"],
-  "key_fields": {"<field_name>": "<value>"},
+  "key_fields": {{"<field_name>": "<value>"}},
   "dates_mentioned": ["<any dates found in YYYY-MM-DD format>"],
   "source": "whatsapp-photo"
-}
+}}
 
 Rules:
 - Return ONLY valid JSON. No markdown fences, no commentary.
@@ -192,8 +192,10 @@ Rules:
   - `sort_code`: The sort code for payments.
   - `direct_debit_amount`: The amount of the direct debit.
   - `payment_frequency`: How often the payment is made (e.g., monthly, annually).
-- If a field has no value, use an empty list [] or empty string "" or empty object {}.
+- If a field has no value, use an empty list [] or empty string "" or empty object {{}}.
 - Keep cleaned_content as a faithful, concise summary.
+- For action_items: NEVER include action items for dates that are in the past (before today). Only include action items for future dates or undated items. Today's date is {datetime.now().strftime('%Y-%m-%d')}.
+- NEVER include "make the payment" or "pay the direct debit" as an action item if the payment_method is "direct debit" or "DD" — direct debits are automatic and require no action.
 """
 
 
@@ -722,8 +724,17 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
     logger.info("Handling message as a query: %s", text)
 
     try:
-        # Step 1: Perform semantic search
-        results = brain.semantic_search(text, match_threshold=0.4, match_count=5)
+        # Step 1: Expand query with synonyms and perform semantic search
+        synonyms = []
+        if "lease" in text.lower():
+            synonyms.append("contract hire")
+        if "contract hire" in text.lower():
+            synonyms.append("lease")
+        if any(word in text.lower() for word in ["end", "ends", "ending"]):
+            synonyms.extend(["expiry", "expires"])
+        
+        expanded_query = text + " " + " ".join(synonyms)
+        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5)
 
         if not results:
             twiml.message(

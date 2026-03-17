@@ -181,22 +181,23 @@ def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Document type detection prompt
 # ---------------------------------------------------------------------------
-_DOC_TYPE_SYSTEM_PROMPT ="""\
+from datetime import datetime
+_DOC_TYPE_SYSTEM_PROMPT = f"""\
 You are a document classification assistant for a Family Brain system.
 
 Given extracted text from a document (photo or PDF), you MUST return a JSON object with:
 
-{
-  "cleaned_content": "<concise summary of the document\'s key information>",
+{{
+  "cleaned_content": "<concise summary of the document's key information>",
   "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
   "category": "<one of: idea, meeting-notes, decision, action-item, reference, personal, household, other>",
   "action_items": ["<any action items or deadlines extracted>"],
-  "key_fields": {"<field_name>": "<value>"},
+  "key_fields": {{"<field_name>": "<value>"}},
   "dates_mentioned": ["<any dates found in YYYY-MM-DD format>"],
   "source": "telegram-photo"
-}
+}}
 
 Rules:
 - Return ONLY valid JSON. No markdown fences, no commentary.
@@ -209,9 +210,12 @@ Rules:
   - `sort_code`: The sort code for payments.
   - `direct_debit_amount`: The amount of the direct debit.
   - `payment_frequency`: How often the payment is made (e.g., monthly, annually).
-- If a field has no value, use an empty list [] or empty string "" or empty object {}.
+- If a field has no value, use an empty list [] or empty string "" or empty object {{}}.
 - Keep cleaned_content as a faithful, concise summary.
+- For action_items: NEVER include action items for dates that are in the past (before today). Only include action items for future dates or undated items. Today's date is {datetime.now().strftime('%Y-%m-%d')}.
+- NEVER include "make the payment" or "pay the direct debit" as an action item if the payment_method is "direct debit" or "DD" — direct debits are automatic and require no action.
 """
+
 
 
 # ---------------------------------------------------------------------------
@@ -468,8 +472,17 @@ async def _answer_query(
     thinking_msg = await update.message.reply_text("🔍 Searching the family brain…")
 
     try:
-        # Step 1: Perform semantic search, with a fallback to metadata search
-        results = brain.semantic_search(raw_text, match_threshold=0.4, match_count=5)
+        # Step 1: Expand query with synonyms and perform semantic search
+        synonyms = []
+        if "lease" in raw_text.lower():
+            synonyms.append("contract hire")
+        if "contract hire" in raw_text.lower():
+            synonyms.append("lease")
+        if any(word in raw_text.lower() for word in ["end", "ends", "ending"]):
+            synonyms.extend(["expiry", "expires"])
+        
+        expanded_query = raw_text + " " + " ".join(synonyms)
+        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5)
         if not results:
             # Fallback for exact-match queries on policy numbers, etc.
             logger.info("Semantic search returned no results; trying metadata query for: %s", raw_text)

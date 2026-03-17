@@ -43,6 +43,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -192,6 +193,8 @@ Rules:
 - Return ONLY valid JSON. No markdown fences, no commentary.
 - If a field has no value, use an empty list [] or empty string "".
 - Keep cleaned_content faithful to the original meaning.
+- For action_items: NEVER include action items for dates that are in the past (before today). Only include action items for future dates or undated items. Today's date is {datetime.now().strftime('%Y-%m-%d')}.
+- NEVER include "make the payment" or "pay the direct debit" as an action item if the payment_method is "direct debit" or "DD" — direct debits are automatic and require no action.
 - Tags should be lowercase, hyphenated, and concise.
 """
 
