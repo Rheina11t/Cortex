@@ -56,6 +56,12 @@ settings.validate_telegram()
 brain.init(settings)
 
 # ---------------------------------------------------------------------------
+# Conversation history
+# ---------------------------------------------------------------------------
+_conversation_history: dict[int, list[dict]] = {}
+
+
+# ---------------------------------------------------------------------------
 # Family member registry
 # ---------------------------------------------------------------------------
 FAMILY_MEMBERS: dict[int, str] = {}
@@ -397,8 +403,13 @@ _QUERY_PHRASES = (
     "remind me", "show me", "find", "search", "look up",
 )
 
-def _is_query(text: str) -> bool:
+def _is_query(text: str, user_id: int) -> bool:
     """Return True if the text is likely a question/query, not something to be stored."""
+    # Context-aware check for short follow-up questions
+    history = _conversation_history.get(user_id, [])
+    if history and len(text.split()) <= 4:
+        logger.info("Treating short message from user %d as a query due to recent conversation history.", user_id)
+        return True
     text_lower = text.lower()
     if text_lower.endswith("?"):
         return True
@@ -427,7 +438,7 @@ def _is_query(text: str) -> bool:
             ],
         )
         reply = response.choices[0].message.content or ""
-        logger.info("Intent detection for ", reply)
+        logger.info("Intent detection for %r: %s", text, reply)
         return "query" in reply.lower()
     except Exception as exc:
         logger.warning("Intent detection LLM call failed: %s", exc)
@@ -444,7 +455,12 @@ Relevant memories:
 
 Answer:'''
 
-async def _answer_query(raw_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _answer_query(
+    raw_text: str, 
+    update: Update, 
+    context: ContextTypes.DEFAULT_TYPE, 
+    conversation_history: list[dict] | None = None
+) -> None:
     """Handle a message that has been identified as a query."""
     if update.message is None:
         return
@@ -474,12 +490,19 @@ async def _answer_query(raw_text: str, update: Update, context: ContextTypes.DEF
             )
             return
 
-        # Step 2: Synthesise an answer from the results
+        # Step 2: Synthesise an answer from the results, including conversation history
         memories_str = "\n---\n".join(
             "Memory ID: {}\nContent: {}".format(r.get("id"), r.get("content"))
             for r in results
         )
         prompt = _SYNTHESIS_PROMPT.format(question=raw_text, memories=memories_str)
+
+        # Prepend a system message, then prior conversation turns, then the current prompt
+        messages = [
+            {"role": "system", "content": "You are Family Brain, a helpful AI assistant for a family. Use the conversation history for context when answering follow-up questions."}
+        ]
+        messages.extend(conversation_history or [])
+        messages.append({"role": "user", "content": prompt})
 
         from openai import OpenAI
         client = OpenAI(
@@ -489,14 +512,19 @@ async def _answer_query(raw_text: str, update: Update, context: ContextTypes.DEF
         response = client.chat.completions.create(
             model=settings.llm_model,
             temperature=0.1,
-            messages=[
-                {"role": "system", "content": "You are a helpful AI assistant for a family."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
         )
         answer = response.choices[0].message.content or "I found some information but couldn't synthesise an answer."
 
-        # Step 3: Format and send the reply
+        # Step 3: Update conversation history
+        if update.effective_user:
+            user_id = update.effective_user.id
+            history = _conversation_history.get(user_id, [])
+            history.append({"role": "user", "content": raw_text})
+            history.append({"role": "assistant", "content": answer})
+            _conversation_history[user_id] = history[-6:]  # Keep last 3 turns
+
+        # Step 4: Format and send the reply
         source_ids = ", ".join("`{}`".format(r.get("id")) for r in results)
         reply = "{}\n\n*Sources:* {}".format(_escape(answer), source_ids)
 
@@ -551,8 +579,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     # --- Intent detection: Query vs Capture ---
-    if _is_query(raw_text):
-        await _answer_query(raw_text, update, context)
+    if _is_query(raw_text, user.id):
+        history = _conversation_history.get(user.id, [])
+        await _answer_query(raw_text, update, context, conversation_history=history)
         return
 
     # --- Default to capture flow ---

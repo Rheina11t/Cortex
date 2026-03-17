@@ -53,6 +53,12 @@ settings.validate_twilio()
 brain.init(settings)
 
 # ---------------------------------------------------------------------------
+# Conversation history
+# ---------------------------------------------------------------------------
+_conversation_history: dict[str, list[dict]] = {}
+
+
+# ---------------------------------------------------------------------------
 # Family member registry
 # ---------------------------------------------------------------------------
 # Loaded from WHATSAPP_FAMILY_MEMBER_N_PHONE / WHATSAPP_FAMILY_MEMBER_N_NAME.
@@ -659,8 +665,13 @@ _QUERY_PHRASES = (
     "remind me", "show me", "find", "search", "look up",
 )
 
-def _is_query(text: str) -> bool:
+def _is_query(text: str, from_number: str) -> bool:
     """Return True if the text is likely a question/query, not something to be stored."""
+    # Context-aware check for short follow-up questions
+    history = _conversation_history.get(from_number, [])
+    if history and len(text.split()) <= 4:
+        logger.info("Treating short message from %s as a query due to recent conversation history.", from_number)
+        return True
     text_lower = text.lower()
     if text_lower.endswith("?"):
         return True
@@ -705,7 +716,7 @@ Relevant memories:
 
 Answer:'''
 
-def _answer_query(text: str) -> Response:
+def _answer_query(text: str, from_number: str, conversation_history: list[dict] | None = None) -> Response:
     """Handle a message that has been identified as a query."""
     twiml = MessagingResponse()
     logger.info("Handling message as a query: %s", text)
@@ -721,12 +732,19 @@ def _answer_query(text: str) -> Response:
             )
             return Response(str(twiml), mimetype="application/xml")
 
-        # Step 2: Synthesise an answer from the results
+        # Step 2: Synthesise an answer from the results, including conversation history
         memories_str = "\n---\n".join(
             "Memory ID: {}\nContent: {}".format(r.get("id"), r.get("content"))
             for r in results
         )
         prompt = _SYNTHESIS_PROMPT.format(question=text, memories=memories_str)
+
+        # Prepend a system message, then prior conversation turns, then the current prompt
+        messages = [
+            {"role": "system", "content": "You are Family Brain, a helpful AI assistant for a family. Use the conversation history for context when answering follow-up questions."}
+        ]
+        messages.extend(conversation_history or [])
+        messages.append({"role": "user", "content": prompt})
 
         from openai import OpenAI
         client = OpenAI(
@@ -736,14 +754,17 @@ def _answer_query(text: str) -> Response:
         response = client.chat.completions.create(
             model=settings.llm_model,
             temperature=0.1,
-            messages=[
-                {"role": "system", "content": "You are a helpful AI assistant for a family."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
         )
         answer = response.choices[0].message.content or "I found some information but couldn't synthesise an answer."
 
-        # Step 3: Format and send the reply
+        # Step 3: Update conversation history
+        history = _conversation_history.get(from_number, [])
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": answer})
+        _conversation_history[from_number] = history[-6:]  # Keep last 3 turns
+
+        # Step 4: Format and send the reply
         source_ids = ", ".join(str(r.get("id")) for r in results)
         reply = "{}\n\nSources: {}".format(answer, source_ids)
 
@@ -772,8 +793,9 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     logger.info("Processing text message from %s (%s): %d chars", family_name, from_number, len(text))
 
     # --- Intent detection: Query vs Capture ---
-    if _is_query(text):
-        return _answer_query(text)
+    if _is_query(text, from_number):
+        history = _conversation_history.get(from_number, [])
+        return _answer_query(text, from_number, conversation_history=history)
 
     # --- Default to capture flow ---
     twiml = MessagingResponse()
