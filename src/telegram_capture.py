@@ -794,19 +794,24 @@ async def _check_conflicts_and_store_event(
         parse_mode=ParseMode.HTML
     )
 
-    # Also push to Google Calendar
+    # Also push to Google Calendar (best-effort, never crash the handler)
     try:
-        from . import google_calendar
-        gcal_event_id = google_calendar.create_event(
-            event_name=event_name,
-            event_date=event_date,
-            event_time=event_time if event_time else None,
-            location=event_data.get("location", ""),
-            description=f"Captured by {sender_name} via Family Brain",
-            family_member=family_member,
-        )
-        if gcal_event_id:
-            logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
+        try:
+            from . import google_calendar as _gcal
+        except ImportError as ie:
+            logger.warning("Google Calendar module not available: %s", ie)
+            _gcal = None
+        if _gcal is not None:
+            gcal_event_id = _gcal.create_event(
+                event_name=event_name,
+                event_date=event_date.isoformat() if hasattr(event_date, 'isoformat') else str(event_date),
+                event_time=event_time if event_time else None,
+                location=event_data.get("location", ""),
+                description=f"Captured by {sender_name} via Family Brain",
+                family_member=family_member,
+            )
+            if gcal_event_id:
+                logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
     except Exception as exc:
         logger.warning("Google Calendar push failed: %s", exc)
 
