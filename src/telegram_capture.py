@@ -280,13 +280,16 @@ def _extract_event_details(raw_text: str) -> dict:
     """Use a dedicated LLM call to extract structured event details."""
     today_str = datetime.now().strftime("%Y-%m-%d")
     prompt = f"""\
-You are an event extraction assistant. Today is {today_str}.
+You are an event extraction assistant for a family calendar. Today is {today_str}.
 Given the user message, extract event details into a JSON object.
 
-- If no specific date or event is mentioned, return {{"has_event": false}}.
-- Resolve relative dates (e.g., "next Tuesday", "tomorrow", "24th March") to a YYYY-MM-DD format.
-- If you cannot determine the year, assume the current year.
-- If no specific event is mentioned, `has_event` MUST be false.
+Rules:
+- ANY mention of a person being somewhere on a specific date counts as an event. Set has_event=true.
+- Travel, trips, visits, meetings, appointments, school events, sports, etc. are all events.
+- Resolve dates like "Thursday 26th March", "next Tuesday", "tomorrow", "24th March" to YYYY-MM-DD.
+- If you cannot determine the year, assume the current year ({today_str[:4]}).
+- If there is truly NO date mentioned at all, set has_event=false.
+- event_name should be a short descriptive label like "Dan in London" or "School trip".
 
 User message: "{raw_text}"
 
