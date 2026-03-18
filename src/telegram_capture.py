@@ -199,7 +199,7 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 
 {{
   "cleaned_content": "<concise summary of the document's key information>",
-  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, utility, warranty, invoice, contract, mot_certificate, vehicle, vehicle_finance, contract_hire, finance_agreement, other>",
+  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, pension_statement, utility, warranty, invoice, contract, mot_certificate, vehicle, vehicle_finance, contract_hire, finance_agreement, tax, hmrc_letter, government_letter, legal, bank_statement, payslip, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
   "category": "<one of: idea, meeting-notes, decision, action-item, reference, personal, household, other>",
@@ -214,6 +214,11 @@ Rules:
 - Return ONLY valid JSON. No markdown fences, no commentary.
 - `key_fields` should extract the most important structured data.
 - IMPORTANT: Letters from Volkswagen Financial Services, VWFS, VW FS, Black Horse, Lex Autolease, Moneybarn, Close Brothers, or any company with "Financial Services" in the name that relates to a vehicle should be classified as `vehicle_finance`, NOT `insurance`. Insurance documents come from insurers like AXA, Aviva, Direct Line, Admiral, etc.
+- Letters from HMRC (HM Revenue & Customs), DVLA, DWP, Companies House, or any UK government body should be classified as `hmrc_letter` or `government_letter` as appropriate.
+- Documents related to Self Assessment, tax returns, tax codes, P60, P45, P11D should be classified as `tax`.
+- Bank statements should be classified as `bank_statement`.
+- Payslips should be classified as `payslip`.
+- Legal documents, court letters, solicitor correspondence should be classified as `legal`.
 - For vehicle documents (mot_certificate, vehicle), you MUST extract ALL of the following fields if present in the text. Do NOT omit any field that appears in the document:
   - `mot_test_number`: REQUIRED for mot_certificate — the MOT test number (a long number, e.g. "1778 7252 2687"). Look for "MOT test number" label in the text.
   - `test_location`: REQUIRED for mot_certificate — the full address where the test was carried out. Look for "Location of the test" label.
@@ -237,6 +242,16 @@ Rules:
   - `mileage_allowance`: Annual or total mileage allowance if present
   - `contact_phone`: Provider contact phone number
   - `contact_email`: Provider contact email
+- For tax documents (tax, hmrc_letter):
+  - `utr`: Unique Taxpayer Reference number
+  - `case_ref`: Case reference number
+  - `tax_year`: The tax year the document relates to
+  - `deadline`: Any deadline mentioned in the document (YYYY-MM-DD)
+  - `amount_owed`: Any tax amount owed or due
+  - `amount_refund`: Any refund amount
+  - `contact_phone`: HMRC contact phone number
+  - `contact_email`: HMRC contact email
+  - `reference_number`: Any other reference number on the document
 - For financial documents (insurance, invoices, utilities), you MUST extract the following fields if present:
   - `provider_name`: The name of the company providing the service.
   - `policy_number`: The policy number.
