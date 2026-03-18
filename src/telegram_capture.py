@@ -528,13 +528,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         action_str = ", ".join(_escape(a) for a in action_items_short) or "none"
         if len(action_str) > 300:
             action_str = action_str[:300] + "…"
-        mem_id_short = str(memory_id)[:36]  # UUIDs are always 36 chars, safe
+        # store_memory returns a dict; extract the UUID string
+        if isinstance(memory_id, dict):
+            mem_id_str = str(memory_id.get("id", memory_id))
+        else:
+            mem_id_str = str(memory_id)
         reply_text = (
             f"✅ Memory captured by {family_name}!\n\n"
             f"Category: {category}\n"
             f"Tags: {tags_str}\n"
             f"Action items: {action_str}\n"
-            f"ID: {mem_id_short}"
+            f"ID: {mem_id_str}"
         )
         await update.message.reply_text(reply_text)
 
