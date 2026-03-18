@@ -522,8 +522,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             family_member=family_name,
         )
 
-        tags_str = ", ".join(f'<code>{_escape(t)}</code>' for t in tags) or "<i>none</i>"
-        action_str = ", ".join(_escape(a) for a in action_items) or "<i>none</i>"
+        tags_str = ", ".join(f'<code>{_escape(t)}</code>' for t in tags[:10]) or "<i>none</i>"
+        # Cap each action item and total action_str to avoid Telegram 4096-char limit
+        action_items_short = [a[:80] for a in action_items[:5]]
+        action_str = ", ".join(_escape(a) for a in action_items_short) or "<i>none</i>"
+        if len(action_str) > 300:
+            action_str = action_str[:300] + "…"
         reply_text = (
             f"✅ <b>Memory captured by {_escape(family_name)}!</b>\n\n"
             f"📂 <b>Category:</b> {_escape(category)}\n"
@@ -531,6 +535,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"🎯 <b>Action items:</b> {action_str}\n"
             f"🆔 <b>ID:</b> <code>{_escape(str(memory_id))}</code>"
         )
+        # Safety cap: Telegram max is 4096 chars
+        if len(reply_text) > 4000:
+            reply_text = reply_text[:4000] + "…"
         await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
 
         # --- Event detection ---
