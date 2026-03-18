@@ -457,7 +457,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(
         f"✅ Family Brain is running\\.\n"
         f"👨‍👩‍👧‍👦 Family members: {_escape(members)}\n"
-        f"🔍 OCR: {'Google Vision' if _USE_GOOGLE_VISION else 'pytesseract (local)'}",
+        f"🔍 OCR: {_escape('Google Vision' if _USE_GOOGLE_VISION else 'pytesseract (local)')}",
         parse_mode=ParseMode.MARKDOWN_V2,
     )
 
@@ -604,8 +604,8 @@ async def _answer_query(
             _conversation_history[user_id] = history[-6:]  # Keep last 3 turns
 
         # Step 4: Format and send the reply
-        source_ids = ", ".join("`{}`".format(r.get("id")) for r in results)
-        reply = "{}\n\n*Sources:* {}".format(_escape(answer), source_ids)
+        source_ids = ", ".join(f"`{_escape(str(r.get('id')))}`" for r in results)
+        reply = f"{_escape(answer)}\n\n*Sources:* {source_ids}"
 
         await thinking_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info("Answered query with %d sources", len(results))
@@ -819,8 +819,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             priority_items = [(k, v) for k, v in key_fields.items() if k in priority_keys]
             other_items = [(k, v) for k, v in key_fields.items() if k not in priority_keys]
             combined = other_items[:8] + [i for i in priority_items if i not in other_items[:8]]
-            key_lines = [f"  \u2022 {k}: {v}" for k, v in combined[:8]]
-            key_summary = "\n" + "\n".join(_escape(line) for line in key_lines)
+            key_lines = [f"  • {_escape(k)}: {_escape(v)}" for k, v in combined[:8]]
+            key_summary = "\n" + "\n".join(line for line in key_lines)
 
         financial_note = f"\n{_escape(financial_summary)}" if financial_summary else ""
 
@@ -828,7 +828,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             f"\u2705 *Got it \u2014 {_escape(doc_type)} document captured\\!*\n\n"
             f"\U0001f464 *Captured by:* {_escape(family_name)}\n"
             f"\U0001f4c4 *Type:* {_escape(doc_type)}\n"
-            f"\U0001f3f7 *Tags:* {', '.join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_'}\n"
+            "\U0001f3f7 *Tags:* " + (", ".join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_') + "\n"
             f"\U0001f194 *ID:* `{_escape(str(memory_id))}`"
             f"{key_summary}"
             f"{financial_note}"
@@ -951,8 +951,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             priority_items = [(k, v) for k, v in key_fields.items() if k in priority_keys]
             other_items = [(k, v) for k, v in key_fields.items() if k not in priority_keys]
             combined = other_items[:8] + [i for i in priority_items if i not in other_items[:8]]
-            key_lines = [f"  \u2022 {k}: {v}" for k, v in combined[:8]]
-            key_summary = "\n" + "\n".join(_escape(line) for line in key_lines)
+            key_lines = [f"  • {_escape(k)}: {_escape(v)}" for k, v in combined[:8]]
+            key_summary = "\n" + "\n".join(line for line in key_lines)
 
         financial_note = f"\n{_escape(financial_summary)}" if financial_summary else ""
 
@@ -961,7 +961,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"\U0001f464 *Captured by:* {_escape(family_name)}\n"
             f"\U0001f4c4 *File:* {_escape(file_name)}\n"
             f"\U0001f4c2 *Type:* {_escape(doc_type)}\n"
-            f"\U0001f3f7 *Tags:* {', '.join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_'}\n"
+            "\U0001f3f7 *Tags:* " + (", ".join(f'`{_escape(t)}`' for t in metadata.get('tags', [])) or '_none_') + "\n"
             f"\U0001f194 *ID:* `{_escape(str(memory_id))}`"
             f"{key_summary}"
             f"{financial_note}"
