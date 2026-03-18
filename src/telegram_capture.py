@@ -548,7 +548,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     except Exception as exc:
         logger.error("Failed to process text message: %s", exc, exc_info=True)
-        await update.message.reply_text(f"⚠️ Failed to process message.\n\n<code>{_escape(str(exc))}</code>", parse_mode=ParseMode.HTML)
+        err_msg = str(exc)[:200]
+        await update.message.reply_text(f"⚠️ Failed to process message.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -582,7 +583,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     except Exception as exc:
         logger.error("Failed to process photo: %s", exc, exc_info=True)
-        await update.message.reply_text(f"⚠️ Failed to process photo.\n\n<code>{_escape(str(exc))}</code>", parse_mode=ParseMode.HTML)
+        err_msg = str(exc)[:200]
+        await update.message.reply_text(f"⚠️ Failed to process photo.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -644,7 +646,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     except Exception as exc:
         logger.error("Failed to process document: %s", exc, exc_info=True)
-        await update.message.reply_text(f"⚠️ Failed to process PDF.\n\n<code>{_escape(str(exc))}</code>", parse_mode=ParseMode.HTML)
+        err_msg = str(exc)[:200]
+        await update.message.reply_text(f"⚠️ Failed to process PDF.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
 
 
 async def _handle_image_document(
@@ -822,11 +825,15 @@ async def _maybe_store_financial_details(
 
     if provider and amount:
         try:
+            try:
+                amount_float = float(str(amount).replace('£','').replace(',','').strip())
+            except (ValueError, AttributeError):
+                amount_float = 0.0
             brain.add_recurring_bill(
-                provider_name=provider,
-                amount=amount,
-                family_member=sender_name,
-                metadata=metadata,
+                name=provider,
+                provider=provider,
+                amount_gbp=amount_float,
+                notes=f"Captured by {sender_name}",
             )
             await update.message.reply_text(
                 f"✅ Recurring bill for <b>{_escape(provider)}</b> noted.",
