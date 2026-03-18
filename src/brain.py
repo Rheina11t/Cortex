@@ -1389,3 +1389,114 @@ def link_contact_to_professional_crm(jh_contact_id: str) -> dict[str, Any]:
     record = result.data[0] if result.data else {}
     logger.info("Contact %s linked to professional CRM (id=%s)", jh_contact_id, record.get("id"))
     return record
+
+
+# ---------------------------------------------------------------------------
+# General-purpose LLM helper
+# ---------------------------------------------------------------------------
+
+def get_llm_reply(
+    system_message: str = "",
+    user_message: str = "",
+    messages: list[dict] | None = None,
+    max_tokens: int = 512,
+    json_schema: dict | None = None,
+) -> Any:
+    """Call the LLM and return the reply.
+
+    If ``messages`` is provided it is used directly (for multi-turn conversations).
+    Otherwise ``system_message`` and ``user_message`` are used to build a simple
+    two-message conversation.
+
+    If ``json_schema`` is provided the response is parsed as JSON and returned
+    as a dict; otherwise the raw string is returned.
+    """
+    if _llm_client is None or _settings is None:
+        raise RuntimeError("brain.init(settings) must be called before use.")
+
+    if messages is None:
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        if user_message:
+            messages.append({"role": "user", "content": user_message})
+
+    kwargs: dict[str, Any] = {
+        "model": _settings.llm_model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.0,
+    }
+    if json_schema is not None:
+        kwargs["response_format"] = {"type": "json_object"}
+
+    response = _llm_client.chat.completions.create(**kwargs)
+    content = response.choices[0].message.content or ""
+
+    if json_schema is not None:
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("get_llm_reply: failed to parse JSON response: %s", content)
+            return {}
+
+    return content.strip()
+
+
+# ---------------------------------------------------------------------------
+# Family events helpers
+# ---------------------------------------------------------------------------
+
+def store_event(
+    event_name: str,
+    event_date: Any,
+    event_time: str | None = None,
+    family_member: str = "family",
+    location: str = "",
+    notes: str = "",
+    metadata: dict | None = None,
+) -> str:
+    """Insert an event into the family_events table and return its UUID."""
+    db, _ = _require_init()
+    from datetime import date as _date
+
+    if isinstance(event_date, _date):
+        event_date_str = event_date.isoformat()
+    else:
+        event_date_str = str(event_date)
+
+    row: dict[str, Any] = {
+        "family_member": family_member or "family",
+        "event_name": event_name,
+        "event_date": event_date_str,
+        "location": location or "",
+        "notes": notes or "",
+        "source": "telegram",
+    }
+    if event_time:
+        row["event_time"] = event_time
+
+    result = db.table("family_events").insert(row).execute()
+    record = result.data[0] if result.data else {}
+    event_id = record.get("id", "")
+    logger.info("Event stored: %s on %s (id=%s)", event_name, event_date_str, event_id)
+    return str(event_id)
+
+
+def get_events_on_date(event_date: Any) -> list[dict[str, Any]]:
+    """Return all family events on a given date."""
+    db, _ = _require_init()
+    from datetime import date as _date
+
+    if isinstance(event_date, _date):
+        date_str = event_date.isoformat()
+    else:
+        date_str = str(event_date)
+
+    result = (
+        db.table("family_events")
+        .select("*")
+        .eq("event_date", date_str)
+        .execute()
+    )
+    return result.data or []
