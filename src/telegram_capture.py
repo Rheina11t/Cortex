@@ -544,9 +544,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         # --- Event detection ---
         event_tags_found = _EVENT_TAGS.intersection(tags)
+        logger.info("[EVENT DEBUG] tags=%s event_tags_found=%s", tags, event_tags_found)
         if event_tags_found or metadata.get("document_type") == "booking":
             logger.info("Potential event detected from tags: %s. Extracting details...", event_tags_found)
             event_details = _extract_event_details(raw_text)
+            logger.info("[EVENT DEBUG] event_details=%s", event_details)
             if event_details.get("has_event"):
                 # Merge dedicated event details into the broader metadata
                 merged_data = {**metadata, **event_details}
