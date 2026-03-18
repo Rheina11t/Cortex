@@ -522,12 +522,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
         tags_str = ", ".join(f'<code>{_escape(t)}</code>' for t in tags) or "<i>none</i>"
-        reply_text = f'''✅ <b>Memory captured</b>
-
-<b>Content:</b> {_escape(raw_text)}
-<b>Category:</b> {_escape(category)}
-<b>Tags:</b> {tags_str}
-<b>ID:</b> <code>{_escape(str(memory_id))}</code>'''
+        action_str = ", ".join(_escape(a) for a in action_items) or "<i>none</i>"
+        reply_text = (
+            f"✅ <b>Memory captured by {_escape(family_name)}!</b>\n\n"
+            f"📂 <b>Category:</b> {_escape(category)}\n"
+            f"🏷 <b>Tags:</b> {tags_str}\n"
+            f"🎯 <b>Action items:</b> {action_str}\n"
+            f"🆔 <b>ID:</b> <code>{_escape(str(memory_id))}</code>"
+        )
         await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
 
         # --- Event detection ---
