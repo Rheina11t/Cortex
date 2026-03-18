@@ -759,7 +759,8 @@ async def _check_conflicts_and_store_event(
     if not update.message:
         return
 
-    event_name = event_data.get("event_name") or event_data.get("cleaned_content")
+    event_name = event_data.get("event_name") or event_data.get("cleaned_content") or ""
+    event_name = str(event_name)[:100]  # truncate to avoid Telegram message length issues
     event_date_str = event_data.get("event_date")
     event_time = event_data.get("event_time")
     family_member = event_data.get("family_member")
