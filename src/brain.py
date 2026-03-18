@@ -1468,6 +1468,7 @@ def store_event(
     row: dict[str, Any] = {
         "family_member": family_member or "family",
         "event_name": event_name,
+        "title": event_name,  # title is also NOT NULL in the table
         "event_date": event_date_str,
         "location": location or "",
         "notes": notes or "",
