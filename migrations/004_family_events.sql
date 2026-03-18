@@ -1,27 +1,20 @@
 -- ==========================================================================
 -- Migration 004: Family Events / Scheduling Schema
 -- ==========================================================================
--- Adds a table for tracking family events and schedules, enabling
--- conflict detection across family members.
---
--- Run this in the Supabase SQL Editor:
---   1. Go to your project dashboard → SQL Editor → New Query
---   2. Paste this entire file and click RUN
--- ==========================================================================
 
 CREATE TABLE IF NOT EXISTS family_events (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    family_member       TEXT NOT NULL,                       -- "Dan", "Sarah", "family" (for shared events)
+    family_member       TEXT NOT NULL,
     event_name          TEXT NOT NULL,
     event_date          DATE NOT NULL,
-    event_time          TIME,                                -- NULL if all-day event
-    end_date            DATE,                                -- NULL if single-day event
+    event_time          TIME,
+    end_date            DATE,
     location            TEXT DEFAULT '',
     recurring           BOOLEAN NOT NULL DEFAULT FALSE,
-    recurrence_pattern  TEXT DEFAULT '',                     -- "daily", "weekly", "monthly", "yearly", or cron-like
-    requirements        TEXT[] DEFAULT '{}',                 -- e.g. {"pack lunch", "bring PE kit"}
+    recurrence_pattern  TEXT DEFAULT '',
+    requirements        TEXT[] DEFAULT '{}',
     notes               TEXT DEFAULT '',
-    source              TEXT DEFAULT 'manual',               -- telegram, email, mcp, manual
+    source              TEXT DEFAULT 'manual',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -48,22 +41,18 @@ CREATE TRIGGER trg_family_events_updated_at
     EXECUTE FUNCTION update_family_events_updated_at();
 
 -- ── Conflict detection function ────────────────────────────────────────────
--- Returns all events on a given date, optionally filtered by family member.
--- Called via: SELECT * FROM check_schedule_conflicts('2025-03-20', NULL);
---             SELECT * FROM check_schedule_conflicts('2025-03-20', 'Dan');
-
 CREATE OR REPLACE FUNCTION check_schedule_conflicts(
     check_date DATE,
     check_member TEXT DEFAULT NULL
 )
 RETURNS TABLE (
-    id              UUID,
-    family_member   TEXT,
-    event_name      TEXT,
-    event_date      DATE,
-    event_time      TIME,
-    location        TEXT,
-    notes           TEXT
+    event_id        UUID,
+    member          TEXT,
+    name            TEXT,
+    edate           DATE,
+    etime           TIME,
+    elocation       TEXT,
+    enotes          TEXT
 )
 LANGUAGE plpgsql
 AS $$
