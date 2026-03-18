@@ -549,8 +549,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     except Exception as exc:
         logger.error("Failed to process text message: %s", exc, exc_info=True)
-        err_msg = str(exc)[:200]
-        await update.message.reply_text(f"⚠️ Failed to process message.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
+        try:
+            err_str = str(exc)
+            if "message is too long" in err_str.lower() or "too long" in err_str.lower():
+                await update.message.reply_text("⚠️ Reply was too long to send. Memory was stored successfully.")
+            else:
+                err_msg = err_str[:150]
+                await update.message.reply_text(f"⚠️ Failed to process message: {err_msg}")
+        except Exception:
+            pass  # give up silently if we can't even send the error
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
