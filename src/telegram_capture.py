@@ -270,6 +270,60 @@ Rules:
 
 
 # ---------------------------------------------------------------------------
+# Event Detection
+# ---------------------------------------------------------------------------
+_EVENT_TAGS = {
+    "event", "booking", "schedule", "appointment", "travel", "meeting", "reminder"
+}
+
+def _extract_event_details(raw_text: str) -> dict:
+    """Use a dedicated LLM call to extract structured event details."""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    prompt = f"""\
+You are an event extraction assistant. Today is {today_str}.
+Given the user message, extract event details into a JSON object.
+
+- If no specific date or event is mentioned, return {{"has_event": false}}.
+- Resolve relative dates (e.g., "next Tuesday", "tomorrow", "24th March") to a YYYY-MM-DD format.
+- If you cannot determine the year, assume the current year.
+- If no specific event is mentioned, `has_event` MUST be false.
+
+User message: "{raw_text}"
+
+Return ONLY the JSON object.
+"""
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "has_event": {"type": "boolean"},
+            "event_name": {"type": "string", "description": "A concise name for the event."},
+            "event_date": {"type": "string", "description": "The event date in YYYY-MM-DD format, or null."},
+            "event_time": {"type": "string", "description": "The event time in HH:MM format, or null."},
+            "location": {"type": "string", "description": "The location of the event, or null."},
+        },
+        "required": ["has_event"],
+    }
+
+    try:
+        event_details = brain.get_llm_reply(
+            system_message=prompt,
+            json_schema=json_schema,
+        )
+        if isinstance(event_details, str):
+            event_details = json.loads(event_details)
+        
+        # Basic validation
+        if event_details.get("has_event") and event_details.get("event_date"):
+            logger.info("Extracted event details: %s", event_details)
+            return event_details
+        return {"has_event": False}
+
+    except Exception as exc:
+        logger.warning("Could not extract event details: %s", exc)
+        return {"has_event": False}
+
+
+# ---------------------------------------------------------------------------
 # Query intent detection
 # ---------------------------------------------------------------------------
 _QUESTION_WORDS = (
@@ -477,8 +531,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
 
         # --- Event detection ---
-        if "event" in tags or "booking" in tags or metadata.get("document_type") == "booking":
-            await _check_conflicts_and_store_event(metadata, update, family_name)
+        event_tags_found = _EVENT_TAGS.intersection(tags)
+        if event_tags_found or metadata.get("document_type") == "booking":
+            logger.info("Potential event detected from tags: %s. Extracting details...", event_tags_found)
+            event_details = _extract_event_details(raw_text)
+            if event_details.get("has_event"):
+                # Merge dedicated event details into the broader metadata
+                merged_data = {**metadata, **event_details}
+                await _check_conflicts_and_store_event(merged_data, update, family_name)
 
         # --- Recurring bill detection ---
         if "bill" in tags and metadata.get("payment_method", "").lower() == "direct debit":
@@ -658,8 +718,15 @@ async def _process_and_store_document(
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
 
     # --- Event detection ---
-    if "event" in metadata.get("tags", []) or doc_type == "booking":
-        await _check_conflicts_and_store_event(metadata, update, family_name)
+    event_tags_found = _EVENT_TAGS.intersection(metadata.get("tags", []))
+    if event_tags_found or doc_type == "booking":
+        logger.info("Potential event detected from document tags: %s. Extracting details...", event_tags_found)
+        # Use the cleaned content from the document for event extraction
+        event_details = _extract_event_details(cleaned_content)
+        if event_details.get("has_event"):
+            # Merge dedicated event details into the broader metadata
+            merged_data = {**metadata, **event_details}
+            await _check_conflicts_and_store_event(merged_data, update, family_name)
 
     # --- Recurring bill detection ---
     if "bill" in metadata.get("tags", []) and metadata.get("payment_method", "").lower() == "direct debit":
