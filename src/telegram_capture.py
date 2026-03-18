@@ -369,7 +369,7 @@ def _is_query(text: str, user_id: int) -> bool:
     # 5. LLM fallback for ambiguous cases
     try:
         reply = brain.get_llm_reply(
-            "Is this message a QUESTION/QUERY asking for information, or is it a STATEMENT providing information to store? Reply with only 'query' or 'store'.",
+            "Is this message a QUESTION/QUERY asking for information, or is it a STATEMENT/FACT providing information to remember? Examples of statements: 'Dan in London Tuesday 24th March', 'Car MOT due next month', 'Emma has dentist 3pm Friday'. Examples of queries: 'When is my MOT?', 'What insurance do I have?'. Reply with only 'query' or 'store'.",
             user_message=text,
             max_tokens=5,
         ).lower()
@@ -436,7 +436,8 @@ async def _answer_query(
 
         answer = brain.get_llm_reply(messages=messages)
         source_ids = ", ".join(f'<code>{_escape(str(r.get("id")))}</code>' for r in results)
-        reply_text = f'{_escape(answer)}\n\n<b>Sources:</b> {source_ids}'
+        answer_truncated = answer[:3000] + ("..." if len(answer) > 3000 else "")
+        reply_text = f'{_escape(answer_truncated)}\n\n<b>Sources:</b> {source_ids}'
 
         # Update conversation history
         if update.effective_user:
