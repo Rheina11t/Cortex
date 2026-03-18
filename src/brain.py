@@ -199,10 +199,11 @@ Rules:
 """
 
 
-def extract_metadata(raw_text: str) -> dict[str, Any]:
+def extract_metadata(raw_text: str, source: str = "telegram") -> dict[str, Any]:
     """Call the configured LLM backend to clean *raw_text* and extract metadata.
 
     Dispatches to either OpenAI or Anthropic depending on ``LLM_BACKEND``.
+    The ``source`` parameter is accepted for compatibility but not used in extraction.
     """
     if _settings is None:
         raise RuntimeError("brain.init(settings) must be called before use.")
