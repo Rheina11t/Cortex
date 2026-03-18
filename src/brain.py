@@ -301,15 +301,17 @@ def _fallback_metadata(raw_text: str) -> dict[str, Any]:
 def store_memory(content: str, embedding: list[float], metadata: dict[str, Any], user_id: str = "", family_member: str = "") -> dict[str, Any]:
     """Insert a new memory row and return the created record."""
     db, _ = _require_init()
+    # Store user_id and family_member inside the metadata JSON (no separate columns needed)
+    enriched_metadata = dict(metadata)
+    if user_id:
+        enriched_metadata["user_id"] = user_id
+    if family_member:
+        enriched_metadata["family_member"] = family_member
     row = {
         "content": content,
         "embedding": embedding,
-        "metadata": metadata,
+        "metadata": enriched_metadata,
     }
-    if user_id:
-        row["user_id"] = user_id
-    if family_member:
-        row["family_member"] = family_member
     result = db.table("memories").insert(row).execute()
     record = result.data[0] if result.data else {}
     logger.info("Memory stored (id=%s, family_member=%s)", record.get("id", "unknown"), family_member or "unknown")
