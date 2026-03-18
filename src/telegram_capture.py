@@ -279,21 +279,19 @@ _EVENT_TAGS = {
 def _extract_event_details(raw_text: str) -> dict:
     """Use a dedicated LLM call to extract structured event details."""
     today_str = datetime.now().strftime("%Y-%m-%d")
-    prompt = f"""\
+    system_prompt = f"""\
 You are an event extraction assistant for a family calendar. Today is {today_str}.
-Given the user message, extract event details into a JSON object.
+Extract event details from the user message and return a JSON object.
 
 Rules:
 - ANY mention of a person being somewhere on a specific date counts as an event. Set has_event=true.
 - Travel, trips, visits, meetings, appointments, school events, sports, etc. are all events.
 - Resolve dates like "Thursday 26th March", "next Tuesday", "tomorrow", "24th March" to YYYY-MM-DD.
-- If you cannot determine the year, assume the current year ({today_str[:4]}).
+- If you cannot determine the year, assume {today_str[:4]}.
 - If there is truly NO date mentioned at all, set has_event=false.
 - event_name should be a short descriptive label like "Dan in London" or "School trip".
 
-User message: "{raw_text}"
-
-Return ONLY the JSON object.
+Return ONLY valid JSON with keys: has_event, event_name, event_date, event_time, location.
 """
     json_schema = {
         "type": "object",
@@ -309,9 +307,11 @@ Return ONLY the JSON object.
 
     try:
         event_details = brain.get_llm_reply(
-            system_message=prompt,
+            system_message=system_prompt,
+            user_message=raw_text,
             json_schema=json_schema,
         )
+        logger.info("[EVENT DEBUG RAW] LLM returned: %s", event_details)
         if isinstance(event_details, str):
             event_details = json.loads(event_details)
         
