@@ -2,14 +2,16 @@
 """Google Calendar integration for Family Brain."""
 
 import datetime
+import json
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any, Optional
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.oauth2.credentials import Credentials
 
 from . import brain
 
@@ -25,33 +27,63 @@ CALENDAR_ID = os.environ.get(
 )
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
-def _get_credentials() -> Optional[Credentials]:
-    """Get Google Calendar credentials using the refresh token."""
+def _get_access_token() -> Optional[str]:
+    """Get a fresh access token using the refresh token via direct HTTP."""
     if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
         logger.warning(
             "Google Calendar credentials (CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN) not fully configured."
         )
         return None
 
-    creds = Credentials.from_authorized_user_info(
-        info={
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "refresh_token": REFRESH_TOKEN,
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "scopes": SCOPES,
-        },
-        scopes=SCOPES,
+    data = urllib.parse.urlencode({
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "refresh_token": REFRESH_TOKEN,
+        "grant_type": "refresh_token",
+    }).encode()
+
+    req = urllib.request.Request(
+        TOKEN_URI,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
-    # Always refresh since we have no cached access token
     try:
-        creds.refresh(Request())
-    except Exception as e:
-        logger.error(f"Failed to refresh Google Calendar token: {e}")
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+            access_token = result.get("access_token")
+            if access_token:
+                logger.info("Google Calendar: access token obtained successfully.")
+                return access_token
+            logger.error("Google Calendar: no access_token in response: %s", result)
+            return None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        logger.error("Google Calendar token refresh failed (%s): %s", e.code, body)
         return None
+    except Exception as e:
+        logger.error("Google Calendar token refresh error: %s", e)
+        return None
+
+
+def _get_credentials() -> Optional[Credentials]:
+    """Get Google Calendar credentials using direct token refresh."""
+    access_token = _get_access_token()
+    if not access_token:
+        return None
+
+    creds = Credentials(
+        token=access_token,
+        refresh_token=REFRESH_TOKEN,
+        token_uri=TOKEN_URI,
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        scopes=SCOPES,
+    )
     return creds
 
 
