@@ -529,9 +529,17 @@ async def _answer_query(
         contact_keywords = ("phone", "number", "call", "contact", "email", "book", "them", "their")
         query_lower = raw_text.lower()
         has_contact_intent = any(k in query_lower for k in contact_keywords)
+        # Also trigger if user is confirming a previous offer to look something up
+        affirmative_words = ("yes", "yeah", "yep", "yup", "ok", "okay", "sure", "please", "go ahead", "do it", "thanks")
+        is_affirmative = any(query_lower.strip().startswith(w) for w in affirmative_words) and len(raw_text.split()) <= 5
+        bot_offered_lookup = False
+        if conversation_history and is_affirmative:
+            last_bot = next((m["content"].lower() for m in reversed(conversation_history) if m["role"] == "assistant"), "")
+            lookup_phrases = ("look it up", "look that up", "search for", "find the number", "find a number", "would you like me to", "shall i look", "i can look")
+            bot_offered_lookup = any(p in last_bot for p in lookup_phrases)
         web_fallback_answer = None
 
-        if has_contact_intent and conversation_history:
+        if (has_contact_intent or bot_offered_lookup) and conversation_history:
             try:
                 history_text = "\n".join(
                     f"{m['role'].title()}: {m['content'][:200]}"
