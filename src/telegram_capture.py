@@ -591,7 +591,11 @@ async def _answer_query(
         else:
             reply_text = "I don't have anything stored about that yet. Send me the information and I'll remember it for next time."
 
-    await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    except Exception:
+        # Fall back to plain text if HTML parsing fails
+        await update.message.reply_text(reply_text)
 
 
 # ---------------------------------------------------------------------------
@@ -879,7 +883,11 @@ async def _process_and_store_document(
         f"{key_summary}"
         f"{financial_note}"
     )
-    await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    except Exception:
+        # Fall back to plain text if HTML parsing fails
+        await update.message.reply_text(reply_text)
 
     # --- Event detection ---
     event_tags_found = _EVENT_TAGS.intersection(metadata.get("tags", []))
