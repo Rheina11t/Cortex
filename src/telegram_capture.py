@@ -397,6 +397,7 @@ async def _answer_query(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     conversation_history: list[dict] | None = None,
+    sender_name: str = "Unknown",
 ) -> None:
     """
     Answer a query by searching the brain and synthesising a response.
@@ -431,14 +432,16 @@ async def _answer_query(
     # 3. Synthesise answer
     if results:
         memories = "\n".join(
-            f"- {r.get('content', '')} (ID: {r.get('id')})"
+            f"- {r.get('content', '')}"
             for r in results
         )
         prompt = (
-            "You are Family Brain, a personal AI assistant. "
-            "Based on these stored memories, answer the user's question concisely. "
+            f"You are Family Brain, a personal AI assistant for the {sender_name} family. "
+            f"The person asking this question is {sender_name}. "
+            "Based on these stored memories, answer the user's question concisely and personally. "
+            "Refer to the asker by name and use 'you' to mean them specifically. "
             "Use the conversation history for context if needed. "
-            "Never mention the memory IDs in your answer."
+            "Never mention memory IDs in your answer."
         )
         
         messages = [{"role": "system", "content": prompt}]
@@ -447,9 +450,8 @@ async def _answer_query(
         messages.append({"role": "user", "content": f"Question: {raw_text}\n\nRelevant memories:\n{memories}"})
 
         answer = brain.get_llm_reply(messages=messages)
-        source_ids = ", ".join(f'<code>{_escape(str(r.get("id")))}</code>' for r in results)
-        answer_truncated = answer[:3000] + ("..." if len(answer) > 3000 else "")
-        reply_text = f'{_escape(answer_truncated)}\n\n<b>Sources:</b> {source_ids}'
+        answer_truncated = answer[:3800] + ("..." if len(answer) > 3800 else "")
+        reply_text = answer_truncated
 
         # Update conversation history
         if update.effective_user:
@@ -514,7 +516,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # --- Intent detection: is it a query or something to store? ---
     if _is_query(raw_text, user.id):
         history = _conversation_history.get(user.id, [])
-        await _answer_query(raw_text, update, context, conversation_history=history)
+        await _answer_query(raw_text, update, context, conversation_history=history, sender_name=family_name)
         return
 
     # --- Capture flow: store as a memory ---
