@@ -37,6 +37,11 @@ def _get_access_token() -> Optional[str]:
             "Google Calendar credentials (CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN) not fully configured."
         )
         return None
+    # Debug: log credential lengths to verify they're loaded correctly
+    logger.info(
+        "[GCAL DEBUG] CLIENT_ID len=%d, CLIENT_SECRET len=%d, REFRESH_TOKEN len=%d",
+        len(CLIENT_ID), len(CLIENT_SECRET), len(REFRESH_TOKEN)
+    )
 
     data = urllib.parse.urlencode({
         "client_id": CLIENT_ID,
