@@ -426,10 +426,10 @@ async def _answer_query(
         logger.info("Expanded query to: '%s'", expanded_query)
 
     # 2. Perform search (semantic + metadata fallback)
-    results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5)
+    results = brain.semantic_search(expanded_query, match_threshold=0.25, match_count=10)
     if not results:
         logger.info("Semantic search for '%s' returned no results, trying metadata.", raw_text)
-        results = brain.query_by_metadata(raw_text, limit=3)
+        results = brain.query_by_metadata(raw_text, limit=5)
 
     # 3. Synthesise answer
     if results:
@@ -440,9 +440,12 @@ async def _answer_query(
         prompt = (
             f"You are Family Brain, a personal AI assistant for the {sender_name} family. "
             f"The person asking this question is {sender_name}. "
-            "Based on these stored memories, answer the user's question concisely and personally. "
-            "Refer to the asker by name and use 'you' to mean them specifically. "
-            "Use the conversation history for context if needed. "
+            "Answer the user's question based ONLY on the stored memories provided below. "
+            "Do NOT invent, guess, or assume any details that are not explicitly in the memories. "
+            "If the memories contain conflicting information, use the most specific and detailed one. "
+            "If the memories do not contain enough information to answer confidently, say so clearly — "
+            "for example: 'I don't have that stored — would you like to add it?' "
+            "Refer to the asker by name. Use the conversation history for context if needed. "
             "Never mention memory IDs in your answer."
         )
         
