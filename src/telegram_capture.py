@@ -433,18 +433,63 @@ async def _answer_query(
 
     # 3. Synthesise answer
     if results:
-        memories = "\n".join(
+        memories_text = "\n".join(
             f"- {r.get('content', '')}"
             for r in results
         )
+
+        # 3a. Check if the answer likely involves a business/location and is missing contact details
+        web_context = ""
+        contact_keywords = ("phone", "number", "call", "contact", "email", "address", "where", "garage", "book", "appointment")
+        memory_lower = memories_text.lower()
+        query_lower = raw_text.lower()
+        has_contact_intent = any(k in query_lower for k in contact_keywords)
+        missing_phone = "phone" not in memory_lower and "tel" not in memory_lower and "0" not in memory_lower[:50]
+        # Look for a business name + location in memories to search for
+        if has_contact_intent or missing_phone:
+            try:
+                # Ask LLM to extract business name + location for web lookup
+                lookup_prompt = (
+                    "Extract the business name and location from these memories for a web search. "
+                    "Return JSON with keys: business_name (string or null), location (string or null). "
+                    "Only extract if there is a clear business name (e.g. 'Kwik Fit', 'Tesla Service Centre'). "
+                    "Return {\"business_name\": null} if no clear business is mentioned."
+                )
+                lookup_result = brain.get_llm_reply(
+                    system_message=lookup_prompt,
+                    user_message=memories_text[:500],
+                    json_schema={"type": "object", "properties": {
+                        "business_name": {"type": ["string", "null"]},
+                        "location": {"type": ["string", "null"]},
+                    }}
+                )
+                import json as _json
+                if isinstance(lookup_result, str):
+                    lookup_result = _json.loads(lookup_result)
+                biz_name = lookup_result.get("business_name")
+                biz_location = lookup_result.get("location") or ""
+                if biz_name:
+                    from duckduckgo_search import DDGS
+                    search_query = f"{biz_name} {biz_location} phone number contact"
+                    logger.info("Web enrichment search: %s", search_query)
+                    with DDGS() as ddgs:
+                        web_results = list(ddgs.text(search_query, max_results=3))
+                    if web_results:
+                        snippets = "\n".join(r.get("body", "")[:200] for r in web_results)
+                        web_context = f"\n\nWeb search results for '{biz_name} {biz_location}':\n{snippets}"
+                        logger.info("Web enrichment found %d results", len(web_results))
+            except Exception as exc:
+                logger.warning("Web enrichment failed (non-fatal): %s", exc)
+
         prompt = (
             f"You are Family Brain, a personal AI assistant for the {sender_name} family. "
             f"The person asking this question is {sender_name}. "
-            "Answer the user's question based ONLY on the stored memories provided below. "
-            "Do NOT invent, guess, or assume any details that are not explicitly in the memories. "
+            "Answer the user's question based on the stored memories below. "
+            "Do NOT invent details that are not in the memories or web results. "
             "If the memories contain conflicting information, use the most specific and detailed one. "
-            "If the memories do not contain enough information to answer confidently, say so clearly — "
-            "for example: 'I don't have that stored — would you like to add it?' "
+            "If web search results are provided, you may use them to supplement missing contact details "
+            "(phone numbers, emails, opening hours) — but clearly indicate these came from a web search, not stored memory. "
+            "If information is genuinely missing and not found online, say so and offer to store it. "
             "Refer to the asker by name. Use the conversation history for context if needed. "
             "Never mention memory IDs in your answer."
         )
@@ -452,7 +497,7 @@ async def _answer_query(
         messages = [{"role": "system", "content": prompt}]
         if conversation_history:
             messages.extend(conversation_history)
-        messages.append({"role": "user", "content": f"Question: {raw_text}\n\nRelevant memories:\n{memories}"})
+        messages.append({"role": "user", "content": f"Question: {raw_text}\n\nStored memories:\n{memories_text}{web_context}"})
 
         answer = brain.get_llm_reply(messages=messages)
         answer_truncated = answer[:3800] + ("..." if len(answer) > 3800 else "")
