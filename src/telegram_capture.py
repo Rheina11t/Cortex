@@ -1170,7 +1170,7 @@ def _run_panning_for_gold() -> None:
             return
 
         now_str = datetime.now().strftime("%A, %d %b %Y")
-        message = f"\ud83d\udca1 Family Insights \u2014 {now_str}\n({len(memories)} memories analysed)\n\n{gold_body}"
+        message = f"[Family Insights] {now_str}\n({len(memories)} memories analysed)\n\n{gold_body}"
 
         # Send to all registered family members
         for chat_id in FAMILY_MEMBERS.keys():
