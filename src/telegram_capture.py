@@ -1098,13 +1098,14 @@ def _escape(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 _GOLD_FAMILY_PROMPT = """\
-You are a proactive family assistant for the family. You will receive a list of family memories 
-(notes, schedules, finances, vehicles, health, subscriptions, events) spanning several weeks.
+You are a proactive family assistant. You will receive a list of family memories 
+(notes, schedules, finances, vehicles, health, subscriptions, events) spanning several weeks,
+along with optional web search results about nearby service providers and upcoming local events.
 
 Your job is to find GENUINELY USEFUL insights the family probably hasn't noticed — patterns, 
 opportunities, risks, or upcoming actions they should take.
 
-Produce 3-4 insights in this format:
+Produce 3-5 insights in this format:
 
 INSIGHT 1: [one-line title]
 [2-3 sentences explaining the specific connection, pattern, or opportunity, referencing actual 
@@ -1115,11 +1116,115 @@ Rules:
 - Look for: multiple policies with the same insurer (bundle opportunity), upcoming renewals 
   (within 60 days), subscriptions that overlap, scheduling conflicts, vehicles due for service, 
   recurring expenses that could be reduced, patterns in family behaviour.
+- If web search results are provided about nearby alternatives to a service provider they used, 
+  mention the closer/cheaper option by name and distance if available.
+- If web search results are provided about upcoming local events matching family interests, 
+  mention the event, venue, and date. Cross-reference with family calendar — note if they appear free.
 - Do NOT produce generic insights.
 - Use plain text only — no markdown, no asterisks.
 - Only include an insight if it is genuinely actionable or surprising.
 - Keep each insight under 80 words.
 """
+
+
+def _web_search_safe(query: str, max_results: int = 3) -> str:
+    """Run a DuckDuckGo search and return a brief text summary of results."""
+    try:
+        from ddgs import DDGS
+        results = DDGS().text(query, max_results=max_results)
+        if not results:
+            return ""
+        lines = []
+        for r in results:
+            title = r.get("title", "")
+            body = r.get("body", "")[:150]
+            lines.append(f"- {title}: {body}")
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.warning("Web search failed for '%s': %s", query, exc)
+        return ""
+
+
+def _extract_insights_context(memories: list[dict]) -> str:
+    """Run targeted web searches based on memory patterns and return enrichment text."""
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+    )
+
+    # Build a short memory summary to extract context from
+    sample = "\n".join(
+        m.get("content", "")[:120] for m in memories[:40]
+    )
+
+    # Ask LLM to extract: home location, service providers used, interests/activities
+    try:
+        resp = client.chat.completions.create(
+            model=settings.llm_model,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": (
+                    "Extract from these family memories:\n"
+                    "1. HOME_LOCATION: the family's home town or postcode (e.g. Cardiff CF5)\n"
+                    "2. SERVICE_PROVIDERS: list of businesses/garages/tradespeople used, with their location if known\n"
+                    "3. INTERESTS: activities, venues, shows, sports, restaurants the family has enjoyed\n"
+                    "Reply in this exact format:\n"
+                    "HOME_LOCATION: <value>\n"
+                    "SERVICE_PROVIDERS: <comma-separated list>\n"
+                    "INTERESTS: <comma-separated list>\n"
+                    "If unknown, write UNKNOWN for that field."
+                )},
+                {"role": "user", "content": sample},
+            ],
+            max_tokens=200,
+        )
+        extracted = resp.choices[0].message.content or ""
+    except Exception:
+        return ""
+
+    enrichment_parts = []
+
+    # Parse extracted fields
+    home_location = ""
+    service_providers = []
+    interests = []
+    for line in extracted.splitlines():
+        if line.startswith("HOME_LOCATION:"):
+            val = line.split(":", 1)[1].strip()
+            if val and val != "UNKNOWN":
+                home_location = val
+        elif line.startswith("SERVICE_PROVIDERS:"):
+            val = line.split(":", 1)[1].strip()
+            if val and val != "UNKNOWN":
+                service_providers = [s.strip() for s in val.split(",") if s.strip()]
+        elif line.startswith("INTERESTS:"):
+            val = line.split(":", 1)[1].strip()
+            if val and val != "UNKNOWN":
+                interests = [i.strip() for i in val.split(",") if i.strip()]
+
+    # Proximity check: find closer alternatives for service providers
+    if home_location and service_providers:
+        for provider in service_providers[:3]:  # limit to 3 to avoid too many searches
+            query = f"alternatives to {provider} near {home_location}"
+            results = _web_search_safe(query, max_results=3)
+            if results:
+                enrichment_parts.append(
+                    f"NEARBY ALTERNATIVES TO {provider.upper()} (near {home_location}):\n{results}"
+                )
+
+    # Interest-based event discovery
+    if home_location and interests:
+        for interest in interests[:3]:  # limit to 3
+            query = f"upcoming {interest} events near {home_location} 2026"
+            results = _web_search_safe(query, max_results=3)
+            if results:
+                enrichment_parts.append(
+                    f"UPCOMING {interest.upper()} EVENTS NEAR {home_location}:\n{results}"
+                )
+
+    return "\n\n".join(enrichment_parts)
 
 
 def _run_panning_for_gold() -> None:
@@ -1150,6 +1255,14 @@ def _run_panning_for_gold() -> None:
             parts.append(line)
         memory_text = "\n\n".join(parts)
 
+        # Run web enrichment: proximity checks + event discovery
+        logger.info("Family Insights: running web enrichment searches...")
+        enrichment = _extract_insights_context(memories)
+
+        user_content = f"Find insights in these {len(memories)} family memories:\n\n{memory_text}"
+        if enrichment:
+            user_content += f"\n\n--- WEB SEARCH RESULTS FOR ENRICHMENT ---\n{enrichment}"
+
         client = OpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
@@ -1160,9 +1273,9 @@ def _run_panning_for_gold() -> None:
                 temperature=0.6,
                 messages=[
                     {"role": "system", "content": _GOLD_FAMILY_PROMPT},
-                    {"role": "user", "content": f"Find insights in these {len(memories)} family memories:\n\n{memory_text}"},
+                    {"role": "user", "content": user_content},
                 ],
-                max_tokens=700,
+                max_tokens=900,
             )
             gold_body = response.choices[0].message.content or "Could not generate insights."
         except Exception as exc:
