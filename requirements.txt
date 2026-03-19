@@ -53,4 +53,4 @@ google-auth-oauthlib>=1.0.0
 google-api-python-client>=2.0.0
 
 # Web search for proactive contact detail lookup
-duckduckgo-search>=6.0.0
+ddgs>=6.0.0

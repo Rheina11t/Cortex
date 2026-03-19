@@ -478,7 +478,7 @@ async def _answer_query(
                 biz_name = lookup_result.get("business_name")
                 biz_location = lookup_result.get("location") or ""
                 if biz_name:
-                    from duckduckgo_search import DDGS
+                    from ddgs import DDGS
                     search_query = f"{biz_name} {biz_location} phone number contact"
                     logger.info("Web enrichment search: %s", search_query)
                     with DDGS() as ddgs:
@@ -555,7 +555,7 @@ async def _answer_query(
                 biz_name = lookup_result.get("business_name")
                 biz_location = lookup_result.get("location") or ""
                 if biz_name:
-                    from duckduckgo_search import DDGS
+                    from ddgs import DDGS
                     search_query = f"{biz_name} {biz_location} phone number contact"
                     logger.info("Web fallback search: %s", search_query)
                     with DDGS() as ddgs:
