@@ -298,7 +298,7 @@ def _fallback_metadata(raw_text: str) -> dict[str, Any]:
 
 # ── Database operations ──────────────────────────────────────────────────
 
-def store_memory(content: str, embedding: list[float], metadata: dict[str, Any], user_id: str = "", family_member: str = "") -> dict[str, Any]:
+def store_memory(content: str, embedding: list[float], metadata: dict[str, Any], user_id: str = "", family_member: str = "", family_id: str = "") -> dict[str, Any]:
     """Insert a new memory row and return the created record."""
     db, _ = _require_init()
     # Store user_id and family_member inside the metadata JSON (no separate columns needed)
@@ -307,6 +307,8 @@ def store_memory(content: str, embedding: list[float], metadata: dict[str, Any],
         enriched_metadata["user_id"] = user_id
     if family_member:
         enriched_metadata["family_member"] = family_member
+    if family_id:
+        enriched_metadata["family_id"] = family_id
     row = {
         "content": content,
         "embedding": embedding,
@@ -322,6 +324,7 @@ def semantic_search(
     query: str,
     match_threshold: float = 0.5,
     match_count: int = 10,
+    family_id: str = "",
 ) -> list[dict[str, Any]]:
     """Generate an embedding for *query* and search for similar memories."""
     db, _ = _require_init()
@@ -335,21 +338,39 @@ def semantic_search(
             "match_count": match_count,
         },
     ).execute()
-    logger.info("Semantic search returned %d results", len(result.data or []))
+    
+    results = result.data or []
+    if family_id and family_id != "default":
+        results = [r for r in results if r.get("metadata", {}).get("family_id") == family_id]
+        
+    logger.info("Semantic search returned %d results", len(results))
+    return results
+
+
+def list_memories_since(hours: int = 24, family_id: str = "") -> list[dict[str, Any]]:
+    """Return memories created within the last *hours*."""
+    db, _ = _require_init()
+    
+    from datetime import datetime, timedelta, timezone
+    since_time = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    
+    query = db.table("memories").select("id, content, metadata, created_at").gte("created_at", since_time)
+    if family_id and family_id != "default":
+        query = query.contains("metadata", {"family_id": family_id})
+        
+    result = query.order("created_at", desc=True).execute()
+    logger.info("Listed %d memories since %s", len(result.data or []), since_time)
     return result.data or []
 
-
-def list_recent_memories(limit: int = 20) -> list[dict[str, Any]]:
+def list_recent_memories(limit: int = 20, family_id: str = "") -> list[dict[str, Any]]:
     """Return the *limit* most recent memories ordered by created_at DESC."""
     db, _ = _require_init()
 
-    result = (
-        db.table("memories")
-        .select("id, content, metadata, created_at")
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
+    query = db.table("memories").select("id, content, metadata, created_at")
+    if family_id and family_id != "default":
+        query = query.contains("metadata", {"family_id": family_id})
+        
+    result = query.order("created_at", desc=True).limit(limit).execute()
     logger.info("Listed %d recent memories", len(result.data or []))
     return result.data or []
 
@@ -359,6 +380,7 @@ def query_by_metadata(
     people: list[str] | None = None,
     category: str | None = None,
     limit: int = 20,
+    family_id: str = "",
 ) -> list[dict[str, Any]]:
     """Filter memories by metadata fields using JSONB containment."""
     db, _ = _require_init()
@@ -371,6 +393,8 @@ def query_by_metadata(
         query = query.contains("metadata", {"people": people})
     if category:
         query = query.contains("metadata", {"category": category})
+    if family_id and family_id != "default":
+        query = query.contains("metadata", {"family_id": family_id})
 
     result = query.order("created_at", desc=True).limit(limit).execute()
     logger.info(

@@ -61,6 +61,9 @@ def _parse_family_members() -> Dict[int, str]:
 class Settings:
     """Immutable application settings populated from environment variables."""
 
+    # -- Multi-tenant ------------------------------------------------------
+    family_id: str = field(default_factory=lambda: os.getenv("FAMILY_ID", "default"))
+
     # -- Supabase ----------------------------------------------------------
     supabase_url: str = field(default_factory=lambda: os.environ["SUPABASE_URL"])
     supabase_service_key: str = field(

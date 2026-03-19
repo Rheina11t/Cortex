@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import traceback
 from datetime import datetime
 from functools import wraps
@@ -778,6 +779,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
     """Handle a message that has been identified as a query."""
     twiml = MessagingResponse()
     logger.info("Handling message as a query: %s", text)
+    family_name = _get_family_name(from_number) or "Unknown"
 
     try:
         # Step 1: Expand query with synonyms and perform semantic search
@@ -790,52 +792,175 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             synonyms.extend(["expiry", "expires"])
         
         expanded_query = text + " " + " ".join(synonyms)
-        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5)
+        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5, family_id=settings.family_id)
 
-        if not results:
-            twiml.message(
-                "I don't have anything stored about that yet. "
-                "Send me the information and I'll remember it for next time."
+        reply_text = ""
+
+        if results:
+            memories_text = "\n".join(
+                f"- {r.get('content', '')}"
+                for r in results
             )
-            return Response(str(twiml), mimetype="application/xml")
 
-        # Step 2: Synthesise an answer from the results, including conversation history
-        memories_str = "\n---\n".join(
-            "Memory ID: {}\nContent: {}".format(r.get("id"), r.get("content"))
-            for r in results
-        )
-        prompt = _SYNTHESIS_PROMPT.format(question=text, memories=memories_str)
+            # 3a. Check if the answer likely involves a business/location and is missing contact details
+            web_context = ""
+            contact_keywords = ("phone", "number", "call", "contact", "email", "address", "where", "garage", "book", "appointment", "them", "their")
+            memory_lower = memories_text.lower()
+            query_lower = text.lower()
+            has_contact_intent = any(k in query_lower for k in contact_keywords)
+            missing_phone = "phone" not in memory_lower and "tel" not in memory_lower
+            
+            # Build context for business extraction: memories + recent conversation history
+            history_text = ""
+            if conversation_history:
+                history_text = "\n".join(
+                    f"{m['role'].title()}: {m['content'][:200]}"
+                    for m in conversation_history[-4:]  # last 2 turns
+                )
+            lookup_context = (memories_text[:400] + ("\n\nRecent conversation:\n" + history_text) if history_text else memories_text[:400])
+            
+            # Look for a business name + location in memories/history to search for
+            if has_contact_intent or missing_phone:
+                try:
+                    # Ask LLM to extract business name + location for web lookup
+                    lookup_prompt = (
+                        "Extract the business name and location from these memories and conversation history for a web search. "
+                        "Return JSON with keys: business_name (string or null), location (string or null). "
+                        "Only extract if there is a clear business name (e.g. 'Kwik Fit', 'Tesla Service Centre', 'Tesco'). "
+                        "Use the conversation history to resolve references like 'them' or 'their'. "
+                        "Return {\"business_name\": null} if no clear business is mentioned."
+                    )
+                    lookup_result = brain.get_llm_reply(
+                        system_message=lookup_prompt,
+                        user_message=lookup_context,
+                        json_schema={"type": "object", "properties": {
+                            "business_name": {"type": ["string", "null"]},
+                            "location": {"type": ["string", "null"]},
+                        }}
+                    )
+                    import json as _json
+                    if isinstance(lookup_result, str):
+                        lookup_result = _json.loads(lookup_result)
+                    biz_name = lookup_result.get("business_name")
+                    biz_location = lookup_result.get("location") or ""
+                    if biz_name:
+                        from ddgs import DDGS
+                        search_query = f"{biz_name} {biz_location} phone number contact"
+                        logger.info("Web enrichment search: %s", search_query)
+                        with DDGS() as ddgs:
+                            web_results = list(ddgs.text(search_query, max_results=3))
+                        if web_results:
+                            snippets = "\n".join(r.get("body", "")[:200] for r in web_results)
+                            web_context = f"\n\nWeb search results for '{biz_name} {biz_location}':\n{snippets}"
+                            logger.info("Web enrichment found %d results", len(web_results))
+                except Exception as exc:
+                    logger.warning("Web enrichment failed (non-fatal): %s", exc)
 
-        # Prepend a system message, then prior conversation turns, then the current prompt
-        messages = [
-            {"role": "system", "content": "You are Family Brain, a helpful AI assistant for a family. Use the conversation history for context when answering follow-up questions."}
-        ]
-        messages.extend(conversation_history or [])
-        messages.append({"role": "user", "content": prompt})
+            prompt = (
+                f"You are Family Brain, a personal AI assistant for the {family_name} family. "
+                f"The person asking this question is {family_name}. "
+                "Answer the user's question based on the stored memories below. "
+                "Do NOT invent details that are not in the memories or web results. "
+                "If the memories contain conflicting information, use the most specific and detailed one. "
+                "If web search results are provided, you may use them to supplement missing contact details "
+                "(phone numbers, emails, opening hours) — but clearly indicate these came from a web search, not stored memory. "
+                "If information is genuinely missing and not found online, say so and offer to store it. "
+                "Refer to the asker by name. Use the conversation history for context if needed. "
+                "Never mention memory IDs in your answer."
+            )
+            
+            messages = [{"role": "system", "content": prompt}]
+            if conversation_history:
+                messages.extend(conversation_history)
+            messages.append({"role": "user", "content": f"Question: {text}\n\nStored memories:\n{memories_text}{web_context}"})
 
-        from openai import OpenAI
-        client = OpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_embedding_base_url,
-        )
-        response = client.chat.completions.create(
-            model=settings.llm_model,
-            temperature=0.1,
-            messages=messages,
-        )
-        answer = response.choices[0].message.content or "I found some information but couldn't synthesise an answer."
+            answer = brain.get_llm_reply(messages=messages)
+            reply_text = answer[:3800]
 
-        # Step 3: Update conversation history
-        history = _conversation_history.get(from_number, [])
-        history.append({"role": "user", "content": text})
-        history.append({"role": "assistant", "content": answer})
-        _conversation_history[from_number] = history[-6:]  # Keep last 3 turns
+            # Update conversation history
+            if from_number not in _conversation_history:
+                _conversation_history[from_number] = []
+            _conversation_history[from_number].append({"role": "user", "content": text})
+            _conversation_history[from_number].append({"role": "assistant", "content": answer})
+            _conversation_history[from_number] = _conversation_history[from_number][-6:] # keep last 3 turns
 
-        # Step 4: Format and send the reply
-        source_ids = ", ".join(str(r.get("id")) for r in results)
-        reply = "{}\n\nSources: {}".format(answer, source_ids)
+        else:
+            # No memories found — but if we have conversation history, try web enrichment
+            # for follow-up questions like "do you have their number?"
+            contact_keywords = ("phone", "number", "call", "contact", "email", "book", "them", "their")
+            query_lower = text.lower()
+            has_contact_intent = any(k in query_lower for k in contact_keywords)
+            # Also trigger if user is confirming a previous offer to look something up
+            affirmative_words = ("yes", "yeah", "yep", "yup", "ok", "okay", "sure", "please", "go ahead", "do it", "thanks")
+            is_affirmative = any(query_lower.strip().startswith(w) for w in affirmative_words) and len(text.split()) <= 5
+            bot_offered_lookup = False
+            if conversation_history and is_affirmative:
+                last_bot = next((m["content"].lower() for m in reversed(conversation_history) if m["role"] == "assistant"), "")
+                lookup_phrases = ("look it up", "look that up", "search for", "find the number", "find a number", "would you like me to", "shall i look", "i can look")
+                bot_offered_lookup = any(p in last_bot for p in lookup_phrases)
+            web_fallback_answer = None
 
-        twiml.message(reply)
+            if (has_contact_intent or bot_offered_lookup) and conversation_history:
+                try:
+                    history_text = "\n".join(
+                        f"{m['role'].title()}: {m['content'][:200]}"
+                        for m in conversation_history[-4:]
+                    )
+                    lookup_prompt = (
+                        "Extract the business name and location from this conversation history for a web search. "
+                        "Return JSON with keys: business_name (string or null), location (string or null). "
+                        "Use references like 'them' or 'their' to identify the business from context. "
+                        "Return {\"business_name\": null} if no clear business is mentioned."
+                    )
+                    import json as _json
+                    lookup_result = brain.get_llm_reply(
+                        system_message=lookup_prompt,
+                        user_message=f"Current question: {text}\n\nConversation:\n{history_text}",
+                        json_schema={"type": "object", "properties": {
+                            "business_name": {"type": ["string", "null"]},
+                            "location": {"type": ["string", "null"]},
+                        }}
+                    )
+                    if isinstance(lookup_result, str):
+                        lookup_result = _json.loads(lookup_result)
+                    biz_name = lookup_result.get("business_name")
+                    biz_location = lookup_result.get("location") or ""
+                    if biz_name:
+                        from ddgs import DDGS
+                        search_query = f"{biz_name} {biz_location} phone number contact"
+                        logger.info("Web fallback search: %s", search_query)
+                        with DDGS() as ddgs:
+                            web_results = list(ddgs.text(search_query, max_results=3))
+                        if web_results:
+                            snippets = "\n".join(r.get("body", "")[:200] for r in web_results)
+                            web_context = f"Web search results for '{biz_name} {biz_location}':\n{snippets}"
+                            prompt = (
+                                f"You are Family Brain, a personal AI assistant for the {family_name} family. "
+                                f"The person asking is {family_name}. "
+                                "The user is asking a follow-up question. There are no stored memories for this specific query. "
+                                "Use the web search results and conversation history to answer. "
+                                "Clearly indicate that contact details came from a web search, not stored memory. "
+                                "Offer to store the information for next time."
+                            )
+                            messages = [{"role": "system", "content": prompt}]
+                            messages.extend(conversation_history)
+                            messages.append({"role": "user", "content": f"Question: {text}\n\n{web_context}"})
+                            web_fallback_answer = brain.get_llm_reply(messages=messages)
+                except Exception as exc:
+                    logger.warning("Web fallback enrichment failed: %s", exc)
+
+            if web_fallback_answer:
+                reply_text = web_fallback_answer[:3800]
+                # Update conversation history
+                if from_number not in _conversation_history:
+                    _conversation_history[from_number] = []
+                _conversation_history[from_number].append({"role": "user", "content": text})
+                _conversation_history[from_number].append({"role": "assistant", "content": web_fallback_answer})
+                _conversation_history[from_number] = _conversation_history[from_number][-6:]
+            else:
+                reply_text = "I don't have anything stored about that yet. Send me the information and I'll remember it for next time."
+
+        twiml.message(reply_text)
         logger.info("Answered query with %d sources", len(results))
 
     except Exception as exc:
@@ -885,6 +1010,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             content=cleaned_content,
             embedding=embedding,
             metadata=extracted,
+            family_id=settings.family_id,
         )
         memory_id = record.get("id", "n/a")
         tags: list[str] = extracted.get("tags", [])
@@ -968,11 +1094,51 @@ def _handle_media_message(
             extracted_text = _extract_text_from_image(media_bytes)
             source_type = "whatsapp-photo"
 
+        elif mime_type.lower().startswith("audio/"):
+            logger.info("Transcribing audio (%d bytes)", len(media_bytes))
+            try:
+                from openai import OpenAI
+                client = OpenAI(
+                    api_key=settings.openai_api_key,
+                    base_url=settings.openai_base_url,
+                )
+                
+                # Determine extension based on mime type
+                ext = ".ogg"
+                if "mp4" in mime_type: ext = ".mp4"
+                elif "mpeg" in mime_type: ext = ".mp3"
+                elif "webm" in mime_type: ext = ".webm"
+                elif "amr" in mime_type: ext = ".amr"
+                
+                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_audio:
+                    temp_audio.write(media_bytes)
+                    temp_audio.flush()
+                    
+                    with open(temp_audio.name, "rb") as audio_file:
+                        transcript_response = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file
+                        )
+                        extracted_text = transcript_response.text
+                
+                import os
+                try:
+                    os.unlink(temp_audio.name)
+                except Exception:
+                    pass
+                    
+                source_type = "whatsapp-voice"
+                
+            except Exception as exc:
+                logger.error("Audio transcription failed: %s", exc)
+                twiml.message(f"⚠️ Failed to transcribe voice note: {exc}")
+                return Response(str(twiml), mimetype="application/xml")
+
         else:
             logger.warning("Unsupported media type: %s", mime_type)
             twiml.message(
                 f"⚠️ I don't know how to process this file type ({mime_type}). "
-                "Please send a photo or PDF."
+                "Please send a photo, PDF, or voice note."
             )
             return Response(str(twiml), mimetype="application/xml")
 
@@ -1012,6 +1178,7 @@ def _handle_media_message(
             content=enriched_content,
             embedding=embedding,
             metadata=metadata,
+            family_id=settings.family_id,
         )
         memory_id = record.get("id", "n/a")
 
@@ -1032,15 +1199,23 @@ def _handle_media_message(
 
         financial_note = f"\n{financial_summary}" if financial_summary else ""
 
-        reply = (
-            f"✅ {doc_type.capitalize()} document captured!\n\n"
-            f"👤 Captured by: {family_name}\n"
-            f"📄 Type: {doc_type}\n"
-            f"🏷 Tags: {', '.join(metadata.get('tags', [])) or 'none'}\n"
-            f"🆔 ID: {memory_id}"
-            f"{key_summary}"
-            f"{financial_note}"
-        )
+        if source_type == "whatsapp-voice":
+            transcript_preview = extracted_text[:200] + ("..." if len(extracted_text) > 200 else "")
+            reply = (
+                f"🎙️ Voice note transcribed and captured!\n\n"
+                f"Transcript: {transcript_preview}\n\n"
+                f"✅ {doc_type} stored (ID: {memory_id})"
+            )
+        else:
+            reply = (
+                f"✅ {doc_type.capitalize()} document captured!\n\n"
+                f"👤 Captured by: {family_name}\n"
+                f"📄 Type: {doc_type}\n"
+                f"🏷 Tags: {', '.join(metadata.get('tags', [])) or 'none'}\n"
+                f"🆔 ID: {memory_id}"
+                f"{key_summary}"
+                f"{financial_note}"
+            )
         twiml.message(reply)
         logger.info(
             "Media memory captured by %s (type=%s, id=%s)", family_name, doc_type, memory_id

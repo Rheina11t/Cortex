@@ -428,10 +428,10 @@ async def _answer_query(
         logger.info("Expanded query to: '%s'", expanded_query)
 
     # 2. Perform search (semantic + metadata fallback)
-    results = brain.semantic_search(expanded_query, match_threshold=0.25, match_count=10)
+    results = brain.semantic_search(expanded_query, match_threshold=0.25, match_count=10, family_id=settings.family_id)
     if not results:
         logger.info("Semantic search for '%s' returned no results, trying metadata.", raw_text)
-        results = brain.query_by_metadata(raw_text, limit=5)
+        results = brain.query_by_metadata(raw_text, limit=5, family_id=settings.family_id)
 
     # 3. Synthesise answer
     if results:
@@ -686,6 +686,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             metadata=metadata,
             user_id=str(user.id),
             family_member=family_name,
+            family_id=settings.family_id,
         )
 
         tags_str = ", ".join(_escape(t) for t in tags[:10]) or "none"
@@ -882,6 +883,7 @@ async def _process_and_store_document(
         metadata=metadata,
         user_id=str(update.effective_user.id),
         family_member=family_name,
+        family_id=settings.family_id,
     )
 
     key_summary = ""

@@ -131,9 +131,9 @@ async def send_gold(settings) -> None:
     bot = Bot(token=settings.telegram_bot_token)
 
     # Use last 30 days for a rich cross-temporal analysis
-    memories = brain.list_memories_since(hours=720)  # 30 days
+    memories = brain.list_memories_since(hours=720, family_id=settings.family_id)  # 30 days
     if len(memories) < 5:
-        memories = brain.list_recent_memories(limit=50)  # fallback: all time
+        memories = brain.list_recent_memories(limit=50, family_id=settings.family_id)  # fallback: all time
 
     now_str = datetime.now(timezone.utc).strftime("%A, %d %b %Y")
     header = f"⛏ Panning for Gold — {now_str}\n({len(memories)} memories analysed)\n\n"
