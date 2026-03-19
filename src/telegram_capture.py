@@ -522,7 +522,74 @@ async def _answer_query(
             _conversation_history[user_id] = _conversation_history[user_id][-6:] # keep last 3 turns
 
     else:
-        reply_text = "I don't have anything stored about that yet. Send me the information and I'll remember it for next time."
+        # No memories found — but if we have conversation history, try web enrichment
+        # for follow-up questions like "do you have their number?"
+        contact_keywords = ("phone", "number", "call", "contact", "email", "book", "them", "their")
+        query_lower = raw_text.lower()
+        has_contact_intent = any(k in query_lower for k in contact_keywords)
+        web_fallback_answer = None
+
+        if has_contact_intent and conversation_history:
+            try:
+                history_text = "\n".join(
+                    f"{m['role'].title()}: {m['content'][:200]}"
+                    for m in conversation_history[-4:]
+                )
+                lookup_prompt = (
+                    "Extract the business name and location from this conversation history for a web search. "
+                    "Return JSON with keys: business_name (string or null), location (string or null). "
+                    "Use references like 'them' or 'their' to identify the business from context. "
+                    "Return {\"business_name\": null} if no clear business is mentioned."
+                )
+                import json as _json
+                lookup_result = brain.get_llm_reply(
+                    system_message=lookup_prompt,
+                    user_message=f"Current question: {raw_text}\n\nConversation:\n{history_text}",
+                    json_schema={"type": "object", "properties": {
+                        "business_name": {"type": ["string", "null"]},
+                        "location": {"type": ["string", "null"]},
+                    }}
+                )
+                if isinstance(lookup_result, str):
+                    lookup_result = _json.loads(lookup_result)
+                biz_name = lookup_result.get("business_name")
+                biz_location = lookup_result.get("location") or ""
+                if biz_name:
+                    from duckduckgo_search import DDGS
+                    search_query = f"{biz_name} {biz_location} phone number contact"
+                    logger.info("Web fallback search: %s", search_query)
+                    with DDGS() as ddgs:
+                        web_results = list(ddgs.text(search_query, max_results=3))
+                    if web_results:
+                        snippets = "\n".join(r.get("body", "")[:200] for r in web_results)
+                        web_context = f"Web search results for '{biz_name} {biz_location}':\n{snippets}"
+                        prompt = (
+                            f"You are Family Brain, a personal AI assistant for the {sender_name} family. "
+                            f"The person asking is {sender_name}. "
+                            "The user is asking a follow-up question. There are no stored memories for this specific query. "
+                            "Use the web search results and conversation history to answer. "
+                            "Clearly indicate that contact details came from a web search, not stored memory. "
+                            "Offer to store the information for next time."
+                        )
+                        messages = [{"role": "system", "content": prompt}]
+                        messages.extend(conversation_history)
+                        messages.append({"role": "user", "content": f"Question: {raw_text}\n\n{web_context}"})
+                        web_fallback_answer = brain.get_llm_reply(messages=messages)
+            except Exception as exc:
+                logger.warning("Web fallback enrichment failed: %s", exc)
+
+        if web_fallback_answer:
+            reply_text = web_fallback_answer[:3800]
+            # Update conversation history
+            if update.effective_user:
+                user_id = update.effective_user.id
+                if user_id not in _conversation_history:
+                    _conversation_history[user_id] = []
+                _conversation_history[user_id].append({"role": "user", "content": raw_text})
+                _conversation_history[user_id].append({"role": "assistant", "content": web_fallback_answer})
+                _conversation_history[user_id] = _conversation_history[user_id][-6:]
+        else:
+            reply_text = "I don't have anything stored about that yet. Send me the information and I'll remember it for next time."
 
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
 
