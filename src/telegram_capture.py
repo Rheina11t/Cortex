@@ -1130,9 +1130,7 @@ def _run_panning_for_gold() -> None:
 
     async def _send() -> None:
         bot = Bot(token=settings.telegram_bot_token)
-        memories = brain.list_memories_since(hours=720)  # last 30 days
-        if len(memories) < 5:
-            memories = brain.list_recent_memories(limit=100)
+        memories = brain.list_recent_memories(limit=200)  # last ~30 days of memories
         if len(memories) < 5:
             logger.info("Panning for Gold: not enough memories yet, skipping.")
             return
