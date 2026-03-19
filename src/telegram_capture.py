@@ -440,24 +440,33 @@ async def _answer_query(
 
         # 3a. Check if the answer likely involves a business/location and is missing contact details
         web_context = ""
-        contact_keywords = ("phone", "number", "call", "contact", "email", "address", "where", "garage", "book", "appointment")
+        contact_keywords = ("phone", "number", "call", "contact", "email", "address", "where", "garage", "book", "appointment", "them", "their")
         memory_lower = memories_text.lower()
         query_lower = raw_text.lower()
         has_contact_intent = any(k in query_lower for k in contact_keywords)
-        missing_phone = "phone" not in memory_lower and "tel" not in memory_lower and "0" not in memory_lower[:50]
-        # Look for a business name + location in memories to search for
+        missing_phone = "phone" not in memory_lower and "tel" not in memory_lower
+        # Build context for business extraction: memories + recent conversation history
+        history_text = ""
+        if conversation_history:
+            history_text = "\n".join(
+                f"{m['role'].title()}: {m['content'][:200]}"
+                for m in conversation_history[-4:]  # last 2 turns
+            )
+        lookup_context = (memories_text[:400] + ("\n\nRecent conversation:\n" + history_text) if history_text else memories_text[:400])
+        # Look for a business name + location in memories/history to search for
         if has_contact_intent or missing_phone:
             try:
                 # Ask LLM to extract business name + location for web lookup
                 lookup_prompt = (
-                    "Extract the business name and location from these memories for a web search. "
+                    "Extract the business name and location from these memories and conversation history for a web search. "
                     "Return JSON with keys: business_name (string or null), location (string or null). "
-                    "Only extract if there is a clear business name (e.g. 'Kwik Fit', 'Tesla Service Centre'). "
+                    "Only extract if there is a clear business name (e.g. 'Kwik Fit', 'Tesla Service Centre', 'Tesco'). "
+                    "Use the conversation history to resolve references like 'them' or 'their'. "
                     "Return {\"business_name\": null} if no clear business is mentioned."
                 )
                 lookup_result = brain.get_llm_reply(
                     system_message=lookup_prompt,
-                    user_message=memories_text[:500],
+                    user_message=lookup_context,
                     json_schema={"type": "object", "properties": {
                         "business_name": {"type": ["string", "null"]},
                         "location": {"type": ["string", "null"]},
