@@ -46,6 +46,8 @@ from telegram.ext import (
 
 from .config import get_settings, logger as root_logger
 from . import brain
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger("open_brain.telegram")
 
@@ -1079,6 +1081,98 @@ def _escape(text: str) -> str:
     return _html_module.escape(str(text)) if text else ""
 
 
+# ---------------------------------------------------------------------------
+# Panning for Gold — weekly family insight engine
+# ---------------------------------------------------------------------------
+
+_GOLD_FAMILY_PROMPT = """\
+You are a proactive family assistant for the family. You will receive a list of family memories 
+(notes, schedules, finances, vehicles, health, subscriptions, events) spanning several weeks.
+
+Your job is to find GENUINELY USEFUL insights the family probably hasn't noticed — patterns, 
+opportunities, risks, or upcoming actions they should take.
+
+Produce 3-4 insights in this format:
+
+INSIGHT 1: [one-line title]
+[2-3 sentences explaining the specific connection, pattern, or opportunity, referencing actual 
+content from the memories. Be specific — mention actual names, dates, amounts, providers.]
+
+Rules:
+- Be SPECIFIC. Reference actual topics, people, dates, amounts from the memories.
+- Look for: multiple policies with the same insurer (bundle opportunity), upcoming renewals 
+  (within 60 days), subscriptions that overlap, scheduling conflicts, vehicles due for service, 
+  recurring expenses that could be reduced, patterns in family behaviour.
+- Do NOT produce generic insights.
+- Use plain text only — no markdown, no asterisks.
+- Only include an insight if it is genuinely actionable or surprising.
+- Keep each insight under 80 words.
+"""
+
+
+def _run_panning_for_gold() -> None:
+    """Fetch memories, generate family insights, and send to all family members."""
+    import asyncio
+    from openai import OpenAI
+    from telegram import Bot
+
+    async def _send() -> None:
+        bot = Bot(token=settings.telegram_bot_token)
+        memories = brain.list_memories_since(hours=720)  # last 30 days
+        if len(memories) < 5:
+            memories = brain.list_recent_memories(limit=100)
+        if len(memories) < 5:
+            logger.info("Panning for Gold: not enough memories yet, skipping.")
+            return
+
+        # Format memories
+        parts = []
+        for m in memories:
+            meta = m.get("metadata") or {}
+            date_str = m.get("created_at", "")[:10]
+            category = meta.get("category", "?")
+            tags = ", ".join(meta.get("tags", []))
+            content = m.get("content", "")[:200]
+            line = f"[{date_str}] [{category}]"
+            if tags:
+                line += f" | Tags: {tags}"
+            line += f"\n{content}"
+            parts.append(line)
+        memory_text = "\n\n".join(parts)
+
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+        )
+        try:
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                temperature=0.6,
+                messages=[
+                    {"role": "system", "content": _GOLD_FAMILY_PROMPT},
+                    {"role": "user", "content": f"Find insights in these {len(memories)} family memories:\n\n{memory_text}"},
+                ],
+                max_tokens=700,
+            )
+            gold_body = response.choices[0].message.content or "Could not generate insights."
+        except Exception as exc:
+            logger.error("Panning for Gold LLM call failed: %s", exc)
+            return
+
+        now_str = datetime.now().strftime("%A, %d %b %Y")
+        message = f"\u26cf Panning for Gold \u2014 {now_str}\n({len(memories)} memories analysed)\n\n{gold_body}"
+
+        # Send to all registered family members
+        for chat_id in FAMILY_MEMBERS.keys():
+            try:
+                await bot.send_message(chat_id=chat_id, text=message)
+                logger.info("Panning for Gold sent to chat_id=%s", chat_id)
+            except Exception as exc:
+                logger.warning("Failed to send Panning for Gold to %s: %s", chat_id, exc)
+
+    asyncio.run(_send())
+
+
 def main() -> None:
     """Start the bot."""
     application = Application.builder().token(settings.telegram_bot_token).build()
@@ -1090,6 +1184,18 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     application.add_error_handler(error_handler)
+
+    # Start the Panning for Gold weekly scheduler (Sunday 09:00)
+    gold_scheduler = BackgroundScheduler()
+    gold_scheduler.add_job(
+        _run_panning_for_gold,
+        trigger=CronTrigger(day_of_week="sun", hour=9, minute=0),
+        id="panning_for_gold",
+        name="Family Brain Panning for Gold",
+        replace_existing=True,
+    )
+    gold_scheduler.start()
+    logger.info("Panning for Gold scheduler started — will run every Sunday at 09:00.")
 
     logger.info("Telegram bot starting...")
     application.run_polling()
