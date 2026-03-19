@@ -292,12 +292,13 @@ Rules:
 - If you cannot determine the year, assume {today_str[:4]}.
 - If there is truly NO date mentioned at all, set has_event=false.
 - event_name should be a short descriptive label like "Dan in London" or "School trip".
-- is_all_day: set true if no specific start time is given, or if the time mentioned is a return/end time (e.g. "Back by 18:00", "home by 6pm"). Set false only if a clear start time is given (e.g. "meeting at 10am").
-- event_time: only set this if is_all_day is false and a clear START time is given. Leave null for all-day events.
-- end_time: set this if a return/end time is mentioned (e.g. "Back by 18:00" → "18:00"). Leave null otherwise.
+- is_all_day: set true if the event spans most of the day (travel, trips, etc.), even if departure/return times are mentioned. Set false only if a specific meeting/appointment time is given (e.g. "meeting at 10am").
+- event_time: only set this if is_all_day is false and a clear appointment START time is given. Null for travel/all-day events.
+- departure_time: set this if a departure/leaving time is mentioned (e.g. "Leaving at 07:00" → "07:00"). Null otherwise.
+- end_time: set this if a return/arrival/back-by time is mentioned (e.g. "Back by 18:00" → "18:00"). Null otherwise.
 - notify_members: list of family member names to notify about this event. Known members: {name_list}. Include anyone explicitly mentioned as needing to know, or leave empty.
 
-Return ONLY valid JSON with keys: has_event, event_name, event_date, is_all_day, event_time, end_time, location, notify_members.
+Return ONLY valid JSON with keys: has_event, event_name, event_date, is_all_day, event_time, departure_time, end_time, location, notify_members.
 """
     json_schema = {
         "type": "object",
@@ -307,7 +308,8 @@ Return ONLY valid JSON with keys: has_event, event_name, event_date, is_all_day,
             "event_date": {"type": "string", "description": "The event date in YYYY-MM-DD format, or null."},
             "is_all_day": {"type": "boolean", "description": "True if no specific start time, or if time mentioned is a return/end time."},
             "event_time": {"type": "string", "description": "Start time in HH:MM format, only if is_all_day is false. Null otherwise."},
-            "end_time": {"type": "string", "description": "Return/end time in HH:MM format if mentioned, null otherwise."},
+            "departure_time": {"type": "string", "description": "Departure/leaving time in HH:MM format if mentioned, null otherwise."},
+            "end_time": {"type": "string", "description": "Return/back-by time in HH:MM format if mentioned, null otherwise."},
             "location": {"type": "string", "description": "The location of the event, or null."},
             "notify_members": {"type": "array", "items": {"type": "string"}, "description": "Names of family members to notify."},
         },
@@ -797,6 +799,7 @@ async def _check_conflicts_and_store_event(
     event_date_str = event_data.get("event_date")
     is_all_day = event_data.get("is_all_day", True)
     event_time = None if is_all_day else event_data.get("event_time")
+    departure_time = event_data.get("departure_time")
     end_time = event_data.get("end_time")
     family_member = event_data.get("family_member")
     notify_members = event_data.get("notify_members") or []
@@ -837,13 +840,22 @@ async def _check_conflicts_and_store_event(
             logger.warning("Google Calendar module not available: %s", ie)
             _gcal = None
         if _gcal is not None:
+            # Build a descriptive note with departure/return times
+            gcal_notes = []
+            if departure_time:
+                gcal_notes.append(f"Leaving at {departure_time}")
+            if end_time:
+                gcal_notes.append(f"Back by {end_time}")
+            gcal_notes.append(f"Captured by {sender_name} via Family Brain")
+            gcal_description = " | ".join(gcal_notes)
+
             gcal_event_id = _gcal.create_event(
                 event_name=event_name,
                 event_date=event_date.isoformat() if hasattr(event_date, 'isoformat') else str(event_date),
                 event_time=event_time,  # None for all-day events
                 end_time=end_time,
                 location=event_data.get("location", ""),
-                description=f"Captured by {sender_name} via Family Brain",
+                description=gcal_description,
                 family_member=family_member,
             )
             if gcal_event_id:
@@ -859,10 +871,26 @@ async def _check_conflicts_and_store_event(
             target_id = name_to_id.get(notify_name.lower())
             if target_id and target_id != update.effective_user.id:
                 try:
-                    time_str = f" at {end_time}" if end_time else ""
+                    # Build natural language time details
+                    time_parts = []
+                    if departure_time:
+                        time_parts.append(f"leaving at {departure_time}")
+                    if end_time:
+                        time_parts.append(f"back by {end_time}")
+                    time_str = ", ".join(time_parts)
+                    # Format date more naturally
+                    try:
+                        from datetime import datetime as _dt
+                        friendly_date = _dt.strptime(event_date_str, "%Y-%m-%d").strftime("%A %-d %B")
+                    except Exception:
+                        friendly_date = event_date_str
+                    msg = f"📅 FYI: {event_name} on {friendly_date}"
+                    if time_str:
+                        msg += f" ({time_str})"
+                    msg += f" — added by {sender_name}"
                     await update.get_bot().send_message(
                         chat_id=target_id,
-                        text=f"📅 FYI: {event_name} on {event_date_str}{time_str} — added by {sender_name}"
+                        text=msg
                     )
                     logger.info("Notified %s (chat_id=%s) about event %s", notify_name, target_id, event_name)
                 except Exception as exc:
