@@ -800,7 +800,7 @@ async def _check_conflicts_and_store_event(
     conflicts = brain.get_events_on_date(event_date)
     if conflicts:
         await update.message.reply_text(
-            f"⚠️ Event <b>{_escape(event_name)}</b> on <b>{_escape(event_date_str)}</b> might conflict with an existing event on that day."
+            f"⚠️ Event '{event_name}' on {event_date_str} might conflict with an existing event on that day."
         )
 
     # Store the event
@@ -812,8 +812,7 @@ async def _check_conflicts_and_store_event(
         family_member=family_member,
     )
     await update.message.reply_text(
-        f"✅ <b>Event stored</b>: {_escape(event_name)} on {_escape(event_date_str)}\n<b>ID:</b> <code>{_escape(str(event_id))}</code>",
-        parse_mode=ParseMode.HTML
+        f"✅ Event stored: {event_name} on {event_date_str}\nID: {event_id}"
     )
 
     # Also push to Google Calendar (best-effort, never crash the handler)
