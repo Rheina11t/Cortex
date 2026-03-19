@@ -40,17 +40,18 @@ def _get_credentials() -> Optional[Credentials]:
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
             "refresh_token": REFRESH_TOKEN,
+            "token_uri": "https://oauth2.googleapis.com/token",
             "scopes": SCOPES,
         },
         scopes=SCOPES,
     )
 
-    if creds and creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-        except Exception as e:
-            logger.error(f"Failed to refresh Google Calendar token: {e}")
-            return None
+    # Always refresh since we have no cached access token
+    try:
+        creds.refresh(Request())
+    except Exception as e:
+        logger.error(f"Failed to refresh Google Calendar token: {e}")
+        return None
     return creds
 
 
