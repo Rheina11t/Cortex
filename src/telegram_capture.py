@@ -630,13 +630,13 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def cmd_gold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Trigger Panning for Gold immediately on demand."""
+    """Trigger Family Insights immediately on demand."""
     if not update.message or not update.effective_user:
         return
     family_name = _get_family_name(update.effective_user.id)
     if not family_name:
         return
-    await update.message.reply_text("⛏ Running Panning for Gold... this may take 30 seconds.")
+    await update.message.reply_text("💡 Running Family Insights... this may take 30 seconds.")
     import threading
     threading.Thread(target=_run_panning_for_gold, daemon=True).start()
 
@@ -1094,7 +1094,7 @@ def _escape(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Panning for Gold — weekly family insight engine
+# Family Insights — weekly family insight engine
 # ---------------------------------------------------------------------------
 
 _GOLD_FAMILY_PROMPT = """\
@@ -1172,7 +1172,7 @@ def _run_panning_for_gold() -> None:
             return
 
         now_str = datetime.now().strftime("%A, %d %b %Y")
-        message = f"\u26cf Panning for Gold \u2014 {now_str}\n({len(memories)} memories analysed)\n\n{gold_body}"
+        message = f"\ud83d\udca1 Family Insights \u2014 {now_str}\n({len(memories)} memories analysed)\n\n{gold_body}"
 
         # Send to all registered family members
         for chat_id in FAMILY_MEMBERS.keys():
@@ -1198,17 +1198,17 @@ def main() -> None:
 
     application.add_error_handler(error_handler)
 
-    # Start the Panning for Gold weekly scheduler (Sunday 09:00)
+    # Start the Family Insights weekly scheduler (Sunday 09:00)
     gold_scheduler = BackgroundScheduler()
     gold_scheduler.add_job(
         _run_panning_for_gold,
         trigger=CronTrigger(day_of_week="sun", hour=9, minute=0),
-        id="panning_for_gold",
-        name="Family Brain Panning for Gold",
+        id="family_insights",
+        name="Family Brain Family Insights",
         replace_existing=True,
     )
     gold_scheduler.start()
-    logger.info("Panning for Gold scheduler started — will run every Sunday at 09:00.")
+    logger.info("Family Insights scheduler started \u2014 will run every Sunday at 09:00.")
 
     logger.info("Telegram bot starting...")
     application.run_polling()
