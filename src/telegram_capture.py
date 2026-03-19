@@ -773,6 +773,82 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f"⚠️ Failed to process photo.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
 
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle voice notes: transcribe via Whisper and store as memory."""
+    if not update.message or not update.effective_user:
+        return
+    # Telegram sends voice notes as update.message.voice; audio files as update.message.audio
+    voice = update.message.voice or update.message.audio
+    if not voice:
+        return
+    user = update.effective_user
+    family_name = _get_family_name(user.id)
+    if not family_name:
+        logger.warning("Ignoring voice note from unauthorised user: %d", user.id)
+        return
+    await update.message.reply_text("🎙️ Transcribing voice note...")
+    try:
+        voice_file = await context.bot.get_file(voice.file_id)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Use .ogg for voice notes, .mp3 for audio files
+            ext = ".ogg" if update.message.voice else ".mp3"
+            file_path = os.path.join(temp_dir, f"voice{ext}")
+            await voice_file.download_to_drive(file_path)
+            # Transcribe with Whisper
+            from openai import OpenAI as _OAI
+            oai_client = _OAI(
+                api_key=settings.openai_api_key,
+                base_url="https://api.openai.com/v1",  # Whisper requires real OpenAI endpoint
+            )
+            with open(file_path, "rb") as audio_f:
+                transcript_obj = oai_client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_f,
+                )
+            transcript = transcript_obj.text.strip()
+        if not transcript:
+            await update.message.reply_text("⚠️ Could not transcribe the voice note. Please try again or type your message.")
+            return
+        logger.info("Voice note transcribed (%d chars): %s...", len(transcript), transcript[:80])
+        # Store as a text memory using the same pipeline
+        metadata = brain.extract_metadata(transcript, source="telegram-voice")
+        cleaned_content = metadata.get("cleaned_content", transcript)
+        metadata["source"] = "telegram-voice"
+        metadata["family_member"] = family_name
+        metadata["source_user"] = family_name.lower()
+        embedding = brain.generate_embedding(cleaned_content)
+        memory_id = brain.store_memory(
+            content=cleaned_content,
+            embedding=embedding,
+            metadata=metadata,
+            user_id=str(user.id),
+            family_member=family_name,
+            family_id=settings.family_id,
+        )
+        tags_str = ", ".join(f'<code>{_escape(t)}</code>' for t in metadata.get('tags', [])) or "<i>none</i>"
+        preview = _escape(transcript[:200]) + ("..." if len(transcript) > 200 else "")
+        reply_text = (
+            f"🎙️ <b>Voice note captured!</b>\n\n"
+            f"<b>Transcript:</b> {preview}\n\n"
+            f"👤 <b>Captured by:</b> {_escape(family_name)}\n"
+            f"🏷️ <b>Tags:</b> {tags_str}\n"
+            f"🆔 <b>ID:</b> <code>{_escape(str(memory_id))}</code>"
+        )
+        try:
+            await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+        except Exception:
+            await update.message.reply_text(f"🎙️ Voice note captured!\n\nTranscript: {transcript[:200]}", parse_mode=None)
+        # Also check if the transcript contains an event
+        event_data = _extract_event_details(cleaned_content)
+        if event_data and event_data.get("has_event"):
+            merged = {**metadata, **event_data}
+            await _check_conflicts_and_store_event(merged, update, family_name)
+    except Exception as exc:
+        logger.error("Failed to process voice note: %s", exc, exc_info=True)
+        err_msg = str(exc)[:200]
+        await update.message.reply_text(f"⚠️ Failed to transcribe voice note.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
+
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle documents: PDF text extraction or OCR for images."""
     if not update.message or not update.message.document or not update.effective_user:
@@ -1316,6 +1392,8 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.AUDIO, handle_voice))
 
     application.add_error_handler(error_handler)
 
