@@ -629,6 +629,18 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(reply, parse_mode=ParseMode.HTML)
 
 
+async def cmd_gold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Trigger Panning for Gold immediately on demand."""
+    if not update.message or not update.effective_user:
+        return
+    family_name = _get_family_name(update.effective_user.id)
+    if not family_name:
+        return
+    await update.message.reply_text("⛏ Running Panning for Gold... this may take 30 seconds.")
+    import threading
+    threading.Thread(target=_run_panning_for_gold, daemon=True).start()
+
+
 # ---------------------------------------------------------------------------
 # Telegram message handlers
 # ---------------------------------------------------------------------------
@@ -1179,6 +1191,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("status", cmd_status))
+    application.add_handler(CommandHandler("gold", cmd_gold))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
