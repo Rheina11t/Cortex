@@ -279,6 +279,8 @@ _EVENT_TAGS = {
 def _extract_event_details(raw_text: str) -> dict:
     """Use a dedicated LLM call to extract structured event details."""
     today_str = datetime.now().strftime("%Y-%m-%d")
+    # Build a name list for the notify_members hint
+    name_list = ", ".join(FAMILY_MEMBERS.values()) if FAMILY_MEMBERS else "family members"
     system_prompt = f"""\
 You are an event extraction assistant for a family calendar. Today is {today_str}.
 Extract event details from the user message and return a JSON object.
@@ -290,8 +292,12 @@ Rules:
 - If you cannot determine the year, assume {today_str[:4]}.
 - If there is truly NO date mentioned at all, set has_event=false.
 - event_name should be a short descriptive label like "Dan in London" or "School trip".
+- is_all_day: set true if no specific start time is given, or if the time mentioned is a return/end time (e.g. "Back by 18:00", "home by 6pm"). Set false only if a clear start time is given (e.g. "meeting at 10am").
+- event_time: only set this if is_all_day is false and a clear START time is given. Leave null for all-day events.
+- end_time: set this if a return/end time is mentioned (e.g. "Back by 18:00" → "18:00"). Leave null otherwise.
+- notify_members: list of family member names to notify about this event. Known members: {name_list}. Include anyone explicitly mentioned as needing to know, or leave empty.
 
-Return ONLY valid JSON with keys: has_event, event_name, event_date, event_time, location.
+Return ONLY valid JSON with keys: has_event, event_name, event_date, is_all_day, event_time, end_time, location, notify_members.
 """
     json_schema = {
         "type": "object",
@@ -299,8 +305,11 @@ Return ONLY valid JSON with keys: has_event, event_name, event_date, event_time,
             "has_event": {"type": "boolean"},
             "event_name": {"type": "string", "description": "A concise name for the event."},
             "event_date": {"type": "string", "description": "The event date in YYYY-MM-DD format, or null."},
-            "event_time": {"type": "string", "description": "The event time in HH:MM format, or null."},
+            "is_all_day": {"type": "boolean", "description": "True if no specific start time, or if time mentioned is a return/end time."},
+            "event_time": {"type": "string", "description": "Start time in HH:MM format, only if is_all_day is false. Null otherwise."},
+            "end_time": {"type": "string", "description": "Return/end time in HH:MM format if mentioned, null otherwise."},
             "location": {"type": "string", "description": "The location of the event, or null."},
+            "notify_members": {"type": "array", "items": {"type": "string"}, "description": "Names of family members to notify."},
         },
         "required": ["has_event"],
     }
@@ -784,8 +793,11 @@ async def _check_conflicts_and_store_event(
     event_name = event_data.get("event_name") or event_data.get("cleaned_content") or ""
     event_name = str(event_name)[:100]  # truncate to avoid Telegram message length issues
     event_date_str = event_data.get("event_date")
-    event_time = event_data.get("event_time")
+    is_all_day = event_data.get("is_all_day", True)
+    event_time = None if is_all_day else event_data.get("event_time")
+    end_time = event_data.get("end_time")
     family_member = event_data.get("family_member")
+    notify_members = event_data.get("notify_members") or []
 
     if not event_name or not event_date_str:
         return
@@ -826,7 +838,8 @@ async def _check_conflicts_and_store_event(
             gcal_event_id = _gcal.create_event(
                 event_name=event_name,
                 event_date=event_date.isoformat() if hasattr(event_date, 'isoformat') else str(event_date),
-                event_time=event_time if event_time else None,
+                event_time=event_time,  # None for all-day events
+                end_time=end_time,
                 location=event_data.get("location", ""),
                 description=f"Captured by {sender_name} via Family Brain",
                 family_member=family_member,
@@ -835,6 +848,23 @@ async def _check_conflicts_and_store_event(
                 logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
     except Exception as exc:
         logger.warning("Google Calendar push failed: %s", exc)
+
+    # Notify family members (best-effort)
+    if notify_members:
+        # Build reverse lookup: name -> chat_id
+        name_to_id = {name.lower(): uid for uid, name in FAMILY_MEMBERS.items()}
+        for notify_name in notify_members:
+            target_id = name_to_id.get(notify_name.lower())
+            if target_id and target_id != update.effective_user.id:
+                try:
+                    time_str = f" at {end_time}" if end_time else ""
+                    await update.get_bot().send_message(
+                        chat_id=target_id,
+                        text=f"📅 FYI: {event_name} on {event_date_str}{time_str} — added by {sender_name}"
+                    )
+                    logger.info("Notified %s (chat_id=%s) about event %s", notify_name, target_id, event_name)
+                except Exception as exc:
+                    logger.warning("Failed to notify %s: %s", notify_name, exc)
 
 
 async def _maybe_store_financial_details(

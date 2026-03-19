@@ -96,6 +96,7 @@ def create_event(
     event_name: str,
     event_date: str,
     event_time: Optional[str] = None,
+    end_time: Optional[str] = None,
     location: Optional[str] = None,
     description: Optional[str] = None,
     family_member: Optional[str] = None,
@@ -128,9 +129,12 @@ def create_event(
         }
 
         if event_time:
-            # Event with a specific time (1-hour duration)
+            # Event with a specific start time
             start_dt = datetime.datetime.fromisoformat(f"{event_date}T{event_time}")
-            end_dt = start_dt + datetime.timedelta(hours=1)
+            if end_time:
+                end_dt = datetime.datetime.fromisoformat(f"{event_date}T{end_time}")
+            else:
+                end_dt = start_dt + datetime.timedelta(hours=1)
             event_body["start"] = {
                 "dateTime": start_dt.isoformat(),
                 "timeZone": "Europe/London",
@@ -140,9 +144,11 @@ def create_event(
                 "timeZone": "Europe/London",
             }
         else:
-            # All-day event
+            # All-day event — next day is the exclusive end date for Google Calendar
+            start_date = datetime.date.fromisoformat(event_date)
+            end_date = start_date + datetime.timedelta(days=1)
             event_body["start"] = {"date": event_date}
-            event_body["end"] = {"date": event_date}
+            event_body["end"] = {"date": end_date.isoformat()}
 
         if family_member:
             event_body["summary"] = f"{event_name} ({family_member})"
