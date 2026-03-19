@@ -122,10 +122,16 @@ def create_event(
     try:
         service = build("calendar", "v3", credentials=creds)
 
+        # Build description — append return time for all-day events
+        full_description = description or ""
+        if end_time and not event_time:
+            # All-day event with a return/end time
+            full_description = f"Back by {end_time}" + (f"\n{description}" if description else "")
+
         event_body: dict[str, Any] = {
             "summary": event_name,
             "location": location,
-            "description": description,
+            "description": full_description or None,
         }
 
         if event_time:
