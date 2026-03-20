@@ -932,8 +932,10 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 "If the memories contain conflicting information, use the most specific and detailed one. "
                 "If the question asks about ALL items of a type (e.g. 'what cars do I have', 'list my policies'), "
                 "make sure to include EVERY relevant item found in the memories, not just the first one. "
-                "If any stored item has a date that matches or is close to today's date (e.g. contract end, renewal, expiry), "
-                "proactively flag this as time-sensitive at the start of your answer. "
+                "IMPORTANT: If any stored item contains a date that is today, tomorrow, or within the next 7 days "
+                "(e.g. contract end, renewal, expiry, payment due, MOT due), you MUST start your answer with a "
+                "⚠️ URGENT alert line before anything else. Example: '⚠️ URGENT: Your VW ID.Buzz contract hire ends TODAY (20 March 2026). You should contact VW Financial Services immediately.' "
+                "Do not bury time-sensitive dates in the middle of a list — always lead with them. "
                 "If web search results are provided, you may use them to supplement missing contact details "
                 "(phone numbers, emails, opening hours) — but clearly indicate these came from a web search, not stored memory. "
                 "If information is genuinely missing and not found online, say so and offer to store it. "
@@ -1304,10 +1306,100 @@ def _handle_media_message(
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+def _send_daily_expiry_alerts() -> None:
+    """Scan all memories for dates expiring today or within 7 days and send proactive WhatsApp alerts."""
+    try:
+        from datetime import date, timedelta
+        import re as _re
+        settings = get_settings()
+        today = date.today()
+        window_end = today + timedelta(days=7)
+        # Fetch all families
+        db_client = brain._supabase
+        if db_client is None:
+            return
+        families_result = db_client.table("families").select("family_id, primary_phone, primary_name").eq("status", "active").execute()
+        families = families_result.data or []
+        # Date patterns to scan for: DD/MM/YYYY, DD-MM-YYYY, DD Month YYYY, YYYY-MM-DD
+        date_patterns = [
+            (r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', lambda m: date(int(m.group(3)), int(m.group(2)), int(m.group(1)))),
+            (r'(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})',
+             lambda m: date(int(m.group(3)), {'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}[m.group(2)[:3].lower()], int(m.group(1)))),
+            (r'(\d{4})-(\d{2})-(\d{2})', lambda m: date(int(m.group(1)), int(m.group(2)), int(m.group(3)))),
+        ]
+        expiry_keywords = ('expir', 'renew', 'end', 'due', 'valid until', 'contract', 'mot', 'insurance', 'warranty', 'subscription')
+        for family in families:
+            family_id = family['family_id']
+            primary_phone = family['primary_phone']
+            family_name = family['primary_name']
+            # Get recent memories for this family
+            memories = brain.list_recent_memories(limit=100, family_id=family_id)
+            alerts = []
+            for mem in memories:
+                content = mem.get('content', '')
+                content_lower = content.lower()
+                if not any(kw in content_lower for kw in expiry_keywords):
+                    continue
+                for pattern, parser in date_patterns:
+                    for match in _re.finditer(pattern, content, _re.IGNORECASE):
+                        try:
+                            d = parser(match)
+                            if today <= d <= window_end:
+                                days_away = (d - today).days
+                                label = 'TODAY' if days_away == 0 else f'in {days_away} day{"s" if days_away != 1 else ""}'
+                                alerts.append((d, label, content[:200]))
+                        except Exception:
+                            pass
+            if not alerts:
+                continue
+            # Deduplicate and sort by date
+            seen = set()
+            unique_alerts = []
+            for d, label, snippet in sorted(alerts, key=lambda x: x[0]):
+                key = (d, snippet[:80])
+                if key not in seen:
+                    seen.add(key)
+                    unique_alerts.append((d, label, snippet))
+            # Build message
+            lines = [f"⚠️ FamilyBrain Daily Alert — {today.strftime('%d %B %Y')}\n"]
+            for d, label, snippet in unique_alerts[:5]:
+                lines.append(f"• {d.strftime('%d %b %Y')} ({label}): {snippet[:120]}...")
+            message = "\n".join(lines)
+            # Send via Twilio
+            try:
+                from twilio.rest import Client as TwilioClient
+                twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
+                twilio_client.messages.create(
+                    from_=settings.twilio_whatsapp_from,
+                    to=f"whatsapp:{primary_phone}",
+                    body=message,
+                )
+                logger.info("Daily expiry alert sent to %s (%d alerts)", primary_phone, len(unique_alerts))
+            except Exception as exc:
+                logger.warning("Failed to send daily alert to %s: %s", primary_phone, exc)
+    except Exception as exc:
+        logger.error("Daily expiry alert job failed: %s", exc)
+
+
 def main() -> None:
     """Start the Flask server for the WhatsApp capture layer."""
     port = int(os.environ.get("PORT", "8080"))
     logger.info("Starting Family Brain WhatsApp capture layer on port %d…", port)
+    # Start daily expiry alert scheduler (runs at 8am every day)
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        alert_scheduler = BackgroundScheduler()
+        alert_scheduler.add_job(
+            _send_daily_expiry_alerts,
+            trigger="cron",
+            hour=8,
+            minute=0,
+            id="daily_expiry_alerts",
+        )
+        alert_scheduler.start()
+        logger.info("Daily expiry alert scheduler started (runs at 08:00 daily)")
+    except Exception as exc:
+        logger.warning("Could not start alert scheduler: %s", exc)
     # Use threaded=True so concurrent Twilio webhooks are handled correctly
     app.run(host="0.0.0.0", port=port, threaded=True)
 
