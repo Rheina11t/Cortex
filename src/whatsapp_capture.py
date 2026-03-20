@@ -686,11 +686,13 @@ def _validate_twilio_request(f: Callable) -> Callable:
             return f(*args, **kwargs)
 
         validator = RequestValidator(auth_token)
-        # Use the full URL including query string for signature validation
-        url = request.url
+        # Railway sits behind a reverse proxy that terminates TLS.
+        # request.url will be http:// but Twilio signs against the https:// URL.
+        # Reconstruct the URL using the forwarded proto header.
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "https")
+        url = request.url.replace("http://", f"{forwarded_proto}://", 1)
         post_vars = request.form.to_dict()
         signature = request.headers.get("X-Twilio-Signature", "")
-
         if not validator.validate(url, post_vars, signature):
             logger.warning(
                 "Rejected request with invalid Twilio signature from %s",
