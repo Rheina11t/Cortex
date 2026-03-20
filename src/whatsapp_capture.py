@@ -295,30 +295,28 @@ Rules:
 # ---------------------------------------------------------------------------
 # Event detection helpers (mirrors telegram_capture.py)
 # ---------------------------------------------------------------------------
-_EVENT_DETECTION_PROMPT = """\
-You are an event detection assistant for a Family Brain system.
-
-Given a message, determine if it contains a schedulable event (appointment, meeting, activity, deadline, etc.)
-
-Return a JSON object:
-{
-  "is_event": true/false,
-  "event_name": "<name of the event>",
-  "event_date": "<YYYY-MM-DD or null>",
-  "event_time": "<HH:MM or null>",
-  "location": "<location or empty string>",
-  "requirements": ["<any requirements or things to bring>"],
-  "family_member": "<who this event is for, or 'family' if shared>"
-}
-
-Today's date is """ + datetime.now().strftime("%Y-%m-%d") + """.
-
-Rules:
-- Return ONLY valid JSON.
-- If the message does not contain a schedulable event, set is_event to false and leave other fields empty.
-- Parse relative dates like "tomorrow", "next Tuesday", "this Friday" relative to today.
-- If no specific person is mentioned, default family_member to the sender's name.
-"""
+def _get_event_detection_prompt() -> str:
+    """Return the event detection prompt with today's date evaluated at call time."""
+    return (
+        "You are an event detection assistant for a Family Brain system.\n"
+        "Given a message, determine if it contains a schedulable event (appointment, meeting, activity, deadline, etc.)\n"
+        "Return a JSON object:\n"
+        "{\n"
+        '  "is_event": true/false,\n'
+        '  "event_name": "<name of the event>",\n'
+        '  "event_date": "<YYYY-MM-DD or null>",\n'
+        '  "event_time": "<HH:MM or null>",\n'
+        '  "location": "<location or empty string>",\n'
+        '  "requirements": ["<any requirements or things to bring>"],\n'
+        '  "family_member": "<who this event is for, or \'family\' if shared>"\n'
+        "}\n"
+        f"Today's date is {datetime.now().strftime('%Y-%m-%d')}.\n"
+        "Rules:\n"
+        "- Return ONLY valid JSON.\n"
+        "- If the message does not contain a schedulable event, set is_event to false and leave other fields empty.\n"
+        "- Parse relative dates like 'tomorrow', 'next Tuesday', 'this Friday' relative to today.\n"
+        "- If no specific person is mentioned, default family_member to the sender's name.\n"
+    )
 
 
 def _detect_event(text: str, sender_name: str) -> Optional[dict[str, Any]]:
@@ -333,7 +331,7 @@ def _detect_event(text: str, sender_name: str) -> Optional[dict[str, Any]]:
             model=settings.llm_model,
             temperature=0.0,
             messages=[
-                {"role": "system", "content": _EVENT_DETECTION_PROMPT},
+                {"role": "system", "content": _get_event_detection_prompt()},
                 {"role": "user", "content": f"Sender: {sender_name}\n\nMessage: {text}"},
             ],
             response_format={"type": "json_object"},
@@ -850,12 +848,29 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             synonyms.append("lease")
         if any(word in text.lower() for word in ["end", "ends", "ending"]):
             synonyms.extend(["expiry", "expires"])
-        
+
+        # Reframe availability questions: "is Izzy free tomorrow?" → "what does Izzy have on tomorrow"
+        # This dramatically improves semantic match against schedule/event memories
+        import re as _re
+        text_lower = text.lower()
+        avail_pattern = _re.search(r'is\s+(\w+)\s+(free|available|busy|around)', text_lower)
+        if avail_pattern:
+            person = avail_pattern.group(1).capitalize()
+            # Extract time reference from original text (tomorrow, Monday, next week, etc.)
+            time_refs = _re.findall(r'(tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week|\d{1,2}(?:st|nd|rd|th)?(?:\s+\w+)?)', text_lower)
+            time_ref = time_refs[0] if time_refs else ""
+            synonyms.append(f"what does {person} have on {time_ref}")
+            synonyms.append(f"{person} schedule {time_ref}")
+            synonyms.append(f"{person} activity event {time_ref}")
+            logger.info("Availability query reframed for %s on %s", person, time_ref)
+
         # For broad inventory-style queries ("what X do I have", "list my X"), use lower threshold and higher count
         broad_query_words = ("what", "list", "all", "how many", "do i have", "my cars", "my vehicles", "my policies", "my accounts")
         is_broad_query = any(w in text.lower() for w in broad_query_words)
-        _threshold = 0.2 if is_broad_query else 0.3
-        _count = 15 if is_broad_query else 8
+        # Availability queries also need wider search
+        is_availability_query = bool(avail_pattern)
+        _threshold = 0.2 if (is_broad_query or is_availability_query) else 0.3
+        _count = 15 if (is_broad_query or is_availability_query) else 8
         expanded_query = text + " " + " ".join(synonyms)
         results = brain.semantic_search(expanded_query, match_threshold=_threshold, match_count=_count, family_id=family_id)
 
@@ -1045,6 +1060,144 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
 
 
 # ---------------------------------------------------------------------------
+# Memory management handler (delete, edit, list)
+# ---------------------------------------------------------------------------
+# Pending delete confirmations: {from_number: {memory_id, preview}}
+_pending_deletes: dict[str, dict] = {}
+# Pending edit confirmations: {from_number: {memory_id, preview, new_content}}
+_pending_edits: dict[str, dict] = {}
+
+
+def _handle_memory_management(text: str, family_name: str, from_number: str) -> Response | None:
+    """Handle memory management commands. Returns a Response if handled, else None."""
+    twiml = MessagingResponse()
+    family_id = _get_family_id_for_phone(from_number)
+    text_lower = text.lower().strip()
+
+    # --- Confirm pending delete ---
+    if from_number in _pending_deletes:
+        pending = _pending_deletes[from_number]
+        if text_lower in ("yes", "y", "confirm", "delete", "ok"):
+            del _pending_deletes[from_number]
+            db = brain._supabase
+            if db:
+                db.table("memories").delete().eq("id", pending["memory_id"]).execute()
+            twiml.message(f"✅ Memory deleted.")
+            return Response(str(twiml), mimetype="application/xml")
+        elif text_lower in ("no", "n", "cancel", "keep"):
+            del _pending_deletes[from_number]
+            twiml.message("OK, kept. Nothing was deleted.")
+            return Response(str(twiml), mimetype="application/xml")
+
+    # --- Confirm pending edit ---
+    if from_number in _pending_edits:
+        pending = _pending_edits[from_number]
+        if text_lower in ("yes", "y", "confirm", "ok"):
+            del _pending_edits[from_number]
+            memory_id = pending["memory_id"]
+            new_content = pending["new_content"]
+            db = brain._supabase
+            if db:
+                try:
+                    new_embedding = brain.generate_embedding(new_content)
+                    db.table("memories").update({"content": new_content, "embedding": new_embedding}).eq("id", memory_id).execute()
+                    twiml.message(f"✅ Memory updated.")
+                except Exception as exc:
+                    twiml.message(f"⚠️ Update failed: {exc}")
+            return Response(str(twiml), mimetype="application/xml")
+        elif text_lower in ("no", "n", "cancel"):
+            del _pending_edits[from_number]
+            twiml.message("OK, cancelled. Nothing was changed.")
+            return Response(str(twiml), mimetype="application/xml")
+
+    # --- List recent memories ---
+    list_patterns = ("show my memories", "list my memories", "what have you stored", "show recent", "list recent", "what do you know about me", "show me what you've stored")
+    if any(text_lower.startswith(p) or p in text_lower for p in list_patterns):
+        memories = brain.list_recent_memories(limit=8, family_id=family_id)
+        if not memories:
+            twiml.message("You don't have any stored memories yet.")
+        else:
+            lines = ["Here are your 8 most recent memories:\n"]
+            for i, m in enumerate(memories, 1):
+                snippet = m.get("content", "")[:80]
+                lines.append(f"{i}. {snippet}...")
+            lines.append("\nTo delete one, say \"delete memory 3\" (or whichever number).")
+            lines.append("To correct one, say \"correct memory 3: [new text]\"")
+            twiml.message("\n".join(lines))
+        return Response(str(twiml), mimetype="application/xml")
+
+    # --- Delete by number (after list) ---
+    import re as _re2
+    delete_num_match = _re2.match(r'delete\s+(?:memory\s+)?(\d+)', text_lower)
+    if delete_num_match:
+        idx = int(delete_num_match.group(1)) - 1
+        memories = brain.list_recent_memories(limit=8, family_id=family_id)
+        if 0 <= idx < len(memories):
+            mem = memories[idx]
+            _pending_deletes[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120]}
+            twiml.message(f"Are you sure you want to delete this memory?\n\n\"{_pending_deletes[from_number]['preview']}\"\n\nReply YES to confirm or NO to cancel.")
+        else:
+            twiml.message(f"I couldn't find memory number {idx+1}. Say \"show my memories\" to see the list.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # --- Delete by description ---
+    delete_desc_match = _re2.match(r'delete\s+(?:the\s+)?(?:memory\s+)?(?:about\s+)?(.+)', text_lower)
+    if delete_desc_match and not delete_num_match:
+        query = delete_desc_match.group(1).strip()
+        if len(query) > 3:  # avoid matching very short fragments
+            results = brain.semantic_search(query, match_threshold=0.3, match_count=1, family_id=family_id)
+            if results:
+                mem = results[0]
+                _pending_deletes[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120]}
+                twiml.message(f"Did you mean this memory?\n\n\"{_pending_deletes[from_number]['preview']}\"\n\nReply YES to delete or NO to cancel.")
+            else:
+                twiml.message(f"I couldn't find a memory matching \"{query}\". Say \"show my memories\" to see the full list.")
+            return Response(str(twiml), mimetype="application/xml")
+
+    # --- Correct/update by number ---
+    correct_match = _re2.match(r'(?:correct|update|edit|change)\s+(?:memory\s+)?(\d+)\s*[:\-]?\s*(.+)', text_lower)
+    if correct_match:
+        idx = int(correct_match.group(1)) - 1
+        new_content = correct_match.group(2).strip()
+        memories = brain.list_recent_memories(limit=8, family_id=family_id)
+        if 0 <= idx < len(memories):
+            mem = memories[idx]
+            _pending_edits[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120], "new_content": new_content}
+            twiml.message(
+                f"Update this memory:\n\nOLD: \"{_pending_edits[from_number]['preview']}\"\n\nNEW: \"{new_content}\"\n\nReply YES to confirm or NO to cancel."
+            )
+        else:
+            twiml.message(f"I couldn't find memory number {idx+1}. Say \"show my memories\" to see the list.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # --- Correct/update by description ---
+    correct_desc_match = _re2.match(r'(?:correct|update|edit|change|fix)\s+(?:the\s+)?(?:memory\s+)?(?:about\s+)?(.+?)\s*[:\-]\s*(.+)', text_lower)
+    if correct_desc_match:
+        query = correct_desc_match.group(1).strip()
+        new_content = correct_desc_match.group(2).strip()
+        if len(query) > 3:
+            results = brain.semantic_search(query, match_threshold=0.3, match_count=1, family_id=family_id)
+            if results:
+                mem = results[0]
+                _pending_edits[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120], "new_content": new_content}
+                twiml.message(
+                    f"Update this memory?\n\nOLD: \"{_pending_edits[from_number]['preview']}\"\n\nNEW: \"{new_content}\"\n\nReply YES to confirm or NO to cancel."
+                )
+            else:
+                twiml.message(f"I couldn't find a memory matching \"{query}\". Say \"show my memories\" to see the full list.")
+            return Response(str(twiml), mimetype="application/xml")
+
+    # --- Forget everything (nuclear option) ---
+    if text_lower in ("forget everything", "delete all memories", "clear all memories", "wipe everything"):
+        count = len(brain.list_recent_memories(limit=1000, family_id=family_id))
+        _pending_deletes[from_number] = {"memory_id": "__ALL__", "preview": f"ALL {count} memories"}
+        twiml.message(f"⚠️ Are you sure you want to delete ALL {count} memories? This cannot be undone.\n\nReply YES to confirm or NO to cancel.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    return None  # Not a memory management command
+
+
+# ---------------------------------------------------------------------------
 # Text message handler
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
@@ -1058,7 +1211,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         return Response(str(twiml), mimetype="application/xml")
 
     logger.info("Processing text message from %s (%s): %d chars", family_name, from_number, len(text))
-
+    # --- Memory management commands (delete, edit, list) ---
+    mem_mgmt_result = _handle_memory_management(text, family_name, from_number)
+    if mem_mgmt_result is not None:
+        return mem_mgmt_result
     # --- Intent detection: Query vs Capture ---
     if _is_query(text, from_number):
         history = _conversation_history.get(from_number, [])
