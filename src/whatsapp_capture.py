@@ -1251,26 +1251,33 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         # Step 4: Check for schedulable events
         event_info = ""
         event_data = _detect_event(text, family_name)
-        if event_data:
+        if event_data and event_data.get("event_date"):
+            # Re-store memory with resolved date in content so semantic search works
+            resolved_date = event_data.get("event_date", "")
+            event_name = event_data.get("event_name", "")
+            event_time = event_data.get("event_time", "")
+            event_member = event_data.get("family_member", family_name)
+            time_str = f" from {event_time}" if event_time else ""
+            resolved_content = f"{event_member} has {event_name} on {resolved_date}{time_str}."
+            # Update the stored memory with the resolved content and new embedding
+            try:
+                new_embedding = brain.generate_embedding(resolved_content)
+                brain._supabase.table("memories").update(
+                    {"content": resolved_content, "embedding": new_embedding}
+                ).eq("id", memory_id).execute()
+                logger.info("Memory content updated with resolved date: %s", resolved_content)
+            except Exception as exc:
+                logger.warning("Failed to update memory with resolved date: %s", exc)
+            # Store in family_events and push to Google Calendar
             event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name)
             if event_id:
-                event_info = (
-                    f"\n📅 Event detected: {event_data.get('event_name', '')} "
-                    f"on {event_data.get('event_date', '')}"
-                )
+                event_info = f"\n📅 Added to calendar: {event_name} on {resolved_date}"
             if conflict_warning:
                 event_info += f"\n\n{conflict_warning}"
-
-        # Step 5: Build TwiML confirmation reply
+        # Step 5: Build TwiML confirmation reply (clean, no raw IDs)
         tags_str = ", ".join(tags) if tags else "none"
-        action_str = "\n  • ".join(action_items) if action_items else "none"
-
         reply = (
-            f"✅ Memory captured by {family_name}!\n\n"
-            f"📂 Category: {category}\n"
-            f"🏷 Tags: {tags_str}\n"
-            f"🎯 Action items: {action_str}\n"
-            f"🆔 ID: {memory_id}"
+            f"✅ Got it, {family_name}! Stored under {category}."
             f"{event_info}"
         )
         twiml.message(reply)
