@@ -31,7 +31,8 @@ import os
 import re
 import tempfile
 import traceback
-from datetime import datetime, date
+import datetime as _dt_module
+from datetime import datetime, date, timezone, timedelta
 from typing import Any, Optional
 
 from telegram import Update
@@ -437,7 +438,42 @@ async def _answer_query(
         expanded_query += " " + " ".join(synonyms)
         logger.info("Expanded query to: '%s'", expanded_query)
 
-    # 2. Perform search (semantic + metadata fallback)
+    # 2. Fetch Google Calendar events if the query is scheduling/availability related
+    calendar_context = ""
+    scheduling_keywords = (
+        "free", "available", "busy", "calendar", "schedule", "when", "thursday", "friday",
+        "monday", "tuesday", "wednesday", "saturday", "sunday", "next week", "this week",
+        "tomorrow", "today", "playdate", "appointment", "meeting", "plans", "diary",
+        "what's on", "whats on", "what is on", "any plans",
+    )
+    is_scheduling_query = any(k in text_lower for k in scheduling_keywords)
+    if is_scheduling_query:
+        try:
+            from . import google_calendar as _gcal_read
+            # Fetch events for the next 30 days
+            now = datetime.now(timezone.utc)
+            time_min = now.isoformat()
+            time_max = (now + timedelta(days=30)).isoformat()
+            cal_events = _gcal_read.get_events(time_min=time_min, time_max=time_max, max_results=30)
+            if cal_events:
+                cal_lines = []
+                for ev in cal_events:
+                    start = ev.get("start", "")
+                    summary = ev.get("summary", "(no title)")
+                    desc = ev.get("description", "")
+                    loc = ev.get("location", "")
+                    detail = f"{start}: {summary}"
+                    if loc:
+                        detail += f" @ {loc}"
+                    if desc:
+                        detail += f" ({desc[:80]})"
+                    cal_lines.append(detail)
+                calendar_context = "\n\nFamily Calendar (next 30 days):\n" + "\n".join(cal_lines)
+                logger.info("Injected %d calendar events into query context", len(cal_events))
+        except Exception as exc:
+            logger.warning("Calendar read failed (non-fatal): %s", exc)
+
+    # 3. Perform search (semantic + metadata fallback)
     results = brain.semantic_search(expanded_query, match_threshold=0.25, match_count=10, family_id=settings.family_id)
     if not results:
         logger.info("Semantic search for '%s' returned no results, trying metadata.", raw_text)
@@ -518,7 +554,7 @@ async def _answer_query(
         messages = [{"role": "system", "content": prompt}]
         if conversation_history:
             messages.extend(conversation_history)
-        messages.append({"role": "user", "content": f"Question: {raw_text}\n\nStored memories:\n{memories_text}{web_context}"})
+        messages.append({"role": "user", "content": f"Question: {raw_text}\n\nStored memories:\n{memories_text}{calendar_context}{web_context}"})
 
         answer = brain.get_llm_reply(messages=messages)
         answer_truncated = answer[:3800] + ("..." if len(answer) > 3800 else "")
@@ -597,6 +633,24 @@ async def _answer_query(
                         web_fallback_answer = brain.get_llm_reply(messages=messages)
             except Exception as exc:
                 logger.warning("Web fallback enrichment failed: %s", exc)
+
+        # If we have calendar context but no memories, still answer from calendar
+        if not web_fallback_answer and calendar_context:
+            try:
+                prompt = (
+                    f"You are Family Brain, a personal AI assistant for the {sender_name} family. "
+                    f"The person asking is {sender_name}. "
+                    "Answer the user's scheduling question using the family calendar below. "
+                    "Be specific about what's on and what's free. "
+                    "If asked about a specific person's availability, check all events for that day."
+                )
+                messages = [{"role": "system", "content": prompt}]
+                if conversation_history:
+                    messages.extend(conversation_history)
+                messages.append({"role": "user", "content": f"Question: {raw_text}{calendar_context}"})
+                web_fallback_answer = brain.get_llm_reply(messages=messages)
+            except Exception as exc:
+                logger.warning("Calendar-only answer failed: %s", exc)
 
         if web_fallback_answer:
             reply_text = web_fallback_answer[:3800]

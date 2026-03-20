@@ -173,3 +173,59 @@ def create_event(
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
         return None
+
+def get_events(
+    time_min: str,
+    time_max: str,
+    max_results: int = 50,
+) -> list[dict]:
+    """Fetch events from Google Calendar within a time range.
+
+    Args:
+        time_min: Start of range in RFC3339 format (e.g. '2026-03-20T00:00:00Z')
+        time_max: End of range in RFC3339 format (e.g. '2026-03-27T23:59:59Z')
+        max_results: Maximum number of events to return (default 50)
+
+    Returns:
+        List of event dicts with keys: id, summary, start, end, description, location
+        Returns empty list on error or if calendar not configured.
+    """
+    creds = _get_credentials()
+    if not creds:
+        logger.warning("Skipping Google Calendar read due to missing credentials.")
+        return []
+    try:
+        service = build("calendar", "v3", credentials=creds)
+        events_result = (
+            service.events()
+            .list(
+                calendarId=CALENDAR_ID,
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=max_results,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
+        items = events_result.get("items", [])
+        events = []
+        for item in items:
+            start = item.get("start", {})
+            end = item.get("end", {})
+            events.append({
+                "id": item.get("id", ""),
+                "summary": item.get("summary", ""),
+                "start": start.get("dateTime") or start.get("date", ""),
+                "end": end.get("dateTime") or end.get("date", ""),
+                "description": item.get("description", ""),
+                "location": item.get("location", ""),
+            })
+        logger.info("Google Calendar: fetched %d events (%s to %s)", len(events), time_min, time_max)
+        return events
+    except HttpError as error:
+        logger.error("Google Calendar read error: %s", error)
+        return []
+    except Exception as e:
+        logger.error("Google Calendar read unexpected error: %s", e)
+        return []
