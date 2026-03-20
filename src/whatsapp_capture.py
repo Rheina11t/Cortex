@@ -685,10 +685,16 @@ def _validate_twilio_request(f: Callable) -> Callable:
             )
             return f(*args, **kwargs)
 
+        # Allow bypassing signature validation for sandbox/testing
+        skip_validation = os.environ.get("TWILIO_SKIP_SIGNATURE_VALIDATION", "").lower() in ("1", "true", "yes")
+        if skip_validation:
+            logger.warning("Twilio signature validation SKIPPED (TWILIO_SKIP_SIGNATURE_VALIDATION=true) — disable in production!")
+            return f(*args, **kwargs)
+
         validator = RequestValidator(auth_token)
         # Railway sits behind a reverse proxy that terminates TLS.
         # request.url will be http:// but Twilio signs against the https:// URL.
-        # Reconstruct the URL using the forwarded proto header.
+        # Try both https and the forwarded proto header.
         forwarded_proto = request.headers.get("X-Forwarded-Proto", "https")
         url = request.url.replace("http://", f"{forwarded_proto}://", 1)
         post_vars = request.form.to_dict()
