@@ -358,17 +358,16 @@ def _check_conflicts_and_store_event(
         family_member = event_data.get("family_member", sender_name)
         event_name = event_data.get("event_name", "Untitled event")
 
-        # Check for conflicts
+        # Check for conflicts — direct date-based query (no RPC needed)
         conflict_msg = None
         try:
-            conflicts = db.rpc(
-                "check_schedule_conflicts",
-                {"check_date": event_date, "check_member": None},
-            ).execute()
+            conflicts_result = db.table("family_events").select(
+                "event_name, event_time, family_member"
+            ).eq("event_date", event_date).execute()
 
-            if conflicts.data:
+            if conflicts_result.data:
                 conflict_lines = []
-                for c in conflicts.data:
+                for c in conflicts_result.data:
                     time_str = c.get("event_time", "")
                     time_display = f" at {time_str}" if time_str else ""
                     conflict_lines.append(
@@ -382,16 +381,14 @@ def _check_conflicts_and_store_event(
         except Exception as exc:
             logger.warning("Conflict check failed (table may not exist yet): %s", exc)
 
-        # Store the event
+        # Store the event — only columns that actually exist in the live table
         row = {
             "family_member": family_member,
             "event_name": event_name,
             "event_date": event_date,
             "event_time": event_time if event_time else None,
             "location": event_data.get("location", ""),
-            "recurring": False,
-            "recurrence_pattern": "",
-            "requirements": event_data.get("requirements", []),
+            "recurring": "none",
             "notes": "",
             "source": "whatsapp",
         }
@@ -1544,14 +1541,188 @@ def _send_daily_expiry_alerts() -> None:
         logger.error("Daily expiry alert job failed: %s", exc)
 
 
+# ---------------------------------------------------------------------------
+# Google Calendar → WhatsApp two-way sync
+# ---------------------------------------------------------------------------
+# In-memory set of Google Calendar event IDs already notified this session.
+# On restart the set is empty, so we rely on the look-back window (48 h) being
+# short enough that truly new events still get notified while avoiding spam for
+# events that were created long ago.  A Supabase-backed persistent store would
+# be needed for a production deployment; the in-memory set is sufficient for a
+# single-process deployment that restarts infrequently.
+_gcal_notified_event_ids: set[str] = set()
+
+
+def _poll_google_calendar_and_notify() -> None:
+    """Poll Google Calendar for new/updated events and notify family members via WhatsApp.
+
+    Runs on a background scheduler (every 15 minutes by default).  For each
+    event found in the next 30 days that has not already been notified:
+      1. Stores the event as a memory in Supabase (family_id=family-dan).
+      2. Sends a WhatsApp notification to all registered family members.
+
+    Event IDs are tracked in ``_gcal_notified_event_ids`` to prevent duplicate
+    notifications within a single process lifetime.  On first run after a
+    restart, events from the past 48 hours are also checked so that any events
+    added while the process was down are not silently missed.
+    """
+    global _gcal_notified_event_ids
+    try:
+        from datetime import datetime, timedelta, timezone
+        from . import google_calendar
+
+        now_utc = datetime.now(timezone.utc)
+        # Look back 48 h on first run (set is empty) so we catch events added
+        # while the process was offline; otherwise only look forward.
+        if _gcal_notified_event_ids:
+            time_min = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        else:
+            time_min = (now_utc - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        time_max = (now_utc + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        events = google_calendar.get_events(time_min=time_min, time_max=time_max, max_results=50)
+        if not events:
+            logger.debug("Google Calendar poll: no events found in window %s – %s", time_min, time_max)
+            return
+
+        new_events = [e for e in events if e.get("id") and e["id"] not in _gcal_notified_event_ids]
+        if not new_events:
+            logger.debug("Google Calendar poll: %d events found, all already notified", len(events))
+            return
+
+        logger.info("Google Calendar poll: %d new event(s) to process", len(new_events))
+
+        # Fetch all active family members for notifications
+        db_client = brain._supabase
+        family_phones: list[tuple[str, str]] = []  # list of (phone, name)
+        if db_client:
+            try:
+                members_result = db_client.table("whatsapp_members").select(
+                    "phone, name, family_id"
+                ).execute()
+                family_phones = [
+                    (row["phone"], row.get("name", "Family Member"))
+                    for row in (members_result.data or [])
+                    if row.get("phone")
+                ]
+            except Exception as exc:
+                logger.warning("GCal sync: could not fetch family members: %s", exc)
+
+        # Twilio client for WhatsApp notifications
+        twilio_client = None
+        try:
+            from twilio.rest import Client as TwilioClient
+            _s = get_settings()
+            if _s.twilio_account_sid and _s.twilio_auth_token:
+                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+        except Exception as exc:
+            logger.warning("GCal sync: could not initialise Twilio client: %s", exc)
+
+        for event in new_events:
+            event_id = event["id"]
+            summary = event.get("summary") or "(no title)"
+            start_raw = event.get("start", "")
+            end_raw = event.get("end", "")
+            description = event.get("description", "")
+            location = event.get("location", "")
+
+            # Parse start into a human-readable date + time
+            try:
+                if "T" in start_raw:
+                    # Timed event — strip timezone suffix for fromisoformat compat
+                    start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+                    date_str = start_dt.strftime("%d %B %Y")
+                    time_str = start_dt.strftime("%H:%M")
+                else:
+                    # All-day event
+                    from datetime import date as _date
+                    start_dt_date = _date.fromisoformat(start_raw)
+                    date_str = start_dt_date.strftime("%d %B %Y")
+                    time_str = ""
+            except Exception:
+                date_str = start_raw
+                time_str = ""
+
+            # 1. Store as a memory in Supabase
+            try:
+                content_parts = [f"Google Calendar event: {summary} on {date_str}"]
+                if time_str:
+                    content_parts.append(f"at {time_str}")
+                if location:
+                    content_parts.append(f"at {location}")
+                if description:
+                    content_parts.append(f"— {description[:200]}")
+                memory_content = " ".join(content_parts)
+
+                embedding = brain.generate_embedding(memory_content)
+                brain.store_memory(
+                    content=memory_content,
+                    embedding=embedding,
+                    metadata={
+                        "source": "google_calendar",
+                        "gcal_event_id": event_id,
+                        "event_name": summary,
+                        "event_date": start_raw[:10] if start_raw else "",
+                        "event_time": time_str,
+                        "location": location,
+                        "tags": ["calendar", "event"],
+                        "category": "reference",
+                    },
+                    family_id="family-dan",
+                )
+                logger.info("GCal sync: stored memory for event '%s' (%s)", summary, event_id)
+            except Exception as exc:
+                logger.warning("GCal sync: failed to store memory for event '%s': %s", summary, exc)
+
+            # 2. Send WhatsApp notification to all family members
+            if twilio_client and family_phones:
+                time_display = f" at {time_str}" if time_str else ""
+                location_display = f" ({location})" if location else ""
+                notification_body = (
+                    f"\U0001f4c5 New calendar event: {summary}\n"
+                    f"📆 {date_str}{time_display}{location_display}"
+                )
+                _s = get_settings()
+                for phone, member_name in family_phones:
+                    try:
+                        twilio_client.messages.create(
+                            from_=_s.twilio_whatsapp_from,
+                            to=f"whatsapp:{phone}",
+                            body=notification_body,
+                        )
+                        logger.info(
+                            "GCal sync: WhatsApp notification sent to %s (%s) for event '%s'",
+                            member_name, phone, summary,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "GCal sync: failed to notify %s (%s): %s", member_name, phone, exc
+                        )
+            else:
+                logger.debug(
+                    "GCal sync: skipping WhatsApp notification for '%s' "
+                    "(Twilio not configured or no family members)",
+                    summary,
+                )
+
+            # Mark as notified regardless of notification success to avoid
+            # re-processing on the next poll cycle
+            _gcal_notified_event_ids.add(event_id)
+
+    except Exception as exc:
+        logger.error("Google Calendar poll job failed: %s", exc, exc_info=True)
+
+
 def main() -> None:
     """Start the Flask server for the WhatsApp capture layer."""
     port = int(os.environ.get("PORT", "8080"))
     logger.info("Starting Family Brain WhatsApp capture layer on port %d…", port)
-    # Start daily expiry alert scheduler (runs at 8am every day)
+    # Start background schedulers
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         alert_scheduler = BackgroundScheduler()
+
+        # Daily expiry alerts (runs at 08:00 every day)
         alert_scheduler.add_job(
             _send_daily_expiry_alerts,
             trigger="cron",
@@ -1559,10 +1730,23 @@ def main() -> None:
             minute=0,
             id="daily_expiry_alerts",
         )
+
+        # Google Calendar → WhatsApp two-way sync (runs every 15 minutes)
+        alert_scheduler.add_job(
+            _poll_google_calendar_and_notify,
+            trigger="interval",
+            minutes=15,
+            id="gcal_sync",
+            next_run_time=__import__("datetime").datetime.now(),  # run immediately on startup
+        )
+
         alert_scheduler.start()
-        logger.info("Daily expiry alert scheduler started (runs at 08:00 daily)")
+        logger.info(
+            "Schedulers started: daily expiry alerts (08:00), "
+            "Google Calendar sync (every 15 min)"
+        )
     except Exception as exc:
-        logger.warning("Could not start alert scheduler: %s", exc)
+        logger.warning("Could not start schedulers: %s", exc)
     # Use threaded=True so concurrent Twilio webhooks are handled correctly
     app.run(host="0.0.0.0", port=port, threaded=True)
 
