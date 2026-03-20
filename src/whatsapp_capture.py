@@ -851,8 +851,13 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
         if any(word in text.lower() for word in ["end", "ends", "ending"]):
             synonyms.extend(["expiry", "expires"])
         
+        # For broad inventory-style queries ("what X do I have", "list my X"), use lower threshold and higher count
+        broad_query_words = ("what", "list", "all", "how many", "do i have", "my cars", "my vehicles", "my policies", "my accounts")
+        is_broad_query = any(w in text.lower() for w in broad_query_words)
+        _threshold = 0.2 if is_broad_query else 0.3
+        _count = 15 if is_broad_query else 8
         expanded_query = text + " " + " ".join(synonyms)
-        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5, family_id=family_id)
+        results = brain.semantic_search(expanded_query, match_threshold=_threshold, match_count=_count, family_id=family_id)
 
         reply_text = ""
 
@@ -916,12 +921,19 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 except Exception as exc:
                     logger.warning("Web enrichment failed (non-fatal): %s", exc)
 
+            from datetime import date as _date
+            today_str = _date.today().strftime("%d %B %Y")
             prompt = (
                 f"You are Family Brain, a personal AI assistant for the {family_name} family. "
                 f"The person asking this question is {family_name}. "
+                f"Today's date is {today_str}. "
                 "Answer the user's question based on the stored memories below. "
                 "Do NOT invent details that are not in the memories or web results. "
                 "If the memories contain conflicting information, use the most specific and detailed one. "
+                "If the question asks about ALL items of a type (e.g. 'what cars do I have', 'list my policies'), "
+                "make sure to include EVERY relevant item found in the memories, not just the first one. "
+                "If any stored item has a date that matches or is close to today's date (e.g. contract end, renewal, expiry), "
+                "proactively flag this as time-sensitive at the start of your answer. "
                 "If web search results are provided, you may use them to supplement missing contact details "
                 "(phone numbers, emails, opening hours) — but clearly indicate these came from a web search, not stored memory. "
                 "If information is genuinely missing and not found online, say so and offer to store it. "
