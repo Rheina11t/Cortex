@@ -330,20 +330,17 @@ def semantic_search(
     db, _ = _require_init()
 
     query_embedding = generate_embedding(query)
-    result = db.rpc(
-        "match_memories",
-        {
-            "query_embedding": query_embedding,
-            "match_threshold": match_threshold,
-            "match_count": match_count,
-        },
-    ).execute()
+    rpc_params: dict[str, Any] = {
+        "query_embedding": query_embedding,
+        "match_threshold": match_threshold,
+        "match_count": match_count,
+    }
+    if family_id and family_id != "default":
+        rpc_params["filter_family_id"] = family_id
+    result = db.rpc("match_memories", rpc_params).execute()
     
     results = result.data or []
-    if family_id and family_id != "default":
-        results = [r for r in results if r.get("metadata", {}).get("family_id") == family_id]
-        
-    logger.info("Semantic search returned %d results", len(results))
+    logger.info("Semantic search returned %d results (family_id=%s)", len(results), family_id or "all")
     return results
 
 
