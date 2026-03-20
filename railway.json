@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python -m src.telegram_capture",
+    "startCommand": "python -m src.whatsapp_capture",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
