@@ -44,6 +44,9 @@ slack-bolt>=1.18.0
 twilio>=9.0.0
 flask>=3.0.0
 
+# Stripe payment integration (onboarding backend)
+stripe>=8.0.0
+
 # PDF text extraction (pdfplumber, used by WhatsApp and Telegram capture layers)
 pdfplumber>=0.10.0
 

@@ -81,15 +81,66 @@ else:
     logger.info("No WhatsApp family members configured — handler is open to all senders.")
 
 
+# Cache for DB-based phone -> (family_name, family_id) lookups
+_phone_cache: dict[str, tuple[str, str]] = {}
+
+
+def _lookup_phone_in_db(phone_number: str) -> Optional[tuple[str, str]]:
+    """Look up a phone number in the whatsapp_members Supabase table.
+    Returns (family_name, family_id) or None if not found.
+    Caches results in memory to avoid repeated DB calls.
+    """
+    # Normalise: strip 'whatsapp:' prefix for DB lookup
+    normalised = phone_number.replace("whatsapp:", "").strip()
+    cache_key = normalised
+    if cache_key in _phone_cache:
+        return _phone_cache[cache_key]
+    try:
+        from supabase import create_client as _create_client
+        _sb = _create_client(
+            os.environ.get("SUPABASE_URL", ""),
+            os.environ.get("SUPABASE_SERVICE_KEY", ""),
+        )
+        result = _sb.table("whatsapp_members").select("name,family_id").eq("phone", normalised).limit(1).execute()
+        if result.data:
+            row = result.data[0]
+            name = row.get("name") or "Family Member"
+            family_id = row.get("family_id") or "default"
+            _phone_cache[cache_key] = (name, family_id)
+            return (name, family_id)
+    except Exception as exc:
+        logger.warning("DB phone lookup failed for %s: %s", phone_number, exc)
+    return None
+
+
 def _get_family_name(phone_number: str) -> Optional[str]:
     """Return the family member name for a WhatsApp number, or None if not authorised.
 
-    When no family members are configured the handler is open to everyone and
-    returns "Unknown" so that the caller can still tag the memory.
+    Checks env-var config first (for existing single-family deployments),
+    then falls back to the whatsapp_members Supabase table (for multi-tenant).
+    When no family members are configured at all, returns 'Unknown' (open mode).
     """
-    if not FAMILY_MEMBERS:
-        return "Unknown"
-    return FAMILY_MEMBERS.get(phone_number)
+    # 1. Check env-var registry (backward compat for single-family deployments)
+    if FAMILY_MEMBERS:
+        return FAMILY_MEMBERS.get(phone_number)
+    # 2. Check Supabase whatsapp_members table (multi-tenant)
+    db_result = _lookup_phone_in_db(phone_number)
+    if db_result:
+        return db_result[0]
+    # 3. Open mode — no auth configured
+    return "Unknown"
+
+
+def _get_family_id_for_phone(phone_number: str) -> str:
+    """Return the family_id for a phone number.
+    Falls back to settings.family_id for single-family deployments.
+    """
+    # Check Supabase first
+    db_result = _lookup_phone_in_db(phone_number)
+    if db_result:
+        return db_result[1]
+    # Fall back to env-var family_id
+    return settings.family_id
 
 
 # ---------------------------------------------------------------------------
@@ -780,6 +831,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
     twiml = MessagingResponse()
     logger.info("Handling message as a query: %s", text)
     family_name = _get_family_name(from_number) or "Unknown"
+    family_id = _get_family_id_for_phone(from_number)
 
     try:
         # Step 1: Expand query with synonyms and perform semantic search
@@ -792,7 +844,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             synonyms.extend(["expiry", "expires"])
         
         expanded_query = text + " " + " ".join(synonyms)
-        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5, family_id=settings.family_id)
+        results = brain.semantic_search(expanded_query, match_threshold=0.3, match_count=5, family_id=family_id)
 
         reply_text = ""
 
@@ -975,6 +1027,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
     """Process a plain text WhatsApp message, routing to query or capture."""
+    _family_id = _get_family_id_for_phone(from_number)
     if not text:
         twiml = MessagingResponse()
         twiml.message(
@@ -1010,7 +1063,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             content=cleaned_content,
             embedding=embedding,
             metadata=extracted,
-            family_id=settings.family_id,
+            family_id=_family_id,
         )
         memory_id = record.get("id", "n/a")
         tags: list[str] = extracted.get("tags", [])
@@ -1063,11 +1116,11 @@ def _handle_media_message(
     from_number: str,
 ) -> Response:
     """Process a WhatsApp message that contains an image or PDF attachment.
-
     Downloads the media from Twilio (authenticated), runs OCR or PDF
     extraction, then stores the result via the same brain pipeline used
     by the Telegram capture layer.
     """
+    _family_id = _get_family_id_for_phone(from_number)
     twiml = MessagingResponse()
     logger.info(
         "Processing media from %s (%s): mime=%s", family_name, from_number, mime_type
@@ -1178,7 +1231,7 @@ def _handle_media_message(
             content=enriched_content,
             embedding=embedding,
             metadata=metadata,
-            family_id=settings.family_id,
+            family_id=_family_id,
         )
         memory_id = record.get("id", "n/a")
 
