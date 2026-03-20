@@ -63,6 +63,16 @@ brain.init(settings)
 # ---------------------------------------------------------------------------
 _conversation_history: dict[int, list[dict]] = {}
 
+# ---------------------------------------------------------------------------
+# Photo burst buffer — stitch multiple photos sent in quick succession
+# ---------------------------------------------------------------------------
+import asyncio as _asyncio
+import time as _time
+
+# Maps user_id -> {"bytes": [bytes, ...], "updates": [Update, ...], "task": asyncio.Task, "ts": float}
+_photo_burst_buffer: dict[int, dict] = {}
+_PHOTO_BURST_WINDOW = 20  # seconds to wait for more photos before processing
+
 
 # ---------------------------------------------------------------------------
 # Family member registry
@@ -738,8 +748,66 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             pass  # give up silently if we can't even send the error
 
 
+async def _process_photo_burst(user_id: int, family_name: str) -> None:
+    """Wait for the burst window to close, then process all buffered photos as one document."""
+    await _asyncio.sleep(_PHOTO_BURST_WINDOW)
+    burst = _photo_burst_buffer.pop(user_id, None)
+    if not burst:
+        return
+    all_bytes: list[bytes] = burst["bytes"]
+    updates: list[Update] = burst["updates"]
+    first_update = updates[0]
+    page_count = len(all_bytes)
+    logger.info("Processing photo burst: %d pages from user %d (%s)", page_count, user_id, family_name)
+    try:
+        if page_count == 1:
+            # Single photo — process normally
+            await first_update.message.reply_text("📄 Processing photo...")
+            await _handle_image_document(
+                image_bytes=all_bytes[0],
+                file_name="image.jpg",
+                update=first_update,
+                family_name=family_name,
+                source="telegram-photo",
+            )
+        else:
+            # Multi-page burst — OCR all pages and stitch
+            await first_update.message.reply_text(
+                f"📄 Received {page_count} photos — stitching into one document..."
+            )
+            page_texts = []
+            for i, img_bytes in enumerate(all_bytes, 1):
+                text = _extract_text_from_image(img_bytes)
+                if text:
+                    page_texts.append(f"[Page {i}]\n{text}")
+                    logger.info("Page %d OCR: %d chars", i, len(text))
+                else:
+                    logger.warning("Page %d OCR returned no text", i)
+            if not page_texts:
+                await first_update.message.reply_text(
+                    "⚠️ Could not extract text from any of the photos. Try sending a PDF instead."
+                )
+                return
+            combined_text = "\n\n".join(page_texts)
+            logger.info("Stitched %d pages, total %d chars", len(page_texts), len(combined_text))
+            await _process_and_store_document(
+                extracted_text=combined_text,
+                file_name=f"document_{page_count}_pages.jpg",
+                update=first_update,
+                family_name=family_name,
+                source=f"telegram-photo-burst-{page_count}p",
+            )
+    except Exception as exc:
+        logger.error("Failed to process photo burst: %s", exc, exc_info=True)
+        err_msg = str(exc)[:200]
+        await first_update.message.reply_text(
+            f"⚠️ Failed to process photos.\n\n<code>{_escape(err_msg)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle photos: OCR and process as a document."""
+    """Handle photos: buffer bursts and stitch multi-page documents automatically."""
     if not update.message or not update.message.photo or not update.effective_user:
         return
 
@@ -749,8 +817,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("Ignoring photo from unauthorised user: %d", user.id)
         return
 
-    await update.message.reply_text("📄 Processing photo...")
-
+    # Download this photo immediately
     try:
         photo_file = await context.bot.get_file(update.message.photo[-1].file_id)
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -758,19 +825,38 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await photo_file.download_to_drive(file_path)
             with open(file_path, "rb") as f:
                 image_bytes = f.read()
-
-        await _handle_image_document(
-            image_bytes=image_bytes,
-            file_name=os.path.basename(file_path),
-            update=update,
-            family_name=family_name,
-            source="telegram-photo",
-        )
-
     except Exception as exc:
-        logger.error("Failed to process photo: %s", exc, exc_info=True)
-        err_msg = str(exc)[:200]
-        await update.message.reply_text(f"⚠️ Failed to process photo.\n\n<code>{_escape(err_msg)}</code>", parse_mode=ParseMode.HTML)
+        logger.error("Failed to download photo: %s", exc, exc_info=True)
+        await update.message.reply_text("⚠️ Failed to download photo. Please try again.")
+        return
+
+    uid = user.id
+    if uid in _photo_burst_buffer:
+        # Another photo arrived — add to buffer and reset the timer
+        _photo_burst_buffer[uid]["bytes"].append(image_bytes)
+        _photo_burst_buffer[uid]["updates"].append(update)
+        _photo_burst_buffer[uid]["task"].cancel()
+        page_count = len(_photo_burst_buffer[uid]["bytes"])
+        logger.info("Photo burst: added page %d for user %d", page_count, uid)
+        # Acknowledge the additional page
+        await update.message.reply_text(f"📄 Page {page_count} received — waiting for more...")
+    else:
+        # First photo — start the burst buffer
+        _photo_burst_buffer[uid] = {
+            "bytes": [image_bytes],
+            "updates": [update],
+            "ts": _time.time(),
+        }
+        await update.message.reply_text(
+            f"📄 Photo received — if this is a multi-page document, send the remaining pages now. "
+            f"I'll process them all together in {_PHOTO_BURST_WINDOW} seconds."
+        )
+        logger.info("Photo burst: started buffer for user %d", uid)
+
+    # (Re)schedule the processing task
+    loop = _asyncio.get_event_loop()
+    task = loop.create_task(_process_photo_burst(uid, family_name))
+    _photo_burst_buffer[uid]["task"] = task
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
