@@ -732,6 +732,472 @@ def health_check() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Kitchen Calendar — helper and routes
+# ---------------------------------------------------------------------------
+
+# Colour map for family members (CSS colour values)
+_MEMBER_COLOURS: dict[str, str] = {
+    "dan": "#2563EB",      # blue
+    "emma": "#A855F7",    # pink/purple
+    "izzy": "#16A34A",    # green
+    "edi": "#EA580C",     # orange
+    "family": "#6B7280",  # grey
+}
+_DEFAULT_COLOUR = "#6B7280"
+
+
+def _get_or_create_calendar_token(family_id: str) -> Optional[str]:
+    """Return the calendar_token for a family, generating one if absent."""
+    import secrets as _secrets
+    db = brain._supabase
+    if not db:
+        logger.error("calendar_token: no DB connection")
+        return None
+    try:
+        result = db.table("families").select("calendar_token").eq("family_id", family_id).limit(1).execute()
+        if result.data:
+            existing_token = result.data[0].get("calendar_token")
+            if existing_token:
+                return existing_token
+            # Generate a new token and save it
+            new_token = _secrets.token_urlsafe(16)
+            db.table("families").update({"calendar_token": new_token}).eq("family_id", family_id).execute()
+            logger.info("Generated calendar_token for family_id=%s", family_id)
+            return new_token
+        else:
+            # Family row doesn't exist yet — insert a minimal row
+            new_token = _secrets.token_urlsafe(16)
+            db.table("families").insert({
+                "family_id": family_id,
+                "calendar_token": new_token,
+                "primary_name": family_id,
+                "primary_phone": "",
+                "plan": "free",
+                "status": "active",
+            }).execute()
+            logger.info("Inserted families row with calendar_token for family_id=%s", family_id)
+            return new_token
+    except Exception as exc:
+        logger.error("_get_or_create_calendar_token failed: %s", exc)
+        return None
+
+
+def _build_calendar_events_json(family_id: str) -> str:
+    """Fetch family_events for current + next month and return a JSON array string."""
+    import json as _json
+    from datetime import date as _date, timedelta as _timedelta
+
+    db = brain._supabase
+    if not db:
+        return "[]"
+
+    today = _date.today()
+    # Start of current month
+    range_start = today.replace(day=1)
+    # End of next month
+    if today.month == 12:
+        range_end = _date(today.year + 1, 2, 1) - _timedelta(days=1)
+    else:
+        next_month = today.month + 1
+        year = today.year
+        if next_month > 12:
+            next_month = 1
+            year += 1
+        # End of the month after next
+        if next_month == 12:
+            range_end = _date(year + 1, 1, 1) - _timedelta(days=1)
+        else:
+            range_end = _date(year, next_month + 1, 1) - _timedelta(days=1)
+
+    try:
+        result = db.table("family_events") \
+            .select("id,title,event_name,event_date,event_time,end_date,end_time,family_member,notes,source") \
+            .eq("family_id", family_id) \
+            .gte("event_date", range_start.isoformat()) \
+            .lte("event_date", range_end.isoformat()) \
+            .order("event_date") \
+            .execute()
+    except Exception as exc:
+        logger.error("_build_calendar_events_json query failed: %s", exc)
+        return "[]"
+
+    events = []
+    for row in (result.data or []):
+        member_raw = (row.get("family_member") or "").strip()
+        member_lower = member_raw.lower()
+        colour = _MEMBER_COLOURS.get(member_lower, _DEFAULT_COLOUR)
+
+        # Prefer title, fall back to event_name
+        raw_title = (row.get("title") or row.get("event_name") or "Event").strip()
+        # Append member name in parentheses if set and not already in title
+        if member_raw and member_raw.lower() not in ("family", "") and member_raw.lower() not in raw_title.lower():
+            display_title = f"{raw_title} ({member_raw})"
+        else:
+            display_title = raw_title
+
+        event_date = row.get("event_date", "")
+        event_time = (row.get("event_time") or "").strip()
+        end_date = row.get("end_date") or ""
+        end_time = (row.get("end_time") or "").strip()
+
+        # Build ISO start
+        if event_time:
+            start_iso = f"{event_date}T{event_time}:00"
+        else:
+            start_iso = event_date
+
+        # Build ISO end
+        end_iso = ""
+        if end_date and end_time:
+            end_iso = f"{end_date}T{end_time}:00"
+        elif end_date:
+            end_iso = end_date
+        elif event_time and end_time:
+            end_iso = f"{event_date}T{end_time}:00"
+
+        ev: dict[str, Any] = {
+            "id": str(row.get("id", "")),
+            "title": display_title,
+            "start": start_iso,
+            "color": colour,
+            "extendedProps": {
+                "member": member_raw,
+                "notes": row.get("notes") or "",
+            },
+        }
+        if end_iso:
+            ev["end"] = end_iso
+
+        events.append(ev)
+
+    return _json.dumps(events, ensure_ascii=False)
+
+
+def _render_calendar_page(family_id: str, calendar_token: str) -> str:
+    """Return a self-contained HTML page for the kitchen calendar."""
+    events_json = _build_calendar_events_json(family_id)
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production.up.railway.app")
+    calendar_url = f"{base_url}/calendar/{calendar_token}"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Family Calendar</title>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+    }}
+
+    #header {{
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }}
+
+    #header h1 {{
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }}
+
+    #header .subtitle {{
+      font-size: 0.8rem;
+      opacity: 0.8;
+      margin-top: 2px;
+    }}
+
+    #legend {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 20px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+    }}
+
+    .legend-item {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }}
+
+    .legend-dot {{
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }}
+
+    #calendar-container {{
+      padding: 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }}
+
+    /* FullCalendar overrides */
+    .fc {{
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }}
+
+    .fc .fc-toolbar {{
+      padding: 14px 16px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+    }}
+
+    .fc .fc-toolbar-title {{
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #1e3a5f;
+    }}
+
+    .fc .fc-button {{
+      background: #2563eb !important;
+      border-color: #2563eb !important;
+      border-radius: 8px !important;
+      font-weight: 600 !important;
+      padding: 6px 14px !important;
+      font-size: 0.85rem !important;
+    }}
+
+    .fc .fc-button:hover {{
+      background: #1d4ed8 !important;
+      border-color: #1d4ed8 !important;
+    }}
+
+    .fc .fc-button-active {{
+      background: #1e40af !important;
+      border-color: #1e40af !important;
+    }}
+
+    .fc .fc-col-header-cell {{
+      background: #f1f5f9;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #475569;
+      padding: 8px 0;
+    }}
+
+    .fc .fc-daygrid-day-number {{
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #374151;
+      padding: 4px 8px;
+    }}
+
+    .fc .fc-day-today {{
+      background: #eff6ff !important;
+    }}
+
+    .fc .fc-day-today .fc-daygrid-day-number {{
+      background: #2563eb;
+      color: white;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 4px;
+    }}
+
+    .fc .fc-event {{
+      border-radius: 5px !important;
+      border: none !important;
+      padding: 2px 5px !important;
+      font-size: 0.78rem !important;
+      font-weight: 500 !important;
+      cursor: default !important;
+      margin-bottom: 2px !important;
+    }}
+
+    .fc .fc-event-title {{
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+
+    .fc .fc-daygrid-day-frame {{
+      min-height: 80px;
+    }}
+
+    /* Tooltip */
+    #tooltip {{
+      position: fixed;
+      background: rgba(15, 23, 42, 0.92);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      max-width: 240px;
+      pointer-events: none;
+      z-index: 9999;
+      display: none;
+      line-height: 1.5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }}
+
+    /* Mobile tweaks */
+    @media (max-width: 640px) {{
+      #header h1 {{ font-size: 1.2rem; }}
+      #calendar-container {{ padding: 8px; }}
+      .fc .fc-toolbar {{ flex-direction: column; gap: 8px; }}
+      .fc .fc-toolbar-title {{ font-size: 1rem; }}
+      .fc .fc-daygrid-day-frame {{ min-height: 60px; }}
+      .fc .fc-event {{ font-size: 0.7rem !important; }}
+    }}
+  </style>
+</head>
+<body>
+  <div id="header">
+    <div>
+      <h1>&#128197; Family Calendar</h1>
+      <div class="subtitle">Auto-refreshes every 5 minutes</div>
+    </div>
+  </div>
+
+  <div id="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#2563EB"></div><span>Dan</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#A855F7"></div><span>Emma</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#16A34A"></div><span>Izzy</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#EA580C"></div><span>Edi</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#6B7280"></div><span>Family</span>
+    </div>
+  </div>
+
+  <div id="calendar-container">
+    <div id="calendar"></div>
+  </div>
+
+  <div id="tooltip"></div>
+
+  <script>
+    var EVENTS = {events_json};
+
+    document.addEventListener('DOMContentLoaded', function () {{
+      var calendarEl = document.getElementById('calendar');
+      var tooltip = document.getElementById('tooltip');
+
+      var calendar = new FullCalendar.Calendar(calendarEl, {{
+        initialView: 'dayGridMonth',
+        headerToolbar: {{
+          left: 'prev,next today',
+          center: 'title',
+          right: ''
+        }},
+        events: EVENTS,
+        height: 'auto',
+        firstDay: 1,
+        eventDisplay: 'block',
+        dayMaxEvents: 4,
+        eventMouseEnter: function(info) {{
+          var props = info.event.extendedProps;
+          var lines = [];
+          lines.push('<strong>' + info.event.title + '</strong>');
+          if (info.event.start) {{
+            var d = info.event.start;
+            var timeStr = d.getHours() || d.getMinutes()
+              ? d.toLocaleTimeString([], {{hour:'2-digit', minute:'2-digit'}})
+              : '';
+            if (timeStr) lines.push('\u23f0 ' + timeStr);
+          }}
+          if (props.member) lines.push('\ud83d\udc64 ' + props.member);
+          if (props.notes) lines.push('\ud83d\udcdd ' + props.notes);
+          tooltip.innerHTML = lines.join('<br>');
+          tooltip.style.display = 'block';
+        }},
+        eventMouseLeave: function() {{
+          tooltip.style.display = 'none';
+        }},
+        eventDidMount: function(info) {{
+          // Make sure colour is applied
+          if (info.event.backgroundColor) {{
+            info.el.style.backgroundColor = info.event.backgroundColor;
+          }}
+        }}
+      }});
+
+      calendar.render();
+
+      // Move tooltip with mouse
+      document.addEventListener('mousemove', function(e) {{
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top = (e.clientY + 14) + 'px';
+      }});
+    }});
+
+    // Auto-refresh every 5 minutes
+    setTimeout(function() {{ location.reload(); }}, 5 * 60 * 1000);
+  </script>
+</body>
+</html>"""
+    return html
+
+
+@app.route("/calendar/<family_token>", methods=["GET"])
+def kitchen_calendar(family_token: str) -> Response:
+    """Read-only kitchen calendar page — no login required.
+
+    Looks up the family by calendar_token, fetches their events for the
+    current and next month, and returns a self-contained FullCalendar HTML page.
+    """
+    db = brain._supabase
+    if not db:
+        logger.error("kitchen_calendar: no DB connection")
+        return Response("<h1>Service unavailable</h1>", status=503, mimetype="text/html")
+
+    try:
+        result = db.table("families").select("family_id").eq("calendar_token", family_token).limit(1).execute()
+        if not result.data:
+            logger.warning("kitchen_calendar: unknown token %s", family_token)
+            return Response(
+                "<h1>Calendar not found</h1><p>This link is invalid or has expired.</p>",
+                status=404,
+                mimetype="text/html",
+            )
+        family_id = result.data[0]["family_id"]
+    except Exception as exc:
+        logger.error("kitchen_calendar: DB lookup failed: %s", exc)
+        return Response("<h1>Error</h1><p>Could not load calendar.</p>", status=500, mimetype="text/html")
+
+    try:
+        html = _render_calendar_page(family_id, family_token)
+        return Response(html, status=200, mimetype="text/html")
+    except Exception as exc:
+        logger.error("kitchen_calendar: render failed: %s", exc)
+        return Response("<h1>Error</h1><p>Could not render calendar.</p>", status=500, mimetype="text/html")
+
+
+# ---------------------------------------------------------------------------
 # Google Calendar OAuth Routes
 # ---------------------------------------------------------------------------
 @app.route("/gcal/connect", methods=["GET"])
@@ -1531,6 +1997,25 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         twiml = MessagingResponse()
         twiml.message("I've sent you a link to connect your Google Calendar.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # --- Kitchen Calendar Link Command ---
+    if text_lower in ("/calendar", "calendar", "show calendar", "family calendar"):
+        twiml = MessagingResponse()
+        try:
+            token = _get_or_create_calendar_token(_family_id)
+            if token:
+                base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production.up.railway.app")
+                calendar_url = f"{base_url}/calendar/{token}"
+                twiml.message(
+                    f"Here's your family calendar: {calendar_url}\n"
+                    "Bookmark this link \u2014 it always shows your latest events."
+                )
+            else:
+                twiml.message("\u26a0\ufe0f Sorry, I couldn't generate your calendar link right now. Please try again.")
+        except Exception as exc:
+            logger.error("Failed to generate calendar link: %s", exc)
+            twiml.message("\u26a0\ufe0f Sorry, something went wrong generating your calendar link.")
         return Response(str(twiml), mimetype="application/xml")
         
     # --- Auto-prompt for new users ---
