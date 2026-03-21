@@ -2294,10 +2294,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         connect_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         twiml = MessagingResponse()
         if connect_url:
-            twiml.message(f"To connect your Google Calendar, tap this link:
-{connect_url}
-
-This link expires in 1 hour.")
+            twiml.message(f"To connect your Google Calendar, tap this link:\n{connect_url}\n\nThis link expires in 1 hour.")
         else:
             twiml.message("⚠️ Sorry, I couldn't generate your calendar link right now. Please try again.")
         return Response(str(twiml), mimetype="application/xml")
