@@ -57,3 +57,4 @@ google-api-python-client>=2.0.0
 
 # Web search for proactive contact detail lookup
 ddgs>=6.0.0
+pytz>=2024.1

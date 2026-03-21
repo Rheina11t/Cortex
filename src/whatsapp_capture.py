@@ -31,7 +31,9 @@ import os
 import re
 import tempfile
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
+import hashlib
 from functools import wraps
 from typing import Any, Callable, Optional
 
@@ -1837,6 +1839,46 @@ def _handle_media_message(
     return Response(str(twiml), mimetype="application/xml")
 
 
+
+# ---------------------------------------------------------------------------
+# Briefing and Deduplication Helpers
+# ---------------------------------------------------------------------------
+def _is_quiet_hours() -> bool:
+    """Return True if current time in Europe/London is between 21:00 and 07:00."""
+    tz = pytz.timezone("Europe/London")
+    now = datetime.now(tz)
+    return now.hour >= 21 or now.hour < 7
+
+def _was_briefing_sent(family_id: str, briefing_type: str, content_hash: str, within_hours: int = 24) -> bool:
+    """Check if an identical briefing was sent recently."""
+    db = brain._supabase
+    if not db:
+        return False
+    try:
+        cutoff = datetime.now(pytz.UTC) - timedelta(hours=within_hours)
+        res = db.table("cortex_briefings").select("id").eq("family_id", family_id).eq("briefing_type", briefing_type).eq("content_hash", content_hash).gte("delivered_at", cutoff.isoformat()).limit(1).execute()
+        return bool(res.data)
+    except Exception as exc:
+        logger.warning("Failed to check briefing deduplication: %s", exc)
+        return False
+
+def _log_briefing(family_id: str, briefing_type: str, content_hash: str) -> None:
+    """Log a sent briefing to prevent duplicates."""
+    db = brain._supabase
+    if not db:
+        return
+    try:
+        db.table("cortex_briefings").insert({
+            "family_id": family_id,
+            "briefing_type": briefing_type,
+            "content_hash": content_hash
+        }).execute()
+    except Exception as exc:
+        logger.warning("Failed to log briefing: %s", exc)
+
+def _get_content_hash(text: str) -> str:
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -1900,6 +1942,15 @@ def _send_daily_expiry_alerts() -> None:
                 lines.append(f"• {d.strftime('%d %b %Y')} ({label}): {snippet[:120]}...")
             message = "\n".join(lines)
             # Send via Twilio
+            if _is_quiet_hours():
+                logger.debug("Skipping daily expiry alert for %s due to quiet hours", family_id)
+                continue
+                
+            content_hash = _get_content_hash(message)
+            if _was_briefing_sent(family_id, "expiry_alert", content_hash):
+                logger.debug("Skipping duplicate expiry alert for %s", family_id)
+                continue
+
             try:
                 from twilio.rest import Client as TwilioClient
                 twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
@@ -1909,6 +1960,7 @@ def _send_daily_expiry_alerts() -> None:
                     body=message,
                 )
                 logger.info("Daily expiry alert sent to %s (%d alerts)", primary_phone, len(unique_alerts))
+                _log_briefing(family_id, "expiry_alert", content_hash)
             except Exception as exc:
                 logger.warning("Failed to send daily alert to %s: %s", primary_phone, exc)
     except Exception as exc:
@@ -2085,21 +2137,43 @@ def _poll_google_calendar_and_notify() -> None:
                     event.get("organizer", {}).get("email", "") or
                     event.get("creator", {}).get("email", "")
                 )
-                for phone, member_name in family_phones:
-                    try:
-                        twilio_client.messages.create(
-                            from_=_s.twilio_whatsapp_from,
-                            to=f"whatsapp:{phone}",
-                            body=notification_body,
-                        )
-                        logger.info(
-                            "GCal sync: WhatsApp notification sent to %s (%s) for event '%s'",
-                            member_name, phone, summary,
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "GCal sync: failed to notify %s (%s): %s", member_name, phone, exc
-                        )
+                # Check if event is starting within 60 minutes
+                is_urgent = False
+                try:
+                    if start_raw and "T" in start_raw:
+                        start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+                        now_utc = datetime.now(pytz.UTC)
+                        if start_dt.tzinfo is None:
+                            start_dt = pytz.UTC.localize(start_dt)
+                        time_diff = (start_dt - now_utc).total_seconds() / 60
+                        if 0 <= time_diff <= 60:
+                            is_urgent = True
+                except Exception:
+                    pass
+
+                if _is_quiet_hours() and not is_urgent:
+                    logger.debug("Skipping GCal notification for %s due to quiet hours", event_family_id)
+                else:
+                    content_hash = _get_content_hash(notification_body)
+                    if _was_briefing_sent(event_family_id, "gcal_sync", content_hash):
+                        logger.debug("Skipping duplicate GCal notification for %s", event_family_id)
+                    else:
+                        for phone, member_name in family_phones:
+                            try:
+                                twilio_client.messages.create(
+                                    from_=_s.twilio_whatsapp_from,
+                                    to=f"whatsapp:{phone}",
+                                    body=notification_body,
+                                )
+                                logger.info(
+                                    "GCal sync: WhatsApp notification sent to %s (%s) for event '%s'",
+                                    member_name, phone, summary,
+                                )
+                            except Exception as exc:
+                                logger.warning(
+                                    "GCal sync: failed to notify %s (%s): %s", member_name, phone, exc
+                                )
+                        _log_briefing(event_family_id, "gcal_sync", content_hash)
             else:
                 logger.debug(
                     "GCal sync: skipping WhatsApp notification for '%s' "
@@ -2114,6 +2188,199 @@ def _poll_google_calendar_and_notify() -> None:
     except Exception as exc:
         logger.error("Google Calendar poll job failed: %s", exc, exc_info=True)
 
+
+
+# ---------------------------------------------------------------------------
+# Morning and Evening Briefings
+# ---------------------------------------------------------------------------
+def _send_morning_briefing() -> None:
+    """Send a daily morning summary of events and expiring items."""
+    if _is_quiet_hours():
+        logger.debug("Skipping morning briefing due to quiet hours")
+        return
+
+    try:
+        db = brain._supabase
+        if not db:
+            return
+            
+        family_id = "family-dan"
+        tz = pytz.timezone("Europe/London")
+        today_date = datetime.now(tz).date()
+        today_str = today_date.isoformat()
+
+        # Fetch today's events
+        events_res = db.table("family_events").select("*").eq("event_date", today_str).execute()
+        events = events_res.data or []
+        
+        # Sort events by time
+        events.sort(key=lambda x: x.get("event_time") or "23:59")
+
+        # Fetch expiring memories
+        memories = brain.list_recent_memories(limit=200, family_id=family_id)
+        expiring_today = []
+        
+        # Simple date extraction for expiry
+        import re as _re
+        date_patterns = [
+            (r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', lambda m: datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).date()),
+            (r'(\d{4})-(\d{2})-(\d{2})', lambda m: datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()),
+        ]
+        expiry_keywords = ('expir', 'renew', 'end', 'due', 'valid until', 'contract', 'mot', 'insurance', 'warranty', 'subscription')
+        
+        for mem in memories:
+            content = mem.get('content', '')
+            content_lower = content.lower()
+            if not any(kw in content_lower for kw in expiry_keywords):
+                continue
+            for pattern, parser in date_patterns:
+                for match in _re.finditer(pattern, content, _re.IGNORECASE):
+                    try:
+                        d = parser(match)
+                        if d == today_date:
+                            expiring_today.append(content[:100])
+                    except Exception:
+                        pass
+
+        # Compose message
+        lines = ["🌅 Good morning! Here's your family day:\n"]
+        lines.append("📅 Today's events:")
+        
+        if events:
+            for e in events:
+                time_str = e.get("event_time") or "All day"
+                name = e.get("event_name") or "Event"
+                member = e.get("family_member") or "Family"
+                lines.append(f"• [{time_str}] {name} ({member})")
+        else:
+            lines.append("No events today")
+            
+        if expiring_today:
+            lines.append("\n⚠️ Expiring today:")
+            for item in set(expiring_today):
+                lines.append(f"• {item}")
+                
+        lines.append("\nHave a great day! 💙")
+        message = "\n".join(lines)
+        
+        content_hash = _get_content_hash(message)
+        if _was_briefing_sent(family_id, "morning_briefing", content_hash):
+            logger.debug("Skipping duplicate morning briefing")
+            return
+            
+        # Fetch family members
+        members_res = db.table("whatsapp_members").select("phone").eq("family_id", family_id).execute()
+        phones = [row["phone"] for row in (members_res.data or []) if row.get("phone")]
+        
+        if not phones:
+            # Fallback to primary phone
+            fam_res = db.table("families").select("primary_phone").eq("family_id", family_id).execute()
+            if fam_res.data and fam_res.data[0].get("primary_phone"):
+                phones = [fam_res.data[0]["primary_phone"]]
+                
+        if phones:
+            from twilio.rest import Client as TwilioClient
+            _s = get_settings()
+            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+            
+            for phone in phones:
+                try:
+                    twilio_client.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=f"whatsapp:{phone}",
+                        body=message,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to send morning briefing to %s: %s", phone, exc)
+                    
+            _log_briefing(family_id, "morning_briefing", content_hash)
+            logger.info("Morning briefing sent to %d members", len(phones))
+
+    except Exception as exc:
+        logger.error("Morning briefing failed: %s", exc)
+
+def _send_evening_preview() -> None:
+    """Send a daily evening preview of tomorrow's events."""
+    if _is_quiet_hours():
+        logger.debug("Skipping evening preview due to quiet hours")
+        return
+
+    try:
+        db = brain._supabase
+        if not db:
+            return
+            
+        family_id = "family-dan"
+        tz = pytz.timezone("Europe/London")
+        tomorrow_date = datetime.now(tz).date() + timedelta(days=1)
+        tomorrow_str = tomorrow_date.isoformat()
+
+        # Fetch tomorrow's events
+        events_res = db.table("family_events").select("*").eq("event_date", tomorrow_str).execute()
+        events = events_res.data or []
+        events.sort(key=lambda x: x.get("event_time") or "23:59")
+
+        # Compose message
+        lines = ["🌙 Evening update — here's tomorrow:\n"]
+        lines.append("📅 Tomorrow's events:")
+        
+        prep_tip = ""
+        if events:
+            for e in events:
+                time_str = e.get("event_time") or "All day"
+                name = e.get("event_name") or "Event"
+                member = e.get("family_member") or "Family"
+                lines.append(f"• [{time_str}] {name} ({member})")
+                
+                # Generate a simple prep tip for the first morning event
+                if not prep_tip and time_str != "All day" and time_str < "12:00":
+                    if "swim" in name.lower():
+                        prep_tip = f"💡 {member} has swimming at {time_str} — don't forget the kit!"
+                    elif "school" in name.lower() or "class" in name.lower():
+                        prep_tip = f"💡 {member} has {name} at {time_str} — bags packed?"
+        else:
+            lines.append("Nothing scheduled tomorrow")
+            
+        if prep_tip:
+            lines.append(f"\n{prep_tip}")
+            
+        lines.append("\nSleep well! 🌙")
+        message = "\n".join(lines)
+        
+        content_hash = _get_content_hash(message)
+        if _was_briefing_sent(family_id, "evening_preview", content_hash):
+            logger.debug("Skipping duplicate evening preview")
+            return
+            
+        # Fetch family members
+        members_res = db.table("whatsapp_members").select("phone").eq("family_id", family_id).execute()
+        phones = [row["phone"] for row in (members_res.data or []) if row.get("phone")]
+        
+        if not phones:
+            fam_res = db.table("families").select("primary_phone").eq("family_id", family_id).execute()
+            if fam_res.data and fam_res.data[0].get("primary_phone"):
+                phones = [fam_res.data[0]["primary_phone"]]
+                
+        if phones:
+            from twilio.rest import Client as TwilioClient
+            _s = get_settings()
+            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+            
+            for phone in phones:
+                try:
+                    twilio_client.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=f"whatsapp:{phone}",
+                        body=message,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to send evening preview to %s: %s", phone, exc)
+                    
+            _log_briefing(family_id, "evening_preview", content_hash)
+            logger.info("Evening preview sent to %d members", len(phones))
+
+    except Exception as exc:
+        logger.error("Evening preview failed: %s", exc)
 
 def main() -> None:
     """Start the Flask server for the WhatsApp capture layer."""
@@ -2140,6 +2407,26 @@ def main() -> None:
             minutes=15,
             id="gcal_sync",
             next_run_time=__import__("datetime").datetime.now(),  # run immediately on startup
+        )
+
+        # Morning Briefing (runs at 07:15 Europe/London)
+        alert_scheduler.add_job(
+            _send_morning_briefing,
+            trigger="cron",
+            hour=7,
+            minute=15,
+            timezone=pytz.timezone("Europe/London"),
+            id="morning_briefing",
+        )
+
+        # Evening Preview (runs at 18:30 Europe/London)
+        alert_scheduler.add_job(
+            _send_evening_preview,
+            trigger="cron",
+            hour=18,
+            minute=30,
+            timezone=pytz.timezone("Europe/London"),
+            id="evening_preview",
         )
 
         alert_scheduler.start()
