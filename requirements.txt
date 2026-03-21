@@ -58,3 +58,6 @@ google-api-python-client>=2.0.0
 # Web search for proactive contact detail lookup
 ddgs>=6.0.0
 pytz>=2024.1
+
+# PDF generation for 'If Anything Happens' emergency file feature
+reportlab>=4.0.0

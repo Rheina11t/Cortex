@@ -676,6 +676,109 @@ def _maybe_store_financial_details(
 
 
 # ---------------------------------------------------------------------------
+# Emergency category mapping
+# ---------------------------------------------------------------------------
+
+# Map document_type strings to emergency category numbers (1-10)
+_DOC_TYPE_TO_EMERGENCY_CATEGORY: dict[str, str] = {
+    # Category 1 — Legal & Personal Documents
+    "will": "1",
+    "lpa": "1",
+    "power_of_attorney": "1",
+    "passport": "1",
+    "birth_certificate": "1",
+    "marriage_certificate": "1",
+    "legal": "1",
+    "government_letter": "1",
+    "hmrc_letter": "1",
+    # Category 2 — Financial Accounts & Access
+    "bank_statement": "2",
+    "bank": "2",
+    "tax": "2",
+    "payslip": "2",
+    # Category 3 — Insurance Policies
+    "insurance": "3",
+    # Category 4 — Pensions & Investments
+    "pension": "4",
+    "pension_statement": "4",
+    "investment": "4",
+    "isa": "4",
+    # Category 5 — Bills, Debts & Regular Payments
+    "mortgage": "5",
+    "utility": "5",
+    "utility_bill": "5",
+    "subscription": "5",
+    "invoice": "5",
+    # Category 6 — Assets & Possessions
+    "property": "6",
+    "vehicle": "6",
+    "mot_certificate": "6",
+    "vehicle_finance": "6",
+    "contract_hire": "6",
+    "finance_agreement": "6",
+    # Category 7 — Contacts & Professionals
+    "contract": "7",
+    # Category 10 — Emergency Contacts & Family Details
+    "medical": "10",
+    "nhs": "10",
+    "prescription": "10",
+    "health": "10",
+    "warranty": "10",
+}
+
+# Category number to name mapping
+_EMERGENCY_CATEGORY_NAMES: dict[str, str] = {
+    "1": "Legal Docs",
+    "2": "Bank/Finance",
+    "3": "Insurance",
+    "4": "Pensions",
+    "5": "Bills/Debts",
+    "6": "Assets/Car",
+    "7": "Contacts",
+    "8": "Funeral Wishes",
+    "9": "Digital Legacy",
+    "10": "Family/Medical",
+}
+
+
+def _map_doc_type_to_emergency_category(doc_type: str, content: str = "") -> Optional[str]:
+    """Map a document_type string to an emergency category number (1-10), or None."""
+    dt = doc_type.lower().strip()
+    if dt in _DOC_TYPE_TO_EMERGENCY_CATEGORY:
+        return _DOC_TYPE_TO_EMERGENCY_CATEGORY[dt]
+    # Fuzzy match on content keywords
+    content_lower = content.lower()
+    if any(w in content_lower for w in ("will ", "lasting power", "lpa", "probate")):
+        return "1"
+    if any(w in content_lower for w in ("bank account", "sort code", "account number")):
+        return "2"
+    if any(w in content_lower for w in ("insurance", "policy number", "insurer", "premium")):
+        return "3"
+    if any(w in content_lower for w in ("pension", "isa", "investment", "annuity")):
+        return "4"
+    if any(w in content_lower for w in ("mortgage", "direct debit", "utility", "broadband", "subscription")):
+        return "5"
+    if any(w in content_lower for w in ("property", "v5", "mot", "vehicle", "car reg")):
+        return "6"
+    if any(w in content_lower for w in ("solicitor", "accountant", "gp", "dentist", "school", "executor")):
+        return "7"
+    if any(w in content_lower for w in ("funeral", "cremation", "burial", "organ donation")):
+        return "8"
+    if any(w in content_lower for w in ("social media", "crypto", "digital legacy", "password manager")):
+        return "9"
+    if any(w in content_lower for w in ("nhs", "allerg", "medication", "blood type", "medical")):
+        return "10"
+    return None
+
+
+# Per-phone state: track last stored memory_id for category update, and doc count
+_last_stored_memory: dict[str, str] = {}   # phone -> memory_id
+_doc_count: dict[str, int] = {}            # phone -> total docs stored this session
+# Per-phone pending category prompt: {phone: True} means we're waiting for a 1-10 reply
+_pending_category_prompt: dict[str, bool] = {}
+
+
+# ---------------------------------------------------------------------------
 # Twilio request validation decorator
 # ---------------------------------------------------------------------------
 def _validate_twilio_request(f: Callable) -> Callable:
@@ -1853,6 +1956,46 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
     family_id = _get_family_id_for_phone(from_number)
     text_lower = text.lower().strip()
 
+    # --- Handle pending emergency category prompt (user replies 1-10) ---
+    if _pending_category_prompt.get(from_number):
+        # Check if the reply is a number 1-10
+        import re as _re_cat
+        cat_match = _re_cat.match(r'^(10|[1-9])$', text_lower.strip())
+        if cat_match:
+            cat_num = cat_match.group(1)
+            memory_id = _last_stored_memory.get(from_number)
+            del _pending_category_prompt[from_number]
+            if memory_id:
+                db = brain._supabase
+                if db:
+                    try:
+                        # Fetch current metadata
+                        result = db.table("memories").select("metadata").eq("id", memory_id).limit(1).execute()
+                        if result.data:
+                            current_meta = result.data[0].get("metadata") or {}
+                            current_meta["emergency_category"] = cat_num
+                            db.table("memories").update({"metadata": current_meta}).eq("id", memory_id).execute()
+                            cat_name = _EMERGENCY_CATEGORY_NAMES.get(cat_num, cat_num)
+                            twiml.message(f"✅ Categorised under '{cat_name}' in your emergency file.")
+                            logger.info("Emergency category %s set on memory %s by %s", cat_num, memory_id, from_number)
+                        else:
+                            twiml.message("✅ Got it! (Memory not found to update, but noted.)")
+                    except Exception as exc:
+                        logger.warning("Failed to update emergency_category: %s", exc)
+                        twiml.message("✅ Got it! (Couldn't save category, but no worries.)")
+                else:
+                    twiml.message("✅ Got it!")
+            else:
+                twiml.message("✅ Got it!")
+            return Response(str(twiml), mimetype="application/xml")
+        elif text_lower.strip() in ("skip", "no", "cancel", "later"):
+            del _pending_category_prompt[from_number]
+            twiml.message("OK, skipped. You can always send /sos to generate your emergency file.")
+            return Response(str(twiml), mimetype="application/xml")
+        # If it's not a number or skip, fall through to normal handling
+        # (don't consume the message)
+        del _pending_category_prompt[from_number]
+
     # --- Confirm pending delete ---
     if from_number in _pending_deletes:
         pending = _pending_deletes[from_number]
@@ -1999,6 +2142,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         twiml.message("I've sent you a link to connect your Google Calendar.")
         return Response(str(twiml), mimetype="application/xml")
 
+    # --- SOS / Emergency File Command ---
+    if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
+        return _handle_sos_command(from_number, family_name, _family_id)
+
     # --- Kitchen Calendar Link Command ---
     if text_lower in ("/calendar", "calendar", "show calendar", "family calendar"):
         twiml = MessagingResponse()
@@ -2132,14 +2279,68 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                 event_info = f"\n📅 Added to calendar: {event_name} on {resolved_date}"
             if conflict_warning:
                 event_info += f"\n\n{conflict_warning}"
-        # Step 5: Build TwiML confirmation reply (clean, no raw IDs)
+        # Step 5: Classify into emergency category
+        emergency_cat = _map_doc_type_to_emergency_category(
+            extracted.get("category", "other"), cleaned_content
+        )
+        if emergency_cat:
+            try:
+                db = brain._supabase
+                if db:
+                    result = db.table("memories").select("metadata").eq("id", memory_id).limit(1).execute()
+                    if result.data:
+                        current_meta = result.data[0].get("metadata") or {}
+                        current_meta["emergency_category"] = emergency_cat
+                        db.table("memories").update({"metadata": current_meta}).eq("id", memory_id).execute()
+                        logger.info("Emergency category %s auto-set on memory %s", emergency_cat, memory_id)
+            except Exception as exc:
+                logger.warning("Failed to auto-set emergency_category on text memory: %s", exc)
+
+        # Track last stored memory and doc count for progress/category prompts
+        _last_stored_memory[from_number] = memory_id
+        _doc_count[from_number] = _doc_count.get(from_number, 0) + 1
+
+        # Step 6: Build TwiML confirmation reply (clean, no raw IDs)
         tags_str = ", ".join(tags) if tags else "none"
         reply = (
-            f"✅ Got it, {family_name}! Stored under {category}."
+            f"\u2705 Got it, {family_name}! Stored under {category}."
             f"{event_info}"
         )
         twiml.message(reply)
         logger.info("Text memory captured by %s (id=%s)", family_name, memory_id)
+
+        # Step 7: If category unclear, prompt user to clarify
+        if not emergency_cat:
+            _pending_category_prompt[from_number] = True
+            try:
+                from twilio.rest import Client as _TwilioClient
+                _s = get_settings()
+                if _s.twilio_account_sid and _s.twilio_auth_token:
+                    _tc = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                    _tc.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=from_number,
+                        body=(
+                            "\u2705 Saved! Which category is this for your emergency file?\n"
+                            "Reply with a number:\n"
+                            "1\ufe0f\u20e3 Legal Docs\n"
+                            "2\ufe0f\u20e3 Bank/Finance\n"
+                            "3\ufe0f\u20e3 Insurance\n"
+                            "4\ufe0f\u20e3 Pensions\n"
+                            "5\ufe0f\u20e3 Bills/Debts\n"
+                            "6\ufe0f\u20e3 Assets/Car\n"
+                            "7\ufe0f\u20e3 Contacts\n"
+                            "8\ufe0f\u20e3 Funeral Wishes\n"
+                            "9\ufe0f\u20e3 Digital Legacy\n"
+                            "\U0001f51f Family/Medical"
+                        ),
+                    )
+            except Exception as exc:
+                logger.warning("Failed to send category prompt: %s", exc)
+
+        # Step 8: Every 3rd document, check coverage and send progress update
+        if _doc_count.get(from_number, 0) % 3 == 0:
+            _send_emergency_progress_update(from_number, _family_id)
 
     except Exception as exc:
         logger.error("Failed to capture text memory: %s\n%s", exc, traceback.format_exc())
@@ -2295,6 +2496,25 @@ def _handle_media_message(
 
         financial_note = f"\n{financial_summary}" if financial_summary else ""
 
+        # --- Emergency category tagging ---
+        emergency_cat = _map_doc_type_to_emergency_category(doc_type, enriched_content)
+        if emergency_cat:
+            try:
+                db = brain._supabase
+                if db:
+                    result = db.table("memories").select("metadata").eq("id", memory_id).limit(1).execute()
+                    if result.data:
+                        current_meta = result.data[0].get("metadata") or {}
+                        current_meta["emergency_category"] = emergency_cat
+                        db.table("memories").update({"metadata": current_meta}).eq("id", memory_id).execute()
+                        logger.info("Emergency category %s auto-set on media memory %s", emergency_cat, memory_id)
+            except Exception as exc:
+                logger.warning("Failed to auto-set emergency_category on media memory: %s", exc)
+
+        # Track last stored memory and doc count
+        _last_stored_memory[from_number] = memory_id
+        _doc_count[from_number] = _doc_count.get(from_number, 0) + 1
+
         if source_type == "whatsapp-voice":
             transcript_preview = extracted_text[:200] + ("..." if len(extracted_text) > 200 else "")
             reply = (
@@ -2317,12 +2537,251 @@ def _handle_media_message(
             "Media memory captured by %s (type=%s, id=%s)", family_name, doc_type, memory_id
         )
 
+        # --- Category prompt if unclear ---
+        if not emergency_cat and source_type != "whatsapp-voice":
+            _pending_category_prompt[from_number] = True
+            try:
+                from twilio.rest import Client as _TwilioClient
+                _s = get_settings()
+                if _s.twilio_account_sid and _s.twilio_auth_token:
+                    _tc = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                    _tc.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=from_number,
+                        body=(
+                            "\u2705 Saved! Which category is this for your emergency file?\n"
+                            "Reply with a number:\n"
+                            "1\ufe0f\u20e3 Legal Docs\n"
+                            "2\ufe0f\u20e3 Bank/Finance\n"
+                            "3\ufe0f\u20e3 Insurance\n"
+                            "4\ufe0f\u20e3 Pensions\n"
+                            "5\ufe0f\u20e3 Bills/Debts\n"
+                            "6\ufe0f\u20e3 Assets/Car\n"
+                            "7\ufe0f\u20e3 Contacts\n"
+                            "8\ufe0f\u20e3 Funeral Wishes\n"
+                            "9\ufe0f\u20e3 Digital Legacy\n"
+                            "\U0001f51f Family/Medical"
+                        ),
+                    )
+            except Exception as exc:
+                logger.warning("Failed to send category prompt for media: %s", exc)
+
+        # --- Progress update every 3rd document ---
+        if _doc_count.get(from_number, 0) % 3 == 0:
+            _send_emergency_progress_update(from_number, _family_id)
+
     except Exception as exc:
         logger.error("Failed to process media: %s\n%s", exc, traceback.format_exc())
-        twiml.message(f"⚠️ Failed to process media: {exc}")
+        twiml.message(f"\u26a0\ufe0f Failed to process media: {exc}")
 
     return Response(str(twiml), mimetype="application/xml")
 
+
+
+# ---------------------------------------------------------------------------
+# Emergency file helpers: progress tracking and /sos command
+# ---------------------------------------------------------------------------
+
+def _send_emergency_progress_update(from_number: str, family_id: str) -> None:
+    """After every 3rd document, send a progress update on emergency file coverage."""
+    try:
+        db = brain._supabase
+        if not db:
+            return
+
+        # Fetch all memories for this family with an emergency_category set
+        result = db.table("memories") \
+            .select("metadata") \
+            .contains("metadata", {"family_id": family_id}) \
+            .order("created_at", desc=True) \
+            .limit(1000) \
+            .execute()
+
+        covered_categories: set[str] = set()
+        for row in (result.data or []):
+            meta = row.get("metadata") or {}
+            cat = meta.get("emergency_category")
+            if cat:
+                cat_str = str(cat)
+                if cat_str.isdigit() and 1 <= int(cat_str) <= 10:
+                    covered_categories.add(cat_str)
+
+        n_covered = len(covered_categories)
+        if n_covered >= 10:
+            return  # All sections covered, no need to prompt
+
+        missing_cats = [
+            _EMERGENCY_CATEGORY_NAMES.get(str(i), str(i))
+            for i in range(1, 11)
+            if str(i) not in covered_categories
+        ]
+        missing_str = ", ".join(missing_cats)
+
+        msg = (
+            f"\U0001f4cb You've covered {n_covered}/10 sections of your family emergency file. "
+            f"Missing: {missing_str}.\n"
+            "Send /sos when you're ready to generate your full 'If Anything Happens' PDF."
+        )
+
+        from twilio.rest import Client as _TwilioClient
+        _s = get_settings()
+        if _s.twilio_account_sid and _s.twilio_auth_token:
+            _tc = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+            _tc.messages.create(
+                from_=_s.twilio_whatsapp_from,
+                to=from_number,
+                body=msg,
+            )
+            logger.info("Emergency progress update sent to %s (%d/10 covered)", from_number, n_covered)
+    except Exception as exc:
+        logger.warning("Failed to send emergency progress update: %s", exc)
+
+
+def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> Response:
+    """Handle /sos, /emergency, /ifanythinghappens — generate and send the emergency PDF."""
+    twiml = MessagingResponse()
+    twiml.message("\u23f3 Generating your family emergency file... This may take a moment.")
+
+    try:
+        from twilio.rest import Client as _TwilioClient
+        _s = get_settings()
+        twilio_client = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+
+        # Step 1: Generate the PDF
+        from .emergency_pdf import generate_emergency_pdf, CATEGORIES
+        pdf_bytes = generate_emergency_pdf(family_id)
+
+        # Check if PDF has meaningful content
+        db = brain._supabase
+        item_count = 0
+        cat_count = 0
+        if db:
+            try:
+                result = db.table("memories") \
+                    .select("metadata") \
+                    .contains("metadata", {"family_id": family_id}) \
+                    .limit(1000) \
+                    .execute()
+                covered_cats: set[str] = set()
+                for row in (result.data or []):
+                    meta = row.get("metadata") or {}
+                    cat = meta.get("emergency_category")
+                    if cat:
+                        item_count += 1
+                        covered_cats.add(str(cat))
+                cat_count = len(covered_cats)
+            except Exception as exc:
+                logger.warning("SOS: failed to count items: %s", exc)
+
+        if item_count < 3:
+            twiml.message(
+                "\U0001f4cb Your emergency file is mostly empty. "
+                "Start by sending me key documents \u2014 insurance policies, NHS numbers, "
+                "passport details \u2014 and I'll build it up automatically."
+            )
+            return Response(str(twiml), mimetype="application/xml")
+
+        # Step 2: Save PDF to temp file
+        import tempfile
+        date_str = datetime.now().strftime("%Y%m%d")
+        storage_path = f"{family_id}/emergency_{date_str}.pdf"
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(pdf_bytes)
+            tmp_path = tmp.name
+
+        # Step 3: Upload to Supabase storage
+        signed_url = None
+        try:
+            if db:
+                # Ensure bucket exists
+                try:
+                    db.storage.create_bucket("emergency-pdfs", options={"public": False})
+                except Exception:
+                    pass  # Bucket already exists
+
+                # Upload the file
+                with open(tmp_path, "rb") as f:
+                    upload_result = db.storage.from_("emergency-pdfs").upload(
+                        path=storage_path,
+                        file=f,
+                        file_options={"content-type": "application/pdf", "upsert": "true"},
+                    )
+                logger.info("Emergency PDF uploaded to Supabase storage: %s", storage_path)
+
+                # Get signed URL (valid 24 hours = 86400 seconds)
+                signed_result = db.storage.from_("emergency-pdfs").create_signed_url(
+                    path=storage_path,
+                    expires_in=86400,
+                )
+                signed_url = signed_result.get("signedURL") or signed_result.get("signed_url")
+                if not signed_url and isinstance(signed_result, dict):
+                    # Try nested structure
+                    signed_url = signed_result.get("data", {}).get("signedURL")
+                logger.info("Signed URL generated for emergency PDF")
+        except Exception as exc:
+            logger.error("Failed to upload emergency PDF to Supabase: %s", exc)
+        finally:
+            try:
+                import os as _os
+                _os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        # Step 4: Send via Twilio (with media URL if available)
+        if signed_url:
+            try:
+                twilio_client.messages.create(
+                    from_=_s.twilio_whatsapp_from,
+                    to=from_number,
+                    media_url=[signed_url],
+                    body="Your family emergency file is attached.",
+                )
+                logger.info("Emergency PDF sent via Twilio media to %s", from_number)
+            except Exception as exc:
+                logger.warning("Failed to send PDF via Twilio media (will send text fallback): %s", exc)
+                # Fallback: send just the URL as text
+                twilio_client.messages.create(
+                    from_=_s.twilio_whatsapp_from,
+                    to=from_number,
+                    body=f"Your family emergency file is ready. Download it here (valid 24h): {signed_url}",
+                )
+        else:
+            # No signed URL — inform the user
+            twilio_client.messages.create(
+                from_=_s.twilio_whatsapp_from,
+                to=from_number,
+                body=(
+                    "\u26a0\ufe0f Your emergency file was generated but couldn't be uploaded. "
+                    "Please try again in a moment."
+                ),
+            )
+
+        # Step 5: Send follow-up summary
+        followup_msg = (
+            f"\u2705 Your emergency file is ready! "
+            f"{item_count} item{'s' if item_count != 1 else ''} across {cat_count} "
+            f"categor{'ies' if cat_count != 1 else 'y'}. "
+            "Keep it somewhere safe \u2014 and update it whenever something changes."
+        )
+        twilio_client.messages.create(
+            from_=_s.twilio_whatsapp_from,
+            to=from_number,
+            body=followup_msg,
+        )
+        logger.info(
+            "Emergency PDF flow complete for %s: %d items, %d categories",
+            family_name, item_count, cat_count,
+        )
+
+    except Exception as exc:
+        logger.error("SOS command failed: %s\n%s", exc, traceback.format_exc())
+        twiml.message(
+            "\u26a0\ufe0f Sorry, I couldn't generate your emergency file right now. "
+            "Please try again in a moment."
+        )
+
+    return Response(str(twiml), mimetype="application/xml")
 
 
 # ---------------------------------------------------------------------------
