@@ -410,6 +410,9 @@ def _check_conflicts_and_store_event(
                 )
                 if gcal_event_id:
                     logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
+                    # Pre-mark so the poll loop doesn't re-notify the sender about their own event
+                    _gcal_wa_pushed_event_ids.add(gcal_event_id)
+                    _gcal_notified_event_ids.add(gcal_event_id)
             except Exception as exc:
                 logger.warning("Google Calendar push failed: %s", exc)
 
@@ -1551,6 +1554,8 @@ def _send_daily_expiry_alerts() -> None:
 # be needed for a production deployment; the in-memory set is sufficient for a
 # single-process deployment that restarts infrequently.
 _gcal_notified_event_ids: set[str] = set()
+# Google Calendar event IDs pushed FROM WhatsApp — skip re-notification for these
+_gcal_wa_pushed_event_ids: set[str] = set()
 
 
 def _poll_google_calendar_and_notify() -> None:
@@ -1585,7 +1590,12 @@ def _poll_google_calendar_and_notify() -> None:
             logger.debug("Google Calendar poll: no events found in window %s – %s", time_min, time_max)
             return
 
-        new_events = [e for e in events if e.get("id") and e["id"] not in _gcal_notified_event_ids]
+        new_events = [
+            e for e in events
+            if e.get("id")
+            and e["id"] not in _gcal_notified_event_ids
+            and e["id"] not in _gcal_wa_pushed_event_ids
+        ]
         if not new_events:
             logger.debug("Google Calendar poll: %d events found, all already notified", len(events))
             return
@@ -1683,6 +1693,11 @@ def _poll_google_calendar_and_notify() -> None:
                     f"📆 {date_str}{time_display}{location_display}"
                 )
                 _s = get_settings()
+                # Determine the creator's phone from the event organiser field (if present)
+                creator_email = (
+                    event.get("organizer", {}).get("email", "") or
+                    event.get("creator", {}).get("email", "")
+                )
                 for phone, member_name in family_phones:
                     try:
                         twilio_client.messages.create(
