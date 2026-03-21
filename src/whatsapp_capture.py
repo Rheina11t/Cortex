@@ -1531,8 +1531,8 @@ def handle_whatsapp() -> Response:
 # ---------------------------------------------------------------------------
 # Google Calendar Connect Helper
 # ---------------------------------------------------------------------------
-def _send_gcal_connect_link(phone: str, family_id: str) -> None:
-    """Generate a one-time token and send a WhatsApp message with the connect link."""
+def _send_gcal_connect_link(phone: str, family_id: str) -> str:
+    """Generate a one-time token and return the connect URL. Also attempts to send via Twilio."""
     import secrets
     from datetime import datetime, timedelta, timezone
     
@@ -1542,7 +1542,7 @@ def _send_gcal_connect_link(phone: str, family_id: str) -> None:
     db = brain._supabase
     if not db:
         logger.error("Cannot send gcal connect link: no database connection")
-        return
+        return ""
         
     try:
         db.table("gcal_connect_tokens").insert({
@@ -1553,32 +1553,13 @@ def _send_gcal_connect_link(phone: str, family_id: str) -> None:
         }).execute()
         
         # Construct URL
-        from flask import request
-        try:
-            base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
-        except RuntimeError:
-            # If called outside request context
-            base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "http://localhost:8080")
-            
+        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app")
         connect_url = f"{base_url}/gcal/connect?token={token}"
-        
-        # Send WhatsApp message
-        from twilio.rest import Client as TwilioClient
-        _s = get_settings()
-        if _s.twilio_account_sid and _s.twilio_auth_token:
-            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-            message_body = (
-                f"To connect your Google Calendar, tap this link: {connect_url}\n\n"
-                f"This link expires in 1 hour."
-            )
-            twilio_client.messages.create(
-                from_=_s.twilio_whatsapp_from,
-                to=f"whatsapp:{phone}",
-                body=message_body,
-            )
-            logger.info("Sent Google Calendar connect link to %s", phone)
+        logger.info("Generated Google Calendar connect link for %s", phone)
+        return connect_url
     except Exception as exc:
-        logger.error("Failed to send gcal connect link: %s", exc)
+        logger.error("Failed to generate gcal connect link: %s", exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -2137,9 +2118,15 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     # --- Google Calendar Connect Command ---
     text_lower = text.lower().strip()
     if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar", "/connect", "/connect google", "connect google calendar") or text_lower.startswith("/connect cal") or text_lower.startswith("/setup cal"):
-        _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
+        connect_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         twiml = MessagingResponse()
-        twiml.message("I've sent you a link to connect your Google Calendar.")
+        if connect_url:
+            twiml.message(f"To connect your Google Calendar, tap this link:
+{connect_url}
+
+This link expires in 1 hour.")
+        else:
+            twiml.message("⚠️ Sorry, I couldn't generate your calendar link right now. Please try again.")
         return Response(str(twiml), mimetype="application/xml")
 
     # --- SOS / Emergency File Command ---
