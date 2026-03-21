@@ -188,6 +188,111 @@ def create_event(
         logger.error(f"An unexpected error occurred: {e}")
         return None
 
+def create_recurring_event(
+    family_id: str,
+    title: str,
+    start_datetime: str,
+    recurrence_rule: str,
+    recurrence_day: Optional[str] = None,
+    recurrence_end: Optional[str] = None,
+    recurrence_count: Optional[int] = None,
+    family_member: Optional[str] = None,
+) -> Optional[str]:
+    """Creates a recurring event on Google Calendar.
+
+    Args:
+        family_id: The family ID to look up the correct Google Calendar token.
+        title: The name of the event.
+        start_datetime: The start datetime of the first occurrence in ISO format (e.g. '2026-03-24T16:00:00').
+        recurrence_rule: One of "WEEKLY", "BIWEEKLY", "MONTHLY", "WEEKDAYS", "WEEKENDS".
+        recurrence_day: Day of week if weekly/biweekly (e.g. "TUESDAY").
+        recurrence_end: End date if mentioned (YYYY-MM-DD).
+        recurrence_count: Number of occurrences if mentioned.
+        family_member: The family member associated with the event.
+
+    Returns:
+        The Google Calendar event ID if successful, otherwise None.
+    """
+    creds = _get_credentials(family_id)
+    if not creds:
+        logger.warning("Skipping Google Calendar recurring event creation due to missing credentials.")
+        return None
+
+    try:
+        service = build("calendar", "v3", credentials=creds)
+
+        # Build RRULE string
+        rrule_parts = []
+        
+        rule_upper = recurrence_rule.upper()
+        if rule_upper == "WEEKLY":
+            rrule_parts.append("FREQ=WEEKLY")
+            if recurrence_day:
+                day_map = {"MONDAY": "MO", "TUESDAY": "TU", "WEDNESDAY": "WE", "THURSDAY": "TH", "FRIDAY": "FR", "SATURDAY": "SA", "SUNDAY": "SU"}
+                day_abbr = day_map.get(recurrence_day.upper())
+                if day_abbr:
+                    rrule_parts.append(f"BYDAY={day_abbr}")
+        elif rule_upper == "BIWEEKLY":
+            rrule_parts.append("FREQ=WEEKLY;INTERVAL=2")
+            if recurrence_day:
+                day_map = {"MONDAY": "MO", "TUESDAY": "TU", "WEDNESDAY": "WE", "THURSDAY": "TH", "FRIDAY": "FR", "SATURDAY": "SA", "SUNDAY": "SU"}
+                day_abbr = day_map.get(recurrence_day.upper())
+                if day_abbr:
+                    rrule_parts.append(f"BYDAY={day_abbr}")
+        elif rule_upper == "MONTHLY":
+            rrule_parts.append("FREQ=MONTHLY")
+        elif rule_upper == "WEEKDAYS":
+            rrule_parts.append("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
+        elif rule_upper == "WEEKENDS":
+            rrule_parts.append("FREQ=WEEKLY;BYDAY=SA,SU")
+        else:
+            logger.warning(f"Unknown recurrence rule: {recurrence_rule}")
+            return None
+
+        if recurrence_end:
+            # Format YYYYMMDD
+            end_str = recurrence_end.replace("-", "")
+            rrule_parts.append(f"UNTIL={end_str}T235959Z")
+        elif recurrence_count:
+            rrule_parts.append(f"COUNT={recurrence_count}")
+
+        rrule_string = f"RRULE:{';'.join(rrule_parts)}"
+
+        summary = title
+        if family_member:
+            summary = f"{title} ({family_member})"
+
+        start_dt = datetime.datetime.fromisoformat(start_datetime)
+        end_dt = start_dt + datetime.timedelta(hours=1)
+
+        event_body: dict[str, Any] = {
+            "summary": summary,
+            "start": {
+                "dateTime": start_dt.isoformat(),
+                "timeZone": "Europe/London",
+            },
+            "end": {
+                "dateTime": end_dt.isoformat(),
+                "timeZone": "Europe/London",
+            },
+            "recurrence": [rrule_string],
+        }
+
+        event = (
+            service.events()
+            .insert(calendarId=CALENDAR_ID, body=event_body)
+            .execute()
+        )
+        logger.info(f"Recurring event created: {event.get('htmlLink')}")
+        return event.get("id")
+
+    except HttpError as error:
+        logger.error(f"An error occurred with Google Calendar API: {error}")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+        return None
+
 def get_events(
     time_min: str,
     time_max: str,

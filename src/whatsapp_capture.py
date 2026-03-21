@@ -311,7 +311,12 @@ def _get_event_detection_prompt() -> str:
         '  "end_time": "<HH:MM or null — the END time, e.g. from \'11:00-14:00\' extract \'14:00\'>",\n'
         '  "location": "<location or empty string>",\n'
         '  "requirements": ["<any requirements or things to bring>"],\n'
-        '  "family_member": "<who this event is for, or \'family\' if shared>"\n'
+        '  "family_member": "<who this event is for, or \'family\' if shared>",\n'
+        '  "is_recurring": true/false,\n'
+        '  "recurrence_rule": "<one of: WEEKLY, BIWEEKLY, MONTHLY, WEEKDAYS, WEEKENDS, or null>",\n'
+        '  "recurrence_day": "<day of week if weekly/biweekly, e.g. TUESDAY, or null>",\n'
+        '  "recurrence_end": "<end date if mentioned (YYYY-MM-DD), or null if ongoing>",\n'
+        '  "recurrence_count": <number of occurrences if mentioned, e.g. 6, or null>\n'
         "}\n"
         f"Today's date is {datetime.now().strftime('%Y-%m-%d')}.\n"
         "Rules:\n"
@@ -320,6 +325,14 @@ def _get_event_detection_prompt() -> str:
         "- Parse relative dates like 'tomorrow', 'next Tuesday', 'this Friday' relative to today.\n"
         "- If a time range is given (e.g. '11:00-14:00' or 'from 11 to 2pm'), set event_time to the start and end_time to the end.\n"
         "- If no specific person is mentioned, default family_member to the sender's name.\n"
+        "- If the message describes a recurring event, extract recurrence details:\n"
+        "  - 'every Tuesday', 'every week on Monday' -> WEEKLY + day\n"
+        "  - 'every other week', 'fortnightly' -> BIWEEKLY + day\n"
+        "  - 'every month', 'monthly' -> MONTHLY\n"
+        "  - 'every weekday', 'Monday to Friday' -> WEEKDAYS\n"
+        "  - 'every weekend' -> WEEKENDS\n"
+        "  - 'until [date]', 'until July' -> recurrence_end\n"
+        "  - 'for 6 weeks' -> recurrence_count\n"
     )
 
 
@@ -403,30 +416,52 @@ def _check_conflicts_and_store_event(
             "source": "whatsapp",
         }
 
-        try:
-            result = db.table("family_events").insert(row).execute()
-            event_id = result.data[0].get("id") if result.data else None
+        is_recurring = event_data.get("is_recurring", False)
+        if is_recurring:
+            row["is_recurring"] = True
+            row["recurrence_rule"] = event_data.get("recurrence_rule")
+            row["recurrence_end"] = event_data.get("recurrence_end")
 
-            # Also push to Google Calendar
+        try:
+            # Also push to Google Calendar first to get the ID
+            gcal_event_id = None
             try:
                 from . import google_calendar
-                gcal_event_id = google_calendar.create_event(
-                    event_name=event_name,
-                    event_date=event_date,
-                    event_time=event_time if event_time else None,
-                    end_time=end_time,
-                    location=event_data.get("location", ""),
-                    description=f"Captured by {sender_name} via Family Brain",
-                    family_member=family_member,
-                    family_id=family_id,
-                )
+                if is_recurring:
+                    start_dt_str = f"{event_date}T{event_time if event_time else '00:00'}:00"
+                    gcal_event_id = google_calendar.create_recurring_event(
+                        family_id=family_id,
+                        title=event_name,
+                        start_datetime=start_dt_str,
+                        recurrence_rule=event_data.get("recurrence_rule", "WEEKLY"),
+                        recurrence_day=event_data.get("recurrence_day"),
+                        recurrence_end=event_data.get("recurrence_end"),
+                        recurrence_count=event_data.get("recurrence_count"),
+                        family_member=family_member,
+                    )
+                else:
+                    gcal_event_id = google_calendar.create_event(
+                        event_name=event_name,
+                        event_date=event_date,
+                        event_time=event_time if event_time else None,
+                        end_time=end_time,
+                        location=event_data.get("location", ""),
+                        description=f"Captured by {sender_name} via Family Brain",
+                        family_member=family_member,
+                        family_id=family_id,
+                    )
+                
                 if gcal_event_id:
                     logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
+                    row["google_event_id"] = gcal_event_id
                     # Pre-mark so the poll loop doesn't re-notify the sender about their own event
                     _gcal_wa_pushed_event_ids.add(gcal_event_id)
                     _gcal_notified_event_ids.add(gcal_event_id)
             except Exception as exc:
                 logger.warning("Google Calendar push failed: %s", exc)
+
+            result = db.table("family_events").insert(row).execute()
+            event_id = result.data[0].get("id") if result.data else None
 
             return event_id, conflict_msg
         except Exception as exc:
@@ -913,18 +948,26 @@ def _build_calendar_events_json(family_id: str) -> str:
             range_end = _date(year, next_month + 1, 1) - _timedelta(days=1)
 
     try:
+        # We need to fetch all recurring events regardless of start date,
+        # plus non-recurring events in the current range.
         result = db.table("family_events") \
-            .select("id,title,event_name,event_date,event_time,end_date,end_time,family_member,notes,source") \
+            .select("id,title,event_name,event_date,event_time,end_date,end_time,family_member,notes,source,is_recurring,recurrence_rule,recurrence_end") \
             .eq("family_id", family_id) \
-            .gte("event_date", range_start.isoformat()) \
-            .lte("event_date", range_end.isoformat()) \
-            .order("event_date") \
             .execute()
     except Exception as exc:
         logger.error("_build_calendar_events_json query failed: %s", exc)
         return "[]"
 
     events = []
+    
+    from dateutil.rrule import rrulestr
+    from datetime import datetime as _datetime
+    import pytz
+    
+    london_tz = pytz.timezone("Europe/London")
+    range_start_dt = london_tz.localize(_datetime.combine(range_start, _datetime.min.time()))
+    range_end_dt = london_tz.localize(_datetime.combine(range_end, _datetime.max.time()))
+
     for row in (result.data or []):
         member_raw = (row.get("family_member") or "").strip()
         member_lower = member_raw.lower()
@@ -939,39 +982,131 @@ def _build_calendar_events_json(family_id: str) -> str:
             display_title = raw_title
 
         event_date = row.get("event_date", "")
+        if not event_date:
+            continue
+            
         event_time = (row.get("event_time") or "").strip()
         end_date = row.get("end_date") or ""
         end_time = (row.get("end_time") or "").strip()
+        
+        is_recurring = row.get("is_recurring", False)
+        
+        if not is_recurring:
+            # Check if it falls in our range
+            ev_date_obj = _date.fromisoformat(event_date)
+            if not (range_start <= ev_date_obj <= range_end):
+                continue
+                
+            # Build ISO start
+            if event_time:
+                start_iso = f"{event_date}T{event_time}:00"
+            else:
+                start_iso = event_date
 
-        # Build ISO start
-        if event_time:
-            start_iso = f"{event_date}T{event_time}:00"
+            # Build ISO end
+            end_iso = ""
+            if end_date and end_time:
+                end_iso = f"{end_date}T{end_time}:00"
+            elif end_date:
+                end_iso = end_date
+            elif event_time and end_time:
+                end_iso = f"{event_date}T{end_time}:00"
+
+            ev: dict[str, Any] = {
+                "id": str(row.get("id", "")),
+                "title": display_title,
+                "start": start_iso,
+                "color": colour,
+                "extendedProps": {
+                    "member": member_raw,
+                    "notes": row.get("notes") or "",
+                },
+            }
+            if end_iso:
+                ev["end"] = end_iso
+
+            events.append(ev)
         else:
-            start_iso = event_date
-
-        # Build ISO end
-        end_iso = ""
-        if end_date and end_time:
-            end_iso = f"{end_date}T{end_time}:00"
-        elif end_date:
-            end_iso = end_date
-        elif event_time and end_time:
-            end_iso = f"{event_date}T{end_time}:00"
-
-        ev: dict[str, Any] = {
-            "id": str(row.get("id", "")),
-            "title": display_title,
-            "start": start_iso,
-            "color": colour,
-            "extendedProps": {
-                "member": member_raw,
-                "notes": row.get("notes") or "",
-            },
-        }
-        if end_iso:
-            ev["end"] = end_iso
-
-        events.append(ev)
+            # Handle recurring event expansion
+            rule_str = row.get("recurrence_rule")
+            if not rule_str:
+                continue
+                
+            # Build RRULE string for dateutil
+            rrule_parts = []
+            rule_upper = rule_str.upper()
+            if rule_upper == "WEEKLY":
+                rrule_parts.append("FREQ=WEEKLY")
+            elif rule_upper == "BIWEEKLY":
+                rrule_parts.append("FREQ=WEEKLY;INTERVAL=2")
+            elif rule_upper == "MONTHLY":
+                rrule_parts.append("FREQ=MONTHLY")
+            elif rule_upper == "WEEKDAYS":
+                rrule_parts.append("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
+            elif rule_upper == "WEEKENDS":
+                rrule_parts.append("FREQ=WEEKLY;BYDAY=SA,SU")
+            else:
+                # Try to parse as raw RRULE if it doesn't match our simple types
+                if rule_str.startswith("RRULE:"):
+                    rrule_parts.append(rule_str[6:])
+                else:
+                    rrule_parts.append(rule_str)
+                    
+            rec_end = row.get("recurrence_end")
+            if rec_end:
+                end_str = rec_end.replace("-", "")
+                rrule_parts.append(f"UNTIL={end_str}T235959Z")
+                
+            rrule_string = f"RRULE:{';'.join(rrule_parts)}"
+            
+            try:
+                # Parse start datetime
+                if event_time:
+                    dt_start = _datetime.fromisoformat(f"{event_date}T{event_time}")
+                else:
+                    dt_start = _datetime.fromisoformat(f"{event_date}T00:00:00")
+                    
+                dt_start = london_tz.localize(dt_start)
+                
+                # Generate occurrences
+                rule = rrulestr(rrule_string, dtstart=dt_start)
+                
+                # Get occurrences within our display range
+                # We add a bit of buffer to the range to ensure we catch edge cases
+                occurrences = rule.between(
+                    range_start_dt - _timedelta(days=1), 
+                    range_end_dt + _timedelta(days=1), 
+                    inc=True
+                )
+                
+                for i, occ in enumerate(occurrences):
+                    occ_date = occ.strftime("%Y-%m-%d")
+                    
+                    if event_time:
+                        start_iso = f"{occ_date}T{event_time}:00"
+                    else:
+                        start_iso = occ_date
+                        
+                    end_iso = ""
+                    if end_time:
+                        end_iso = f"{occ_date}T{end_time}:00"
+                        
+                    ev: dict[str, Any] = {
+                        "id": f"{row.get('id', '')}_{i}",
+                        "title": display_title,
+                        "start": start_iso,
+                        "color": colour,
+                        "extendedProps": {
+                            "member": member_raw,
+                            "notes": row.get("notes") or "",
+                        },
+                    }
+                    if end_iso:
+                        ev["end"] = end_iso
+                        
+                    events.append(ev)
+            except Exception as e:
+                logger.warning(f"Failed to expand recurring event {row.get('id')}: {e}")
 
     return _json.dumps(events, ensure_ascii=False)
 
@@ -1929,6 +2064,8 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
 _pending_deletes: dict[str, dict] = {}
 # Pending edit confirmations: {from_number: {memory_id, preview, new_content}}
 _pending_edits: dict[str, dict] = {}
+# Pending recurring event confirmations: {from_number: event_data_dict}
+_pending_recurring_events: dict[str, dict] = {}
 
 
 def _handle_memory_management(text: str, family_name: str, from_number: str) -> Response | None:
@@ -2011,6 +2148,42 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
         elif text_lower in ("no", "n", "cancel"):
             del _pending_edits[from_number]
             twiml.message("OK, cancelled. Nothing was changed.")
+            return Response(str(twiml), mimetype="application/xml")
+
+    # --- Confirm pending recurring event ---
+    if from_number in _pending_recurring_events:
+        if text_lower in ("yes", "yeah", "yep", "confirm", "ok", "correct", "y"):
+            event_data = _pending_recurring_events.pop(from_number)
+            event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name, family_id=family_id)
+            
+            event_name = event_data.get("event_name", "Event")
+            event_time = event_data.get("event_time", "")
+            time_str = f" at {event_time}" if event_time else ""
+            day_str = event_data.get("recurrence_day", "").capitalize()
+            rule = event_data.get("recurrence_rule", "")
+            
+            if rule == "WEEKLY" and day_str:
+                freq_str = f"every {day_str}"
+            elif rule == "BIWEEKLY" and day_str:
+                freq_str = f"every other {day_str}"
+            elif rule == "MONTHLY":
+                freq_str = "monthly"
+            elif rule == "WEEKDAYS":
+                freq_str = "every weekday"
+            elif rule == "WEEKENDS":
+                freq_str = "every weekend"
+            else:
+                freq_str = "recurring"
+                
+            reply = f"✅ Done! I've added {event_name} {freq_str}{time_str}. It'll show on your family calendar."
+            if conflict_warning:
+                reply += f"\n\n{conflict_warning}"
+                
+            twiml.message(reply)
+            return Response(str(twiml), mimetype="application/xml")
+        elif text_lower in ("no", "n", "cancel", "stop"):
+            del _pending_recurring_events[from_number]
+            twiml.message("No problem — I've cancelled that. Send me the corrected details whenever you're ready.")
             return Response(str(twiml), mimetype="application/xml")
 
     # --- List recent memories ---
@@ -2260,12 +2433,52 @@ This link expires in 1 hour.")
                 logger.info("Memory content updated with resolved date: %s", resolved_content)
             except Exception as exc:
                 logger.warning("Failed to update memory with resolved date: %s", exc)
-            # Store in family_events and push to Google Calendar
-            event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name, family_id=_family_id)
-            if event_id:
-                event_info = f"\n📅 Added to calendar: {event_name} on {resolved_date}"
-            if conflict_warning:
-                event_info += f"\n\n{conflict_warning}"
+            
+            # Check if it's a recurring event
+            if event_data.get("is_recurring"):
+                _pending_recurring_events[from_number] = event_data
+                
+                day_str = event_data.get("recurrence_day", "").capitalize()
+                rule = event_data.get("recurrence_rule", "")
+                
+                if rule == "WEEKLY" and day_str:
+                    freq_str = f"Every {day_str}"
+                elif rule == "BIWEEKLY" and day_str:
+                    freq_str = f"Every other {day_str}"
+                elif rule == "MONTHLY":
+                    freq_str = "Monthly"
+                elif rule == "WEEKDAYS":
+                    freq_str = "Every weekday"
+                elif rule == "WEEKENDS":
+                    freq_str = "Every weekend"
+                else:
+                    freq_str = "Recurring"
+                    
+                end_str = "Ongoing"
+                if event_data.get("recurrence_end"):
+                    end_str = f"Until {event_data.get('recurrence_end')}"
+                elif event_data.get("recurrence_count"):
+                    end_str = f"For {event_data.get('recurrence_count')} occurrences"
+                    
+                display_name = event_name
+                if event_member and event_member.lower() != "family":
+                    display_name = f"{event_name} ({event_member})"
+                    
+                reply = (
+                    f"📅 Got it! I'll add {display_name} as a recurring event:\n"
+                    f"🔁 {freq_str}{time_str}\n"
+                    f"{end_str}\n\n"
+                    f"Reply YES to confirm, or tell me if anything needs changing."
+                )
+                twiml.message(reply)
+                return Response(str(twiml), mimetype="application/xml")
+            else:
+                # Store in family_events and push to Google Calendar
+                event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name, family_id=_family_id)
+                if event_id:
+                    event_info = f"\n📅 Added to calendar: {event_name} on {resolved_date}"
+                if conflict_warning:
+                    event_info += f"\n\n{conflict_warning}"
         # Step 5: Classify into emergency category
         emergency_cat = _map_doc_type_to_emergency_category(
             extracted.get("category", "other"), cleaned_content
