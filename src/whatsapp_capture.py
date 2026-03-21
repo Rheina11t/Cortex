@@ -979,7 +979,7 @@ def _build_calendar_events_json(family_id: str) -> str:
 def _render_calendar_page(family_id: str, calendar_token: str) -> str:
     """Return a self-contained HTML page for the kitchen calendar."""
     events_json = _build_calendar_events_json(family_id)
-    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production.up.railway.app")
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app")
     calendar_url = f"{base_url}/calendar/{calendar_token}"
 
     html = f"""<!DOCTYPE html>
@@ -2152,7 +2152,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         try:
             token = _get_or_create_calendar_token(_family_id)
             if token:
-                base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production.up.railway.app")
+                base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app")
                 calendar_url = f"{base_url}/calendar/{token}"
                 twiml.message(
                     f"Here's your family calendar: {calendar_url}\n"
