@@ -350,6 +350,7 @@ def _detect_event(text: str, sender_name: str) -> Optional[dict[str, Any]]:
 def _check_conflicts_and_store_event(
     event_data: dict[str, Any],
     sender_name: str,
+    family_id: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     """Store an event and check for conflicts. Returns (event_id, conflict_warning)."""
     try:
@@ -415,6 +416,7 @@ def _check_conflicts_and_store_event(
                     location=event_data.get("location", ""),
                     description=f"Captured by {sender_name} via Family Brain",
                     family_member=family_member,
+                    family_id=family_id,
                 )
                 if gcal_event_id:
                     logger.info("Event pushed to Google Calendar: %s", gcal_event_id)
@@ -727,6 +729,183 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ---------------------------------------------------------------------------
+# Google Calendar OAuth Routes
+# ---------------------------------------------------------------------------
+@app.route("/gcal/connect", methods=["GET"])
+def gcal_connect() -> Response:
+    """Validates the one-time token and redirects to Google OAuth consent screen."""
+    token = request.args.get("token")
+    if not token:
+        return Response("<h1>Error</h1><p>Missing token.</p>", status=400)
+
+    db = brain._supabase
+    if not db:
+        return Response("<h1>Error</h1><p>Database connection failed.</p>", status=500)
+
+    # Validate token
+    try:
+        result = db.table("gcal_connect_tokens").select("*").eq("token", token).execute()
+        if not result.data:
+            return Response("<h1>Error</h1><p>Invalid or expired token.</p>", status=400)
+        
+        token_data = result.data[0]
+        from datetime import datetime, timezone
+        expires_at = datetime.fromisoformat(token_data["expires_at"].replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) > expires_at:
+            # Delete expired token
+            db.table("gcal_connect_tokens").delete().eq("token", token).execute()
+            return Response("<h1>Error</h1><p>Token has expired. Please request a new link.</p>", status=400)
+    except Exception as exc:
+        logger.error("Token validation failed: %s", exc)
+        return Response("<h1>Error</h1><p>Internal server error.</p>", status=500)
+
+    # Build Google OAuth URL
+    from google_auth_oauthlib.flow import Flow
+    from . import google_calendar
+    
+    client_config = {
+        "web": {
+            "client_id": google_calendar.CLIENT_ID,
+            "client_secret": google_calendar.CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
+    
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+    redirect_uri = os.environ.get("GOOGLE_CALENDAR_OAUTH_REDIRECT_URI", f"{base_url}/gcal/callback")
+    
+    try:
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=google_calendar.SCOPES,
+            redirect_uri=redirect_uri
+        )
+        
+        # Pass the token as state so we can retrieve it in the callback
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent",
+            state=token
+        )
+        
+        from flask import redirect
+        return redirect(auth_url)
+    except Exception as exc:
+        logger.error("Failed to build OAuth URL: %s", exc)
+        return Response("<h1>Error</h1><p>Failed to initiate Google login.</p>", status=500)
+
+
+@app.route("/gcal/callback", methods=["GET"])
+def gcal_callback() -> Response:
+    """Receives the OAuth callback, exchanges code for tokens, and saves to DB."""
+    error = request.args.get("error")
+    if error:
+        return Response(f"<h1>Error</h1><p>Google login failed: {error}</p>", status=400)
+        
+    code = request.args.get("code")
+    state_token = request.args.get("state")
+    
+    if not code or not state_token:
+        return Response("<h1>Error</h1><p>Missing code or state parameter.</p>", status=400)
+        
+    db = brain._supabase
+    if not db:
+        return Response("<h1>Error</h1><p>Database connection failed.</p>", status=500)
+        
+    # Validate token again
+    try:
+        result = db.table("gcal_connect_tokens").select("*").eq("token", state_token).execute()
+        if not result.data:
+            return Response("<h1>Error</h1><p>Invalid or expired session.</p>", status=400)
+            
+        token_data = result.data[0]
+        family_id = token_data["family_id"]
+        phone = token_data["phone"]
+    except Exception as exc:
+        logger.error("Token validation failed in callback: %s", exc)
+        return Response("<h1>Error</h1><p>Internal server error.</p>", status=500)
+        
+    # Exchange code for tokens
+    from google_auth_oauthlib.flow import Flow
+    from . import google_calendar
+    
+    client_config = {
+        "web": {
+            "client_id": google_calendar.CLIENT_ID,
+            "client_secret": google_calendar.CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
+    
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+    redirect_uri = os.environ.get("GOOGLE_CALENDAR_OAUTH_REDIRECT_URI", f"{base_url}/gcal/callback")
+    
+    try:
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=google_calendar.SCOPES,
+            redirect_uri=redirect_uri
+        )
+        
+        # We need to reconstruct the full URL to pass to fetch_token
+        # Railway might be behind a proxy, so ensure https
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "https")
+        auth_response = request.url.replace("http://", f"{forwarded_proto}://", 1)
+        
+        flow.fetch_token(authorization_response=auth_response)
+        credentials = flow.credentials
+        
+        refresh_token = credentials.refresh_token
+        if not refresh_token:
+            # If no refresh token is returned, it might be because the user already granted access
+            # and Google only returns it on the first authorization.
+            # We could try to revoke and re-prompt, but for now we'll show an error.
+            return Response(
+                "<h1>Error</h1><p>No refresh token received. Please go to your Google Account settings, "
+                "remove access for this app, and try again.</p>", 
+                status=400
+            )
+            
+        # Save to families table
+        db.table("families").update({"google_refresh_token": refresh_token}).eq("family_id", family_id).execute()
+        
+        # Also save to whatsapp_members table for this specific phone
+        db.table("whatsapp_members").update({"google_refresh_token": refresh_token}).eq("phone", phone).execute()
+        
+        # Delete the used token
+        db.table("gcal_connect_tokens").delete().eq("token", state_token).execute()
+        
+        # Send confirmation WhatsApp message
+        try:
+            from twilio.rest import Client as TwilioClient
+            _s = get_settings()
+            if _s.twilio_account_sid and _s.twilio_auth_token:
+                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                twilio_client.messages.create(
+                    from_=_s.twilio_whatsapp_from,
+                    to=f"whatsapp:{phone}",
+                    body="✅ Google Calendar connected successfully! I will now sync your events.",
+                )
+        except Exception as exc:
+            logger.warning("Failed to send confirmation WhatsApp message: %s", exc)
+            
+        return Response(
+            "<html><body style='font-family: sans-serif; text-align: center; padding: 50px;'>"
+            "<h1>✅ Google Calendar connected!</h1>"
+            "<p>You can close this tab and return to WhatsApp.</p>"
+            "</body></html>",
+            status=200
+        )
+        
+    except Exception as exc:
+        logger.error("Failed to exchange code for tokens: %s", exc)
+        return Response("<h1>Error</h1><p>Failed to complete Google login.</p>", status=500)
+
+
 @app.route("/whatsapp", methods=["POST"])
 @_validate_twilio_request
 def handle_whatsapp() -> Response:
@@ -776,6 +955,59 @@ def handle_whatsapp() -> Response:
         family_name=family_name,
         from_number=from_number,
     )
+
+
+# ---------------------------------------------------------------------------
+# Google Calendar Connect Helper
+# ---------------------------------------------------------------------------
+def _send_gcal_connect_link(phone: str, family_id: str) -> None:
+    """Generate a one-time token and send a WhatsApp message with the connect link."""
+    import secrets
+    from datetime import datetime, timedelta, timezone
+    
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    
+    db = brain._supabase
+    if not db:
+        logger.error("Cannot send gcal connect link: no database connection")
+        return
+        
+    try:
+        db.table("gcal_connect_tokens").insert({
+            "token": token,
+            "phone": phone,
+            "family_id": family_id,
+            "expires_at": expires_at
+        }).execute()
+        
+        # Construct URL
+        from flask import request
+        try:
+            base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+        except RuntimeError:
+            # If called outside request context
+            base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "http://localhost:8080")
+            
+        connect_url = f"{base_url}/gcal/connect?token={token}"
+        
+        # Send WhatsApp message
+        from twilio.rest import Client as TwilioClient
+        _s = get_settings()
+        if _s.twilio_account_sid and _s.twilio_auth_token:
+            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+            message_body = (
+                f"To connect your Google Calendar, tap this link: {connect_url}\n\n"
+                f"This link expires in 1 hour."
+            )
+            twilio_client.messages.create(
+                from_=_s.twilio_whatsapp_from,
+                to=f"whatsapp:{phone}",
+                body=message_body,
+            )
+            logger.info("Sent Google Calendar connect link to %s", phone)
+    except Exception as exc:
+        logger.error("Failed to send gcal connect link: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1290,6 +1522,60 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         return Response(str(twiml), mimetype="application/xml")
 
     logger.info("Processing text message from %s (%s): %d chars", family_name, from_number, len(text))
+    
+    # --- Google Calendar Connect Command ---
+    text_lower = text.lower().strip()
+    if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar"):
+        _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
+        twiml = MessagingResponse()
+        twiml.message("I've sent you a link to connect your Google Calendar.")
+        return Response(str(twiml), mimetype="application/xml")
+        
+    # --- Auto-prompt for new users ---
+    # If this is their first message (no conversation history) and they don't have a calendar connected
+    if from_number not in _conversation_history:
+        try:
+            db = brain._supabase
+            if db:
+                # Check if family has a token
+                fam_res = db.table("families").select("google_refresh_token").eq("family_id", _family_id).execute()
+                has_token = False
+                if fam_res.data and fam_res.data[0].get("google_refresh_token"):
+                    has_token = True
+                    
+                if not has_token:
+                    # Check if we already sent them a link recently to avoid spamming
+                    recent_tokens = db.table("gcal_connect_tokens").select("token").eq("phone", from_number.replace("whatsapp:", "")).execute()
+                    if not recent_tokens.data:
+                        # Send welcome message with link
+                        import secrets
+                        from datetime import datetime, timedelta, timezone
+                        token = secrets.token_urlsafe(32)
+                        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+                        db.table("gcal_connect_tokens").insert({
+                            "token": token,
+                            "phone": from_number.replace("whatsapp:", ""),
+                            "family_id": _family_id,
+                            "expires_at": expires_at
+                        }).execute()
+                        
+                        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+                        connect_url = f"{base_url}/gcal/connect?token={token}"
+                        
+                        # We don't return here, we just send an extra message via Twilio client
+                        # so the normal processing of their first message continues
+                        from twilio.rest import Client as TwilioClient
+                        _s = get_settings()
+                        if _s.twilio_account_sid and _s.twilio_auth_token:
+                            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                            twilio_client.messages.create(
+                                from_=_s.twilio_whatsapp_from,
+                                to=from_number,
+                                body=f"Welcome to FamilyBrain! To sync your family calendar, tap here: {connect_url}",
+                            )
+        except Exception as exc:
+            logger.warning("Failed to auto-prompt for calendar connection: %s", exc)
+
     # --- Memory management commands (delete, edit, list) ---
     mem_mgmt_result = _handle_memory_management(text, family_name, from_number)
     if mem_mgmt_result is not None:
@@ -1354,7 +1640,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             except Exception as exc:
                 logger.warning("Failed to update memory with resolved date: %s", exc)
             # Store in family_events and push to Google Calendar
-            event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name)
+            event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name, family_id=_family_id)
             if event_id:
                 event_info = f"\n📅 Added to calendar: {event_name} on {resolved_date}"
             if conflict_warning:
@@ -1670,36 +1956,50 @@ def _poll_google_calendar_and_notify() -> None:
             time_min = (now_utc - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
         time_max = (now_utc + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        events = google_calendar.get_events(time_min=time_min, time_max=time_max, max_results=50)
-        if not events:
-            logger.debug("Google Calendar poll: no events found in window %s – %s", time_min, time_max)
+        # Fetch all active families to poll their calendars
+        db_client = brain._supabase
+        families = []
+        if db_client:
+            try:
+                families_result = db_client.table("families").select("family_id").eq("status", "active").execute()
+                families = [row["family_id"] for row in (families_result.data or [])]
+            except Exception as exc:
+                logger.warning("GCal sync: could not fetch families: %s", exc)
+        
+        if not families:
+            # Fallback to default if no families found
+            families = ["family-dan"]
+
+        all_new_events = []
+        for family_id in families:
+            events = google_calendar.get_events(time_min=time_min, time_max=time_max, max_results=50, family_id=family_id)
+            if not events:
+                continue
+
+            for e in events:
+                if e.get("id") and e["id"] not in _gcal_notified_event_ids and e["id"] not in _gcal_wa_pushed_event_ids:
+                    e["_family_id"] = family_id
+                    all_new_events.append(e)
+
+        if not all_new_events:
+            logger.debug("Google Calendar poll: no new events found in window %s – %s", time_min, time_max)
             return
 
-        new_events = [
-            e for e in events
-            if e.get("id")
-            and e["id"] not in _gcal_notified_event_ids
-            and e["id"] not in _gcal_wa_pushed_event_ids
-        ]
-        if not new_events:
-            logger.debug("Google Calendar poll: %d events found, all already notified", len(events))
-            return
-
-        logger.info("Google Calendar poll: %d new event(s) to process", len(new_events))
+        logger.info("Google Calendar poll: %d new event(s) to process", len(all_new_events))
 
         # Fetch all active family members for notifications
-        db_client = brain._supabase
-        family_phones: list[tuple[str, str]] = []  # list of (phone, name)
+        family_phones_by_id: dict[str, list[tuple[str, str]]] = {}
         if db_client:
             try:
                 members_result = db_client.table("whatsapp_members").select(
                     "phone, name, family_id"
                 ).execute()
-                family_phones = [
-                    (row["phone"], row.get("name", "Family Member"))
-                    for row in (members_result.data or [])
-                    if row.get("phone")
-                ]
+                for row in (members_result.data or []):
+                    if row.get("phone") and row.get("family_id"):
+                        fid = row["family_id"]
+                        if fid not in family_phones_by_id:
+                            family_phones_by_id[fid] = []
+                        family_phones_by_id[fid].append((row["phone"], row.get("name", "Family Member")))
             except Exception as exc:
                 logger.warning("GCal sync: could not fetch family members: %s", exc)
 
@@ -1713,8 +2013,10 @@ def _poll_google_calendar_and_notify() -> None:
         except Exception as exc:
             logger.warning("GCal sync: could not initialise Twilio client: %s", exc)
 
-        for event in new_events:
+        for event in all_new_events:
             event_id = event["id"]
+            event_family_id = event.get("_family_id", "family-dan")
+            family_phones = family_phones_by_id.get(event_family_id, [])
             summary = event.get("summary") or "(no title)"
             start_raw = event.get("start", "")
             end_raw = event.get("end", "")
@@ -1763,7 +2065,7 @@ def _poll_google_calendar_and_notify() -> None:
                         "tags": ["calendar", "event"],
                         "category": "reference",
                     },
-                    family_id="family-dan",
+                    family_id=event_family_id,
                 )
                 logger.info("GCal sync: stored memory for event '%s' (%s)", summary, event_id)
             except Exception as exc:

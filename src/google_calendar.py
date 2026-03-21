@@ -20,7 +20,8 @@ logger = brain.logger
 # --- Environment Variables ---
 CLIENT_ID = os.environ.get("GOOGLE_CALENDAR_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("GOOGLE_CALENDAR_CLIENT_SECRET")
-REFRESH_TOKEN = os.environ.get("GOOGLE_CALENDAR_REFRESH_TOKEN")
+# Fallback static token for backward compatibility
+STATIC_REFRESH_TOKEN = os.environ.get("GOOGLE_CALENDAR_REFRESH_TOKEN")
 CALENDAR_ID = os.environ.get(
     "GOOGLE_CALENDAR_ID",
     "primary",
@@ -30,23 +31,31 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
-def _get_access_token() -> Optional[str]:
+def _get_refresh_token(family_id: Optional[str] = None) -> Optional[str]:
+    """Get the refresh token for a family, falling back to the static env var."""
+    if family_id and brain._supabase:
+        try:
+            result = brain._supabase.table("families").select("google_refresh_token").eq("family_id", family_id).limit(1).execute()
+            if result.data and result.data[0].get("google_refresh_token"):
+                return result.data[0]["google_refresh_token"]
+        except Exception as exc:
+            logger.warning("Failed to fetch google_refresh_token for family %s: %s", family_id, exc)
+    
+    return STATIC_REFRESH_TOKEN
+
+
+def _get_access_token(refresh_token: str) -> Optional[str]:
     """Get a fresh access token using the refresh token via direct HTTP."""
-    if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
+    if not all([CLIENT_ID, CLIENT_SECRET, refresh_token]):
         logger.warning(
-            "Google Calendar credentials (CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN) not fully configured."
+            "Google Calendar credentials (CLIENT_ID, CLIENT_SECRET, refresh_token) not fully configured."
         )
         return None
-    # Debug: log credential lengths to verify they're loaded correctly
-    logger.info(
-        "[GCAL DEBUG] CLIENT_ID len=%d, CLIENT_SECRET len=%d, REFRESH_TOKEN len=%d",
-        len(CLIENT_ID), len(CLIENT_SECRET), len(REFRESH_TOKEN)
-    )
-
+    
     data = urllib.parse.urlencode({
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
-        "refresh_token": REFRESH_TOKEN,
+        "refresh_token": refresh_token,
         "grant_type": "refresh_token",
     }).encode()
 
@@ -62,7 +71,6 @@ def _get_access_token() -> Optional[str]:
             result = json.loads(resp.read())
             access_token = result.get("access_token")
             if access_token:
-                logger.info("Google Calendar: access token obtained successfully.")
                 return access_token
             logger.error("Google Calendar: no access_token in response: %s", result)
             return None
@@ -75,15 +83,19 @@ def _get_access_token() -> Optional[str]:
         return None
 
 
-def _get_credentials() -> Optional[Credentials]:
+def _get_credentials(family_id: Optional[str] = None) -> Optional[Credentials]:
     """Get Google Calendar credentials using direct token refresh."""
-    access_token = _get_access_token()
+    refresh_token = _get_refresh_token(family_id)
+    if not refresh_token:
+        return None
+
+    access_token = _get_access_token(refresh_token)
     if not access_token:
         return None
 
     creds = Credentials(
         token=access_token,
-        refresh_token=REFRESH_TOKEN,
+        refresh_token=refresh_token,
         token_uri=TOKEN_URI,
         client_id=CLIENT_ID,
         client_secret=CLIENT_SECRET,
@@ -100,6 +112,7 @@ def create_event(
     location: Optional[str] = None,
     description: Optional[str] = None,
     family_member: Optional[str] = None,
+    family_id: Optional[str] = None,
 ) -> Optional[str]:
     """Creates an event on Google Calendar.
 
@@ -110,11 +123,12 @@ def create_event(
         location: The location of the event (optional).
         description: A description for the event (optional).
         family_member: The family member associated with the event (optional).
+        family_id: The family ID to look up the correct Google Calendar token.
 
     Returns:
         The Google Calendar event ID if successful, otherwise None.
     """
-    creds = _get_credentials()
+    creds = _get_credentials(family_id)
     if not creds:
         logger.warning("Skipping Google Calendar event creation due to missing credentials.")
         return None
@@ -178,6 +192,7 @@ def get_events(
     time_min: str,
     time_max: str,
     max_results: int = 50,
+    family_id: Optional[str] = None,
 ) -> list[dict]:
     """Fetch events from Google Calendar within a time range.
 
@@ -185,12 +200,13 @@ def get_events(
         time_min: Start of range in RFC3339 format (e.g. '2026-03-20T00:00:00Z')
         time_max: End of range in RFC3339 format (e.g. '2026-03-27T23:59:59Z')
         max_results: Maximum number of events to return (default 50)
+        family_id: The family ID to look up the correct Google Calendar token.
 
     Returns:
         List of event dicts with keys: id, summary, start, end, description, location
         Returns empty list on error or if calendar not configured.
     """
-    creds = _get_credentials()
+    creds = _get_credentials(family_id)
     if not creds:
         logger.warning("Skipping Google Calendar read due to missing credentials.")
         return []
