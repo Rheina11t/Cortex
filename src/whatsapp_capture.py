@@ -40,6 +40,13 @@ from typing import Any, Callable, Optional
 import requests as http_requests
 from flask import Flask, Response, request
 
+try:
+    from dateutil.rrule import rrulestr as _rrulestr
+    _DATEUTIL_AVAILABLE = True
+except ImportError:
+    _rrulestr = None  # type: ignore
+    _DATEUTIL_AVAILABLE = False
+
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -959,14 +966,15 @@ def _build_calendar_events_json(family_id: str) -> str:
         return "[]"
 
     events = []
-    
-    from dateutil.rrule import rrulestr
-    from datetime import datetime as _datetime
-    import pytz
-    
-    london_tz = pytz.timezone("Europe/London")
-    range_start_dt = london_tz.localize(_datetime.combine(range_start, _datetime.min.time()))
-    range_end_dt = london_tz.localize(_datetime.combine(range_end, _datetime.max.time()))
+
+    try:
+        from datetime import datetime as _datetime
+        london_tz = pytz.timezone("Europe/London")
+        range_start_dt = london_tz.localize(_datetime.combine(range_start, _datetime.min.time()))
+        range_end_dt = london_tz.localize(_datetime.combine(range_end, _datetime.max.time()))
+    except Exception as _tz_exc:
+        logger.error("_build_calendar_events_json: timezone setup failed: %s", _tz_exc)
+        return "[]"
 
     for row in (result.data or []):
         member_raw = (row.get("family_member") or "").strip()
@@ -989,109 +997,144 @@ def _build_calendar_events_json(family_id: str) -> str:
         end_date = row.get("end_date") or ""
         end_time = (row.get("end_time") or "").strip()
         
-        is_recurring = row.get("is_recurring", False)
-        
+        is_recurring = bool(row.get("is_recurring", False))
+
         if not is_recurring:
-            # Check if it falls in our range
-            ev_date_obj = _date.fromisoformat(event_date)
-            if not (range_start <= ev_date_obj <= range_end):
-                continue
-                
-            # Build ISO start
-            if event_time:
-                start_iso = f"{event_date}T{event_time}:00"
-            else:
-                start_iso = event_date
+            try:
+                # Check if it falls in our range
+                ev_date_obj = _date.fromisoformat(event_date)
+                if not (range_start <= ev_date_obj <= range_end):
+                    continue
 
-            # Build ISO end
-            end_iso = ""
-            if end_date and end_time:
-                end_iso = f"{end_date}T{end_time}:00"
-            elif end_date:
-                end_iso = end_date
-            elif event_time and end_time:
-                end_iso = f"{event_date}T{end_time}:00"
+                # Build ISO start
+                if event_time:
+                    start_iso = f"{event_date}T{event_time}:00"
+                else:
+                    start_iso = event_date
 
-            ev: dict[str, Any] = {
-                "id": str(row.get("id", "")),
-                "title": display_title,
-                "start": start_iso,
-                "color": colour,
-                "extendedProps": {
-                    "member": member_raw,
-                    "notes": row.get("notes") or "",
-                },
-            }
-            if end_iso:
-                ev["end"] = end_iso
+                # Build ISO end
+                end_iso = ""
+                if end_date and end_time:
+                    end_iso = f"{end_date}T{end_time}:00"
+                elif end_date:
+                    end_iso = end_date
+                elif event_time and end_time:
+                    end_iso = f"{event_date}T{end_time}:00"
 
-            events.append(ev)
+                ev: dict[str, Any] = {
+                    "id": str(row.get("id", "")),
+                    "title": display_title,
+                    "start": start_iso,
+                    "color": colour,
+                    "extendedProps": {
+                        "member": member_raw,
+                        "notes": row.get("notes") or "",
+                    },
+                }
+                if end_iso:
+                    ev["end"] = end_iso
+
+                events.append(ev)
+            except Exception as _row_exc:
+                logger.warning("Skipping malformed event row %s: %s", row.get('id'), _row_exc)
         else:
             # Handle recurring event expansion
+            if not _DATEUTIL_AVAILABLE:
+                # dateutil not installed — fall back to showing the base event date
+                logger.warning("dateutil unavailable; showing recurring event %s as single occurrence", row.get('id'))
+                if event_time:
+                    start_iso = f"{event_date}T{event_time}:00"
+                else:
+                    start_iso = event_date
+                ev: dict[str, Any] = {
+                    "id": str(row.get("id", "")),
+                    "title": display_title,
+                    "start": start_iso,
+                    "color": colour,
+                    "extendedProps": {
+                        "member": member_raw,
+                        "notes": row.get("notes") or "",
+                    },
+                }
+                events.append(ev)
+                continue
+
             rule_str = row.get("recurrence_rule")
             if not rule_str:
+                # No rule stored — show as single occurrence on its base date
+                try:
+                    ev_date_obj = _date.fromisoformat(event_date)
+                    if range_start <= ev_date_obj <= range_end:
+                        start_iso = f"{event_date}T{event_time}:00" if event_time else event_date
+                        ev = {
+                            "id": str(row.get("id", "")),
+                            "title": display_title,
+                            "start": start_iso,
+                            "color": colour,
+                            "extendedProps": {"member": member_raw, "notes": row.get("notes") or ""},
+                        }
+                        events.append(ev)
+                except Exception:
+                    pass
                 continue
-                
-            # Build RRULE string for dateutil
-            rrule_parts = []
-            rule_upper = rule_str.upper()
-            if rule_upper == "WEEKLY":
-                rrule_parts.append("FREQ=WEEKLY")
-            elif rule_upper == "BIWEEKLY":
-                rrule_parts.append("FREQ=WEEKLY;INTERVAL=2")
-            elif rule_upper == "MONTHLY":
-                rrule_parts.append("FREQ=MONTHLY")
-            elif rule_upper == "WEEKDAYS":
-                rrule_parts.append("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
-            elif rule_upper == "WEEKENDS":
-                rrule_parts.append("FREQ=WEEKLY;BYDAY=SA,SU")
-            else:
-                # Try to parse as raw RRULE if it doesn't match our simple types
-                if rule_str.startswith("RRULE:"):
-                    rrule_parts.append(rule_str[6:])
-                else:
-                    rrule_parts.append(rule_str)
-                    
-            rec_end = row.get("recurrence_end")
-            if rec_end:
-                end_str = rec_end.replace("-", "")
-                rrule_parts.append(f"UNTIL={end_str}T235959Z")
-                
-            rrule_string = f"RRULE:{';'.join(rrule_parts)}"
-            
+
             try:
+                # Build RRULE string for dateutil
+                rrule_parts = []
+                rule_upper = rule_str.upper()
+                if rule_upper == "WEEKLY":
+                    rrule_parts.append("FREQ=WEEKLY")
+                elif rule_upper == "BIWEEKLY":
+                    rrule_parts.append("FREQ=WEEKLY;INTERVAL=2")
+                elif rule_upper == "MONTHLY":
+                    rrule_parts.append("FREQ=MONTHLY")
+                elif rule_upper == "WEEKDAYS":
+                    rrule_parts.append("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
+                elif rule_upper == "WEEKENDS":
+                    rrule_parts.append("FREQ=WEEKLY;BYDAY=SA,SU")
+                else:
+                    # Try to parse as raw RRULE if it doesn't match our simple types
+                    if rule_str.startswith("RRULE:"):
+                        rrule_parts.append(rule_str[6:])
+                    else:
+                        rrule_parts.append(rule_str)
+
+                rec_end = row.get("recurrence_end")
+                if rec_end:
+                    end_str = str(rec_end).replace("-", "")
+                    rrule_parts.append(f"UNTIL={end_str}T235959Z")
+
+                rrule_string = f"RRULE:{';'.join(rrule_parts)}"
+
                 # Parse start datetime
                 if event_time:
                     dt_start = _datetime.fromisoformat(f"{event_date}T{event_time}")
                 else:
                     dt_start = _datetime.fromisoformat(f"{event_date}T00:00:00")
-                    
+
                 dt_start = london_tz.localize(dt_start)
-                
-                # Generate occurrences
-                rule = rrulestr(rrule_string, dtstart=dt_start)
-                
-                # Get occurrences within our display range
-                # We add a bit of buffer to the range to ensure we catch edge cases
+
+                # Generate occurrences within our display range
+                rule = _rrulestr(rrule_string, dtstart=dt_start)
                 occurrences = rule.between(
-                    range_start_dt - _timedelta(days=1), 
-                    range_end_dt + _timedelta(days=1), 
+                    range_start_dt - _timedelta(days=1),
+                    range_end_dt + _timedelta(days=1),
                     inc=True
                 )
-                
+
                 for i, occ in enumerate(occurrences):
                     occ_date = occ.strftime("%Y-%m-%d")
-                    
+
                     if event_time:
                         start_iso = f"{occ_date}T{event_time}:00"
                     else:
                         start_iso = occ_date
-                        
+
                     end_iso = ""
                     if end_time:
                         end_iso = f"{occ_date}T{end_time}:00"
-                        
-                    ev: dict[str, Any] = {
+
+                    ev = {
                         "id": f"{row.get('id', '')}_{i}",
                         "title": display_title,
                         "start": start_iso,
@@ -1103,10 +1146,10 @@ def _build_calendar_events_json(family_id: str) -> str:
                     }
                     if end_iso:
                         ev["end"] = end_iso
-                        
+
                     events.append(ev)
             except Exception as e:
-                logger.warning(f"Failed to expand recurring event {row.get('id')}: {e}")
+                logger.warning("Failed to expand recurring event %s: %s", row.get('id'), e)
 
     return _json.dumps(events, ensure_ascii=False)
 
