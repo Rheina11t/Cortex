@@ -1481,6 +1481,25 @@ def kitchen_calendar(family_token: str) -> Response:
 # ---------------------------------------------------------------------------
 # Google Calendar OAuth Routes
 # ---------------------------------------------------------------------------
+
+@app.route("/calendar-debug/<family_token>", methods=["GET"])
+def kitchen_calendar_debug(family_token: str) -> Response:
+    """Debug endpoint to expose render errors."""
+    import traceback as _tb
+    db = brain._supabase
+    if not db:
+        return Response("No DB connection", status=503, mimetype="text/plain")
+    try:
+        result = db.table("families").select("family_id").eq("calendar_token", family_token).limit(1).execute()
+        if not result.data:
+            return Response(f"Token not found: {family_token}", status=404, mimetype="text/plain")
+        family_id = result.data[0]["family_id"]
+        events_json = _build_calendar_events_json(family_id)
+        return Response(f"family_id={family_id}\nevents_json={events_json[:500]}", status=200, mimetype="text/plain")
+    except Exception as exc:
+        return Response(f"ERROR: {exc}\n\n{_tb.format_exc()}", status=500, mimetype="text/plain")
+
+
 @app.route("/gcal/connect", methods=["GET"])
 def gcal_connect() -> Response:
     """Validates the one-time token and redirects to Google OAuth consent screen."""
