@@ -305,7 +305,8 @@ def _get_event_detection_prompt() -> str:
         '  "is_event": true/false,\n'
         '  "event_name": "<name of the event>",\n'
         '  "event_date": "<YYYY-MM-DD or null>",\n'
-        '  "event_time": "<HH:MM or null>",\n'
+        '  "event_time": "<HH:MM or null — the START time>",\n'
+        '  "end_time": "<HH:MM or null — the END time, e.g. from \'11:00-14:00\' extract \'14:00\'>",\n'
         '  "location": "<location or empty string>",\n'
         '  "requirements": ["<any requirements or things to bring>"],\n'
         '  "family_member": "<who this event is for, or \'family\' if shared>"\n'
@@ -315,6 +316,7 @@ def _get_event_detection_prompt() -> str:
         "- Return ONLY valid JSON.\n"
         "- If the message does not contain a schedulable event, set is_event to false and leave other fields empty.\n"
         "- Parse relative dates like 'tomorrow', 'next Tuesday', 'this Friday' relative to today.\n"
+        "- If a time range is given (e.g. '11:00-14:00' or 'from 11 to 2pm'), set event_time to the start and end_time to the end.\n"
         "- If no specific person is mentioned, default family_member to the sender's name.\n"
     )
 
@@ -381,12 +383,17 @@ def _check_conflicts_and_store_event(
         except Exception as exc:
             logger.warning("Conflict check failed (table may not exist yet): %s", exc)
 
+        end_time = event_data.get("end_time") or None
+
         # Store the event — only columns that actually exist in the live table
+        # NOTE: 'title' is a required NOT NULL column — set it to event_name
         row = {
+            "title": event_name,
             "family_member": family_member,
             "event_name": event_name,
             "event_date": event_date,
             "event_time": event_time if event_time else None,
+            "end_time": end_time,
             "location": event_data.get("location", ""),
             "recurring": "none",
             "notes": "",
@@ -404,6 +411,7 @@ def _check_conflicts_and_store_event(
                     event_name=event_name,
                     event_date=event_date,
                     event_time=event_time if event_time else None,
+                    end_time=end_time,
                     location=event_data.get("location", ""),
                     description=f"Captured by {sender_name} via Family Brain",
                     family_member=family_member,
@@ -854,6 +862,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
         import re as _re
         text_lower = text.lower()
         avail_pattern = _re.search(r'is\s+(\w+)\s+(free|available|busy|around)', text_lower)
+        time_ref = ""  # initialise here so it's always defined for the supplement block below
         if avail_pattern:
             person = avail_pattern.group(1).capitalize()
             # Extract time reference from original text (tomorrow, Monday, next week, etc.)
@@ -874,13 +883,73 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
         expanded_query = text + " " + " ".join(synonyms)
         results = brain.semantic_search(expanded_query, match_threshold=_threshold, match_count=_count, family_id=family_id)
 
+        # --- Issue 2 fix: For availability queries, ALSO do a direct text search ---
+        # Semantic search may rank an old high-similarity memory (e.g. kickboxing) above
+        # a newly stored event for today.  We supplement with a direct DB scan for ALL
+        # memories that mention the person's name AND today's date string so nothing is
+        # missed regardless of embedding similarity score.
+        if is_availability_query and avail_pattern:
+            try:
+                from datetime import date as _avail_date
+                _today_iso = _avail_date.today().isoformat()          # e.g. "2026-03-21"
+                _today_human = _avail_date.today().strftime("%d %B %Y")  # e.g. "21 March 2026"
+                _person_lower = avail_pattern.group(1).lower()
+                # Resolve "today" / "tomorrow" time references to actual dates
+                _time_ref_lower = time_ref.lower() if time_ref else "today"
+                if _time_ref_lower in ("today", ""):
+                    _target_date_iso = _today_iso
+                    _target_date_human = _today_human
+                elif _time_ref_lower == "tomorrow":
+                    from datetime import timedelta as _td
+                    _target_date_iso = (_avail_date.today() + _td(days=1)).isoformat()
+                    _target_date_human = (_avail_date.today() + _td(days=1)).strftime("%d %B %Y")
+                else:
+                    _target_date_iso = _today_iso
+                    _target_date_human = _today_human
+
+                # Fetch recent memories and filter by person name + target date in content
+                _all_recent = brain.list_recent_memories(limit=100, family_id=family_id)
+                _seen_ids = {r.get("id") for r in results}
+                for _mem in _all_recent:
+                    _c = (_mem.get("content") or "").lower()
+                    # Must mention the person AND the target date (ISO or human-readable)
+                    if (
+                        _person_lower in _c
+                        and (_target_date_iso in _c or _target_date_human.lower() in _c)
+                        and _mem.get("id") not in _seen_ids
+                    ):
+                        results.append(_mem)
+                        _seen_ids.add(_mem.get("id"))
+                        logger.info(
+                            "Availability supplement: added memory id=%s for %s on %s",
+                            _mem.get("id"), _person_lower, _target_date_iso,
+                        )
+            except Exception as _exc:
+                logger.warning("Availability supplement search failed (non-fatal): %s", _exc)
+
         reply_text = ""
 
         if results:
-            memories_text = "\n".join(
-                f"- {r.get('content', '')}"
-                for r in results
-            )
+            # Issue 3 fix: include created_at so the LLM can judge memory freshness.
+            # Relative-time words (tonight, tomorrow, this week) are only trustworthy
+            # when the memory was stored recently; we surface the timestamp so the LLM
+            # can detect and discard stale relative-date references.
+            def _fmt_memory_line(r: dict) -> str:
+                content = r.get("content", "")
+                created_at_raw = r.get("created_at", "")
+                if created_at_raw:
+                    # Normalise to a short human-readable form: "21 Mar 2026 13:31 UTC"
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        _ts = _dt.fromisoformat(str(created_at_raw).replace("Z", "+00:00"))
+                        _ts_utc = _ts.astimezone(_tz.utc)
+                        created_label = _ts_utc.strftime("%d %b %Y %H:%M UTC")
+                    except Exception:
+                        created_label = str(created_at_raw)[:19]
+                    return f"- [stored: {created_label}] {content}"
+                return f"- {content}"
+
+            memories_text = "\n".join(_fmt_memory_line(r) for r in results)
 
             # 3a. Check if the answer likely involves a business/location and is missing contact details
             web_context = ""
@@ -936,12 +1005,21 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 except Exception as exc:
                     logger.warning("Web enrichment failed (non-fatal): %s", exc)
 
-            from datetime import date as _date
+            from datetime import date as _date, datetime as _datetime, timezone as _tz_utc
             today_str = _date.today().strftime("%d %B %Y")
+            now_utc = _datetime.now(_tz_utc.utc)
             prompt = (
                 f"You are Family Brain, a personal AI assistant for the {family_name} family. "
                 f"The person asking this question is {family_name}. "
                 f"Today's date is {today_str}. "
+                "Each stored memory below is prefixed with a [stored: <timestamp>] label showing when it was saved. "
+                "MEMORY FRESHNESS RULE: If a memory uses relative time words such as 'tonight', 'today', "
+                "'tomorrow', 'this week', 'next week', 'yesterday', or similar, you MUST check its [stored:] "
+                "timestamp. If the memory was stored MORE THAN 24 HOURS AGO relative to now, treat those "
+                "relative time references as OUTDATED and do NOT use that memory to answer questions about "
+                "current or today's availability/schedule. Instead, note that the memory may be stale and "
+                "ask the user to confirm. A memory stored 2+ days ago saying 'kickboxing tonight' does NOT "
+                "mean kickboxing is happening today. "
                 "Answer the user's question based on the stored memories below. "
                 "Do NOT invent details that are not in the memories or web results. "
                 "If the memories contain conflicting information, use the most specific and detailed one. "
@@ -949,10 +1027,10 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 "make sure to include EVERY relevant item found in the memories, not just the first one. "
                 "IMPORTANT: If any stored item contains a date that is today, tomorrow, or within the next 7 days "
                 "(e.g. contract end, renewal, expiry, payment due, MOT due), you MUST start your answer with a "
-                "⚠️ URGENT alert line before anything else. Example: '⚠️ URGENT: Your VW ID.Buzz contract hire ends TODAY (20 March 2026). You should contact VW Financial Services immediately.' "
-                "Do not bury time-sensitive dates in the middle of a list — always lead with them. "
+                "\u26a0\ufe0f URGENT alert line before anything else. Example: '\u26a0\ufe0f URGENT: Your VW ID.Buzz contract hire ends TODAY (20 March 2026). You should contact VW Financial Services immediately.' "
+                "Do not bury time-sensitive dates in the middle of a list \u2014 always lead with them. "
                 "If web search results are provided, you may use them to supplement missing contact details "
-                "(phone numbers, emails, opening hours) — but clearly indicate these came from a web search, not stored memory. "
+                "(phone numbers, emails, opening hours) \u2014 but clearly indicate these came from a web search, not stored memory. "
                 "If information is genuinely missing and not found online, say so and offer to store it. "
                 "Refer to the asker by name. Use the conversation history for context if needed. "
                 "Never mention memory IDs in your answer."
@@ -1257,7 +1335,13 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             event_name = event_data.get("event_name", "")
             event_time = event_data.get("event_time", "")
             event_member = event_data.get("family_member", family_name)
-            time_str = f" from {event_time}" if event_time else ""
+            end_time_str = event_data.get("end_time", "")
+            if event_time and end_time_str:
+                time_str = f" from {event_time} to {end_time_str}"
+            elif event_time:
+                time_str = f" at {event_time}"
+            else:
+                time_str = ""
             resolved_content = f"{event_member} has {event_name} on {resolved_date}{time_str}."
             # Update the stored memory with the resolved content and new embedding
             try:
