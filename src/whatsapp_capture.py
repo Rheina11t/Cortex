@@ -2136,7 +2136,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     
     # --- Google Calendar Connect Command ---
     text_lower = text.lower().strip()
-    if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar"):
+    if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar", "/connect", "/connect google", "connect google calendar") or text_lower.startswith("/connect cal") or text_lower.startswith("/setup cal"):
         _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         twiml = MessagingResponse()
         twiml.message("I've sent you a link to connect your Google Calendar.")
