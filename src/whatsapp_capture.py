@@ -1157,7 +1157,7 @@ def _build_calendar_events_json(family_id: str) -> str:
 def _render_calendar_page(family_id: str, calendar_token: str) -> str:
     """Return a self-contained HTML page for the kitchen calendar."""
     events_json = _build_calendar_events_json(family_id)
-    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app")
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
     calendar_url = f"{base_url}/calendar/{calendar_token}"
 
     html = f"""<!DOCTYPE html>
@@ -1522,7 +1522,7 @@ def gcal_connect() -> Response:
         }
     }
     
-    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/")).rstrip("/")
     redirect_uri = os.environ.get("GOOGLE_CALENDAR_OAUTH_REDIRECT_URI", f"{base_url}/gcal/callback")
     
     try:
@@ -1590,7 +1590,7 @@ def gcal_callback() -> Response:
         }
     }
     
-    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/")).rstrip("/")
     redirect_uri = os.environ.get("GOOGLE_CALENDAR_OAUTH_REDIRECT_URI", f"{base_url}/gcal/callback")
     
     try:
@@ -1731,7 +1731,7 @@ def _send_gcal_connect_link(phone: str, family_id: str) -> str:
         }).execute()
         
         # Construct URL
-        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app")
+        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
         connect_url = f"{base_url}/gcal/connect?token={token}"
         logger.info("Generated Google Calendar connect link for %s", phone)
         return connect_url
@@ -2352,7 +2352,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         try:
             token = _get_or_create_calendar_token(_family_id)
             if token:
-                base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app")
+                base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
                 calendar_url = f"{base_url}/calendar/{token}"
                 twiml.message(
                     f"Here's your family calendar: {calendar_url}\n"
@@ -2393,7 +2393,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                             "expires_at": expires_at
                         }).execute()
                         
-                        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/"))
+                        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/")).rstrip("/")
                         connect_url = f"{base_url}/gcal/connect?token={token}"
                         
                         # We don't return here, we just send an extra message via Twilio client
