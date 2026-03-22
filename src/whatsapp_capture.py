@@ -1495,7 +1495,12 @@ def kitchen_calendar_debug(family_token: str) -> Response:
             return Response(f"Token not found: {family_token}", status=404, mimetype="text/plain")
         family_id = result.data[0]["family_id"]
         events_json = _build_calendar_events_json(family_id)
-        return Response(f"family_id={family_id}\nevents_json={events_json[:500]}", status=200, mimetype="text/plain")
+        # Now try the full render
+        try:
+            html = _render_calendar_page(family_id, family_token)
+            return Response(f"RENDER OK: {len(html)} chars\nevents_json={events_json[:300]}", status=200, mimetype="text/plain")
+        except Exception as render_exc:
+            return Response(f"RENDER ERROR: {render_exc}\n\n{_tb.format_exc()}\n\nevents_json={events_json[:300]}", status=500, mimetype="text/plain")
     except Exception as exc:
         return Response(f"ERROR: {exc}\n\n{_tb.format_exc()}", status=500, mimetype="text/plain")
 
