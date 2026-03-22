@@ -2,6 +2,7 @@
 """Gmail School Email Watcher for Family Brain."""
 
 import base64
+import io
 import json
 import logging
 import os
@@ -74,6 +75,85 @@ def _extract_email_body(payload: dict) -> str:
         if data:
             body = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
     return body
+
+def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """Extract text from a PDF file using pdfminer.six."""
+    try:
+        from pdfminer.high_level import extract_text
+        return extract_text(io.BytesIO(pdf_bytes)).strip()
+    except Exception as exc:
+        logger.warning("pdfminer extraction failed: %s", exc)
+        # Fallback to PyPDF2 if pdfminer fails or isn't installed
+        try:
+            import PyPDF2
+            reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+            return text.strip()
+        except Exception as exc2:
+            logger.warning("PyPDF2 fallback extraction failed: %s", exc2)
+            return ""
+
+def _extract_text_from_docx(docx_bytes: bytes) -> str:
+    """Extract text from a Word document using python-docx."""
+    try:
+        import docx
+        doc = docx.Document(io.BytesIO(docx_bytes))
+        return "\n".join([paragraph.text for paragraph in doc.paragraphs]).strip()
+    except Exception as exc:
+        logger.warning("python-docx extraction failed: %s", exc)
+        return ""
+
+def _process_attachments(service: Any, msg_id: str, payload: dict) -> list[dict[str, str]]:
+    """Download and extract text from PDF and Word attachments."""
+    attachments = []
+    
+    def _find_attachments(parts: list) -> None:
+        for part in parts:
+            filename = part.get("filename", "")
+            if filename and part.get("body", {}).get("attachmentId"):
+                mime_type = part.get("mimeType", "")
+                # Check if it's a PDF or Word doc
+                if mime_type == "application/pdf" or filename.lower().endswith(".pdf"):
+                    attachments.append({"id": part["body"]["attachmentId"], "filename": filename, "type": "pdf"})
+                elif mime_type in ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword") or filename.lower().endswith((".docx", ".doc")):
+                    attachments.append({"id": part["body"]["attachmentId"], "filename": filename, "type": "docx"})
+            
+            if "parts" in part:
+                _find_attachments(part["parts"])
+                
+    if "parts" in payload:
+        _find_attachments(payload["parts"])
+        
+    extracted_attachments = []
+    for att in attachments:
+        try:
+            att_obj = service.users().messages().attachments().get(
+                userId="me", messageId=msg_id, id=att["id"]
+            ).execute()
+            
+            data = att_obj.get("data")
+            if not data:
+                continue
+                
+            file_bytes = base64.urlsafe_b64decode(data)
+            text = ""
+            
+            if att["type"] == "pdf":
+                text = _extract_text_from_pdf(file_bytes)
+            elif att["type"] == "docx":
+                text = _extract_text_from_docx(file_bytes)
+                
+            if text:
+                extracted_attachments.append({
+                    "filename": att["filename"],
+                    "text": text
+                })
+        except Exception as exc:
+            logger.warning("Failed to process attachment %s: %s", att["filename"], exc)
+            
+    return extracted_attachments
 
 def _extract_metadata_with_llm(email_text: str) -> dict[str, Any]:
     """Use OpenAI to extract structured data from the email text."""
@@ -174,14 +254,27 @@ def poll_school_emails() -> None:
                 if "<" in sender:
                     sender = sender.split("<")[0].strip()
 
-                # Extract body and run LLM
+                # Extract body
                 body = _extract_email_body(full_msg.get("payload", {}))
                 if not body:
                     body = full_msg.get("snippet", "")
+                    
+                # Process attachments
+                attachments = _process_attachments(service, msg_id, full_msg.get("payload", {}))
                 
-                extracted_info = _extract_metadata_with_llm(f"Subject: {subject}\n\n{body}")
+                # Combine text for LLM
+                combined_text = f"Subject: {subject}\n\nBody:\n{body}"
+                for att in attachments:
+                    combined_text += f"\n\n--- Attachment: {att['filename']} ---\n{att['text']}"
+                
+                # Run LLM extraction
+                extracted_info = _extract_metadata_with_llm(combined_text)
                 if not extracted_info:
                     continue
+                    
+                # Add attachment info to extracted_info for storage
+                if attachments:
+                    extracted_info["attachments"] = [{"filename": a["filename"], "extracted_text_length": len(a["text"])} for a in attachments]
 
                 summary = extracted_info.get("summary", subject)
                 action_required = extracted_info.get("action_required", False)

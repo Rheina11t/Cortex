@@ -61,3 +61,9 @@ pytz>=2024.1
 
 # PDF generation for 'If Anything Happens' emergency file feature
 reportlab>=4.0.0
+
+# PDF text extraction for school email attachments (pdfminer is more reliable than PyPDF2 for scanned/complex layouts)
+pdfminer.six>=20221105
+
+# Word document (.docx) text extraction for school email attachments
+python-docx>=1.1.0
