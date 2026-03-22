@@ -2688,33 +2688,27 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         gcal_url, webcal_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         twiml = MessagingResponse()
         if gcal_url:
-            msg_lines = [
-                "📅 Connect your family calendar — two options:",
-                "",
-                "*Option 1 — Google Calendar (Android & iPhone, two-way sync):*",
-                gcal_url,
-                "Tap the link above to sign in with Google. Events sync both ways. Link expires in 1 hour.",
-            ]
+            # Send as separate messages so each link is unambiguous in WhatsApp
+            twiml.message(
+                "Option 1 - Google Calendar (Android & iPhone, two-way sync):\n"
+                + gcal_url + "\n"
+                + "Sign in with Google. Events sync both ways. Link expires in 1 hour."
+            )
             if webcal_url:
-                # Convert webcal:// URL to https:// subscribe redirect page
-                # (WhatsApp only renders https:// links as tappable)
-                subscribe_url = webcal_url.replace("webcal://", "https://", 1)
-                # Change /calendar/feed/{token}.ics to /calendar/subscribe/{token}
                 import re as _re
+                subscribe_url = webcal_url.replace("webcal://", "https://", 1)
                 subscribe_url = _re.sub(r"/calendar/feed/(.+)\.ics$", r"/calendar/subscribe/\1", subscribe_url)
-                msg_lines += [
-                    "",
-                    "*Option 2 — Apple Calendar (iPhone, one-tap subscribe):*",
-                    subscribe_url,
-                    "On iPhone, tap the link above — it opens a page that subscribes you to the family calendar instantly. Read-only, no login needed.",
-                ]
-            msg_lines += [
-                "",
-                "📌 *For families with children:* By connecting your calendar you confirm you have parental consent to share any events involving under-18s with FamilyBrain. Events are stored securely and never shared outside your family.",
-            ]
-            twiml.message("\n".join(msg_lines))
+                twiml.message(
+                    "Option 2 - Apple Calendar (iPhone, one-tap):\n"
+                    + subscribe_url + "\n"
+                    + "Tap the link on your iPhone. Opens a page with a Subscribe button - no login needed."
+                )
+            twiml.message(
+                "For families with children: by connecting your calendar you confirm parental consent "
+                "to share events involving under-18s with FamilyBrain. Stored securely, never shared outside your family."
+            )
         else:
-            twiml.message("⚠️ Sorry, I couldn't generate your calendar link right now. Please try again.")
+            twiml.message("Sorry, could not generate your calendar link right now. Please try again.")
         return Response(str(twiml), mimetype="application/xml")
 
     # --- SOS / Emergency File Command ---
