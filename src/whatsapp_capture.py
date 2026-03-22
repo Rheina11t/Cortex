@@ -3095,6 +3095,8 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                                 "You can also just start chatting — send me anything to remember, or ask me a question.",
                                 "",
                                 "📌 *For families with children:* By connecting your calendar you confirm you have parental consent to share any events involving under-18s with FamilyBrain. Events are stored securely and never shared outside your family.",
+                                "",
+                                "🔞 *FamilyBrain is for adults (18+) only. By using this service you confirm you are 18 or over.*",
                             ]
                             welcome_body = "\n".join(welcome_lines)
 
