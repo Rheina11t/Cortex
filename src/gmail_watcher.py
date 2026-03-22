@@ -77,23 +77,43 @@ def _extract_email_body(payload: dict) -> str:
     return body
 
 def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """Extract text from a PDF file using pdfminer.six."""
+    """Extract text from a PDF file using pdfminer.six, with OCR fallback for scanned PDFs."""
+    text = ""
     try:
         from pdfminer.high_level import extract_text
-        return extract_text(io.BytesIO(pdf_bytes)).strip()
+        text = extract_text(io.BytesIO(pdf_bytes)).strip()
     except Exception as exc:
         logger.warning("pdfminer extraction failed: %s", exc)
         # Fallback to PyPDF2 if pdfminer fails or isn't installed
         try:
             import PyPDF2
             reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
-            text = ""
             for page in reader.pages:
-                text += page.extract_text() + "\n"
-            return text.strip()
+                extracted = page.extract_text()
+                if extracted:
+                    text += extracted + "\n"
+            text = text.strip()
         except Exception as exc2:
             logger.warning("PyPDF2 fallback extraction failed: %s", exc2)
-            return ""
+
+    # If text is empty or very short, it might be a scanned PDF. Fallback to OCR.
+    if len(text) < 50:
+        logger.info("PDF text extraction yielded little/no text. Falling back to OCR.")
+        try:
+            from pdf2image import convert_from_bytes
+            import pytesseract
+            
+            images = convert_from_bytes(pdf_bytes)
+            ocr_text = ""
+            for img in images:
+                ocr_text += pytesseract.image_to_string(img) + "\n"
+            
+            if ocr_text.strip():
+                text = ocr_text.strip()
+        except Exception as ocr_exc:
+            logger.warning("OCR fallback failed: %s", ocr_exc)
+
+    return text
 
 def _extract_text_from_docx(docx_bytes: bytes) -> str:
     """Extract text from a Word document using python-docx."""
