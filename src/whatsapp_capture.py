@@ -1762,6 +1762,58 @@ def ical_feed(family_token: str) -> Response:
     )
 
 
+
+# ---------------------------------------------------------------------------
+# Apple Calendar Subscribe Redirect Page
+# ---------------------------------------------------------------------------
+@app.route("/calendar/subscribe/<family_token>", methods=["GET"])
+def apple_calendar_subscribe(family_token: str) -> Response:
+    """Redirect page for Apple Calendar subscription.
+    WhatsApp does not render webcal:// as a tappable link, so we serve
+    a normal https:// page that immediately redirects to webcal://.
+    iOS Safari intercepts the webcal:// redirect and opens Apple Calendar
+    with a one-tap Subscribe prompt.
+    """
+    base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
+    feed_url = f"{base_url}/calendar/feed/{family_token}.ics"
+    webcal_url = feed_url.replace("https://", "webcal://", 1).replace("http://", "webcal://", 1)
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add to Apple Calendar</title>
+  <meta http-equiv="refresh" content="1;url={webcal_url}">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+           display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; background: #f5f5f7; }}
+    .card {{ background: white; border-radius: 16px; padding: 32px 24px;
+             max-width: 360px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }}
+    h1 {{ font-size: 20px; font-weight: 600; color: #1d1d1f; margin: 0 0 8px; }}
+    p {{ font-size: 15px; color: #6e6e73; margin: 0 0 24px; line-height: 1.5; }}
+    a.btn {{ display: block; background: #007AFF; color: white; text-decoration: none;
+             padding: 14px 20px; border-radius: 12px; font-size: 16px; font-weight: 600; }}
+    .note {{ font-size: 13px; color: #8e8e93; margin-top: 16px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Add to Apple Calendar</h1>
+    <p>Opening your family calendar subscription...<br>
+       Tap the button below if it does not open automatically.</p>
+    <a href="{webcal_url}" class="btn">Subscribe to Calendar</a>
+    <p class="note">Read-only - Updates automatically - No login needed</p>
+  </div>
+  <script>
+    setTimeout(function() {{ window.location.href = "{webcal_url}"; }}, 500);
+  </script>
+</body>
+</html>"""
+    return Response(html, status=200, mimetype="text/html")
+
+
 @app.route("/gcal/connect", methods=["GET"])
 def gcal_connect() -> Response:
     """Validates the one-time token and redirects to Google OAuth consent screen."""
@@ -2644,11 +2696,17 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                 "Tap the link above to sign in with Google. Events sync both ways. Link expires in 1 hour.",
             ]
             if webcal_url:
+                # Convert webcal:// URL to https:// subscribe redirect page
+                # (WhatsApp only renders https:// links as tappable)
+                subscribe_url = webcal_url.replace("webcal://", "https://", 1)
+                # Change /calendar/feed/{token}.ics to /calendar/subscribe/{token}
+                import re as _re
+                subscribe_url = _re.sub(r"/calendar/feed/(.+)\.ics$", r"/calendar/subscribe/\1", subscribe_url)
                 msg_lines += [
                     "",
                     "*Option 2 — Apple Calendar (iPhone, one-tap subscribe):*",
-                    webcal_url,
-                    "On iPhone, tap the link above in Safari — you'll see a one-tap \"Subscribe\" prompt. Read-only, but instant.",
+                    subscribe_url,
+                    "On iPhone, tap the link above — it opens a page that subscribes you to the family calendar instantly. Read-only, no login needed.",
                 ]
             msg_lines += [
                 "",
@@ -2714,11 +2772,14 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                                 "Sign in with Google — events sync both ways. Link expires in 1 hour.",
                             ]
                             if webcal_url:
+                                import re as _re2
+                                _sub_url = webcal_url.replace("webcal://", "https://", 1)
+                                _sub_url = _re2.sub(r"/calendar/feed/(.+)\.ics$", r"/calendar/subscribe/\1", _sub_url)
                                 welcome_lines += [
                                     "",
                                     "*Option 2 — Apple Calendar (iPhone, one-tap subscribe):*",
-                                    webcal_url,
-                                    "Open in Safari on your iPhone for a one-tap \"Subscribe\" prompt. Read-only, but instant.",
+                                    _sub_url,
+                                    "Tap the link above — it opens a page that subscribes you to the family calendar instantly. Read-only, no login needed.",
                                 ]
                             welcome_lines += [
                                 "",
