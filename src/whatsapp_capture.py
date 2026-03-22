@@ -1411,8 +1411,8 @@ def _render_calendar_page(family_id: str, calendar_token: str) -> str:
               : '';
             if (timeStr) lines.push('\u23f0 ' + timeStr);
           }}
-          if (props.member) lines.push('\ud83d\udc64 ' + props.member);
-          if (props.notes) lines.push('\ud83d\udcdd ' + props.notes);
+          if (props.member) lines.push('Who: ' + props.member);
+          if (props.notes) lines.push('Notes: ' + props.notes);
           tooltip.innerHTML = lines.join('<br>');
           tooltip.style.display = 'block';
         }},
