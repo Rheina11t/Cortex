@@ -2460,6 +2460,8 @@ _pending_deletes: dict[str, dict] = {}
 _pending_edits: dict[str, dict] = {}
 # Pending recurring event confirmations: {from_number: event_data_dict}
 _pending_recurring_events: dict[str, dict] = {}
+# Pending GDPR full-data-deletion confirmations: {from_number: family_id}
+_pending_data_deletion: dict[str, str] = {}
 
 
 def _handle_memory_management(text: str, family_name: str, from_number: str) -> Response | None:
@@ -2668,6 +2670,188 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
 
 
 # ---------------------------------------------------------------------------
+# GDPR data deletion handler  (/delete-my-data)
+# ---------------------------------------------------------------------------
+
+def _handle_delete_my_data_command(from_number: str, family_id: str) -> Response:
+    """Handle the /delete-my-data command — ask for confirmation.
+
+    Stores the pending deletion in ``_pending_data_deletion`` keyed by
+    ``from_number``.  The confirmation is resolved in
+    ``_handle_data_deletion_confirmation()`` when the user replies DELETE.
+    """
+    _pending_data_deletion[from_number] = family_id
+    twiml = MessagingResponse()
+    twiml.message(
+        "Are you sure you want to delete all your FamilyBrain data? "
+        "This will remove all your memories, documents, and calendar events "
+        "stored by FamilyBrain.\n\n"
+        "Reply DELETE to confirm."
+    )
+    logger.info(
+        "Data deletion confirmation requested by %s (family_id=%s)",
+        from_number, family_id,
+    )
+    return Response(str(twiml), mimetype="application/xml")
+
+
+def _execute_family_data_deletion(family_id: str, from_number: str) -> dict[str, Any]:
+    """Delete all data for a family from every relevant table.
+
+    Deletes rows from:
+      - memories          (family-scoped via metadata JSONB)
+      - family_events     (family_id column)
+      - cortex_briefings  (family_id column)
+
+    Returns a dict with keys 'deleted' (table -> count) and 'errors' (list).
+    """
+    db = brain._supabase
+    results: dict[str, Any] = {"deleted": {}, "errors": []}
+
+    if not db:
+        results["errors"].append("No database connection")
+        return results
+
+    # 1. Delete all memories for this family (scoped via metadata JSONB)
+    try:
+        mem_result = (
+            db.table("memories")
+            .delete()
+            .contains("metadata", {"family_id": family_id})
+            .execute()
+        )
+        count = len(mem_result.data) if mem_result.data else 0
+        results["deleted"]["memories"] = count
+        logger.info(
+            "Data deletion: removed %d memories for family_id=%s", count, family_id
+        )
+    except Exception as exc:
+        msg = f"memories: {exc}"
+        results["errors"].append(msg)
+        logger.error("Data deletion error — %s", msg)
+
+    # 2. Delete all family_events for this family
+    try:
+        ev_result = (
+            db.table("family_events")
+            .delete()
+            .eq("family_id", family_id)
+            .execute()
+        )
+        count = len(ev_result.data) if ev_result.data else 0
+        results["deleted"]["family_events"] = count
+        logger.info(
+            "Data deletion: removed %d family_events for family_id=%s", count, family_id
+        )
+    except Exception as exc:
+        msg = f"family_events: {exc}"
+        results["errors"].append(msg)
+        logger.error("Data deletion error — %s", msg)
+
+    # 3. Delete all cortex_briefings for this family
+    try:
+        br_result = (
+            db.table("cortex_briefings")
+            .delete()
+            .eq("family_id", family_id)
+            .execute()
+        )
+        count = len(br_result.data) if br_result.data else 0
+        results["deleted"]["cortex_briefings"] = count
+        logger.info(
+            "Data deletion: removed %d cortex_briefings for family_id=%s",
+            count, family_id,
+        )
+    except Exception as exc:
+        msg = f"cortex_briefings: {exc}"
+        results["errors"].append(msg)
+        logger.error("Data deletion error — %s", msg)
+
+    # 4. Attempt to delete any emergency PDFs from Supabase Storage
+    try:
+        db.storage.from_("emergency-pdfs").remove([family_id + "/"])
+        logger.info(
+            "Data deletion: attempted removal of emergency PDFs for family_id=%s",
+            family_id,
+        )
+    except Exception as exc:
+        # Storage deletion failure is non-fatal — log and continue
+        logger.warning(
+            "Data deletion: could not remove emergency PDFs for family_id=%s: %s",
+            family_id, exc,
+        )
+
+    return results
+
+
+def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response | None:
+    """Check whether the user is confirming or cancelling a /delete-my-data request.
+
+    Returns a Response if this message is part of the deletion flow, else None.
+    """
+    if from_number not in _pending_data_deletion:
+        return None
+
+    family_id = _pending_data_deletion[from_number]
+    text_stripped = text.strip()
+    twiml = MessagingResponse()
+
+    if text_stripped == "DELETE":
+        # User confirmed — execute deletion
+        del _pending_data_deletion[from_number]
+        logger.info(
+            "Data deletion CONFIRMED by %s (family_id=%s)", from_number, family_id
+        )
+
+        deletion_results = _execute_family_data_deletion(family_id, from_number)
+
+        if deletion_results["errors"]:
+            # Partial failure
+            error_summary = "; ".join(deletion_results["errors"])
+            twiml.message(
+                "\u26a0\ufe0f Your data deletion completed with some errors. "
+                "Most of your data has been removed, but please contact "
+                "privacy@familybrain.co to confirm full deletion.\n\n"
+                f"Details: {error_summary}"
+            )
+            logger.error(
+                "Data deletion partial failure for %s: %s",
+                from_number, error_summary,
+            )
+        else:
+            twiml.message(
+                "Done. All your FamilyBrain data has been deleted. "
+                "You can start fresh by sending any message."
+            )
+            logger.info(
+                "Data deletion completed successfully for %s (family_id=%s). "
+                "Deleted: %s",
+                from_number, family_id, deletion_results["deleted"],
+            )
+
+        # Clear any other in-memory state for this phone number
+        _conversation_history.pop(from_number, None)
+        _pending_deletes.pop(from_number, None)
+        _pending_edits.pop(from_number, None)
+        _pending_recurring_events.pop(from_number, None)
+        _pending_category_prompt.pop(from_number, None)
+        _last_stored_memory.pop(from_number, None)
+        _doc_count.pop(from_number, None)
+        _phone_cache.pop(from_number.replace("whatsapp:", "").strip(), None)
+
+        return Response(str(twiml), mimetype="application/xml")
+
+    else:
+        # User replied something other than DELETE — cancel
+        del _pending_data_deletion[from_number]
+        twiml.message("No problem \u2014 your data has been kept.")
+        logger.info(
+            "Data deletion CANCELLED by %s (replied: %r)", from_number, text_stripped
+        )
+        return Response(str(twiml), mimetype="application/xml")
+
+
+# ---------------------------------------------------------------------------
 # Text message handler
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
@@ -2710,6 +2894,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         else:
             twiml.message("Sorry, could not generate your calendar link right now. Please try again.")
         return Response(str(twiml), mimetype="application/xml")
+
+    # --- GDPR Data Deletion Command ---
+    if text_lower in ("/delete-my-data", "/deletemydata", "/gdpr-delete", "/delete my data"):
+        return _handle_delete_my_data_command(from_number, _family_id)
 
     # --- SOS / Emergency File Command ---
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
@@ -2795,6 +2983,11 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                                 )
         except Exception as exc:
             logger.warning("Failed to auto-prompt for calendar connection: %s", exc)
+
+    # --- GDPR data deletion confirmation (must run before memory management) ---
+    deletion_confirm_result = _handle_data_deletion_confirmation(text, from_number)
+    if deletion_confirm_result is not None:
+        return deletion_confirm_result
 
     # --- Memory management commands (delete, edit, list) ---
     mem_mgmt_result = _handle_memory_management(text, family_name, from_number)
