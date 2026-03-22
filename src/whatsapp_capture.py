@@ -94,6 +94,44 @@ else:
 _phone_cache: dict[str, tuple[str, str]] = {}
 
 
+def log_action(family_id: str, action_type: str, subject: str, detail: Optional[dict] = None, phone_number: Optional[str] = None) -> None:
+    """Log a significant action to the cortex_actions table."""
+    try:
+        db = brain._supabase
+        if not db:
+            return
+        db.table("cortex_actions").insert({
+            "family_id": family_id,
+            "action_type": action_type,
+            "subject": subject,
+            "detail": detail or {},
+            "phone_number": phone_number
+        }).execute()
+    except Exception as exc:
+        logger.warning("Failed to log action %s for family %s: %s", action_type, family_id, exc)
+
+def get_recent_actions(family_id: str, action_type: Optional[str] = None, hours: int = 24, subject_contains: Optional[str] = None) -> list[dict]:
+    """Query cortex_actions for recent entries."""
+    try:
+        db = brain._supabase
+        if not db:
+            return []
+        
+        cutoff = datetime.now(pytz.UTC) - timedelta(hours=hours)
+        query = db.table("cortex_actions").select("*").eq("family_id", family_id).gte("created_at", cutoff.isoformat())
+        
+        if action_type:
+            query = query.eq("action_type", action_type)
+            
+        if subject_contains:
+            query = query.ilike("subject", f"%{subject_contains}%")
+            
+        result = query.order("created_at", desc=True).execute()
+        return result.data or []
+    except Exception as exc:
+        logger.warning("Failed to get recent actions for family %s: %s", family_id, exc)
+        return []
+
 def _lookup_phone_in_db(phone_number: str) -> Optional[tuple[str, str]]:
     """Look up a phone number in the whatsapp_members Supabase table.
     Returns (family_name, family_id) or None if not found.
@@ -2454,6 +2492,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
 
         twiml.message(reply_text)
         logger.info("Answered query with %d sources", len(results))
+        log_action(family_id, 'query_answered', subject=text[:50], detail={'sources': len(results)}, phone_number=from_number)
 
     except Exception as exc:
         logger.error("Failed to answer query: %s\n%s", exc, traceback.format_exc())
@@ -2614,6 +2653,8 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             reply = f"✅ Done! I've added {event_name} {freq_str}{time_str}. It'll show on your family calendar."
             if conflict_warning:
                 reply += f"\n\n{conflict_warning}"
+            if event_id:
+                log_action(family_id, 'event_created', subject=f"{event_name} {freq_str}", detail={'event_id': event_id, 'recurrence_rule': rule, 'family_member': event_data.get('family_member', family_name)}, phone_number=from_number)
                 
             twiml.message(reply)
             return Response(str(twiml), mimetype="application/xml")
@@ -2943,6 +2984,52 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
         return _handle_sos_command(from_number, family_name, _family_id)
 
+    # --- History Command ---
+    if text_lower in ("/history", "history", "what have you done", "show history", "what did you do this week"):
+        twiml = MessagingResponse()
+        try:
+            cutoff_7d = datetime.now(pytz.UTC) - timedelta(days=7)
+            db = brain._supabase
+            if db:
+                result = db.table("cortex_actions") \
+                    .select("action_type") \
+                    .eq("family_id", _family_id) \
+                    .gte("created_at", cutoff_7d.isoformat()) \
+                    .execute()
+                rows = result.data or []
+            else:
+                rows = []
+
+            counts: dict[str, int] = {}
+            for row in rows:
+                at = row.get("action_type", "other")
+                counts[at] = counts.get(at, 0) + 1
+
+            lines = ["Here's what I've done for your family this week:\n"]
+            if counts.get("event_created"):
+                lines.append(f"📅 {counts['event_created']} event{'s' if counts['event_created'] != 1 else ''} created")
+            if counts.get("document_stored"):
+                lines.append(f"📄 {counts['document_stored']} document{'s' if counts['document_stored'] != 1 else ''} stored")
+            if counts.get("school_email_processed"):
+                lines.append(f"📚 {counts['school_email_processed']} school email{'s' if counts['school_email_processed'] != 1 else ''} processed")
+            if counts.get("query_answered"):
+                lines.append(f"💬 {counts['query_answered']} question{'s' if counts['query_answered'] != 1 else ''} answered")
+            if counts.get("alert_sent"):
+                lines.append(f"⏰ {counts['alert_sent']} reminder{'s' if counts['alert_sent'] != 1 else ''} sent")
+            if counts.get("briefing_sent"):
+                lines.append(f"🌅 {counts['briefing_sent']} briefing{'s' if counts['briefing_sent'] != 1 else ''} sent")
+            if counts.get("memory_stored"):
+                lines.append(f"🧠 {counts['memory_stored']} memor{'ies' if counts['memory_stored'] != 1 else 'y'} stored")
+
+            if len(lines) == 1:
+                lines.append("Nothing logged yet this week. Start chatting to build your family's memory!")
+
+            twiml.message("\n".join(lines))
+        except Exception as exc:
+            logger.error("Failed to generate history: %s", exc)
+            twiml.message("⚠️ Sorry, I couldn't retrieve your history right now.")
+        return Response(str(twiml), mimetype="application/xml")
+
     # --- Kitchen Calendar Link Command ---
     if text_lower in ("/calendar", "calendar", "show calendar", "family calendar"):
         twiml = MessagingResponse()
@@ -3142,6 +3229,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                 event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name, family_id=_family_id)
                 if event_id:
                     event_info = f"\n📅 Added to calendar: {event_name} on {resolved_date}"
+                    log_action(_family_id, 'event_created', subject=f"{event_name} {resolved_date}", detail={'event_id': event_id, 'event_date': resolved_date, 'family_member': event_member}, phone_number=from_number)
                 if conflict_warning:
                     event_info += f"\n\n{conflict_warning}"
         # Step 5: Classify into emergency category
@@ -3401,6 +3489,7 @@ def _handle_media_message(
         logger.info(
             "Media memory captured by %s (type=%s, id=%s)", family_name, doc_type, memory_id
         )
+        log_action(_family_id, 'document_stored', subject=f"{doc_type} {source_type}", detail={'memory_id': memory_id, 'doc_type': doc_type, 'source_type': source_type, 'tags': metadata.get('tags', [])}, phone_number=from_number)
 
         # --- Category prompt if unclear ---
         if not emergency_cat and source_type != "whatsapp-voice":
@@ -3770,6 +3859,9 @@ def _send_daily_expiry_alerts() -> None:
                 )
                 logger.info("Daily expiry alert sent to %s (%d alerts)", primary_phone, len(unique_alerts))
                 _log_briefing(family_id, "expiry_alert", content_hash)
+                for _d, _label, _snippet in unique_alerts[:5]:
+                    _alert_subject = _snippet[:60].strip()
+                    log_action(family_id, 'alert_sent', subject=f"{_alert_subject} expiry", detail={'date': str(_d), 'label': _label}, phone_number=primary_phone)
             except Exception as exc:
                 logger.warning("Failed to send daily alert to %s: %s", primary_phone, exc)
     except Exception as exc:
@@ -4018,12 +4110,26 @@ def _send_morning_briefing() -> None:
         today_date = datetime.now(tz).date()
         today_str = today_date.isoformat()
 
+        # --- PART 4: Check cortex_actions — skip if briefing sent in last 6 hours ---
+        recent_briefings = get_recent_actions(family_id, action_type='briefing_sent', hours=6, subject_contains='morning briefing')
+        if recent_briefings:
+            logger.debug("Skipping morning briefing: already sent within the last 6 hours (cortex_actions)")
+            return
+
         # Fetch today's events
         events_res = db.table("family_events").select("*").eq("event_date", today_str).execute()
         events = events_res.data or []
         
         # Sort events by time
         events.sort(key=lambda x: x.get("event_time") or "23:59")
+
+        # --- PART 4: Fetch alert_sent actions from last 48 hours to suppress repeated alerts ---
+        recent_alert_actions = get_recent_actions(family_id, action_type='alert_sent', hours=48)
+        recently_alerted_subjects = set()
+        for _act in recent_alert_actions:
+            _subj = (_act.get('subject') or '').lower()
+            if _subj:
+                recently_alerted_subjects.add(_subj)
 
         # Fetch expiring memories
         memories = brain.list_recent_memories(limit=200, family_id=family_id)
@@ -4047,7 +4153,11 @@ def _send_morning_briefing() -> None:
                     try:
                         d = parser(match)
                         if d == today_date:
-                            expiring_today.append(content[:100])
+                            snippet = content[:100]
+                            # Suppress if this alert was already sent in the last 48 hours
+                            snippet_key = snippet[:60].strip().lower() + ' expiry'
+                            if snippet_key not in recently_alerted_subjects:
+                                expiring_today.append(snippet)
                     except Exception:
                         pass
 
@@ -4103,6 +4213,7 @@ def _send_morning_briefing() -> None:
                     logger.warning("Failed to send morning briefing to %s: %s", phone, exc)
                     
             _log_briefing(family_id, "morning_briefing", content_hash)
+            log_action(family_id, 'briefing_sent', subject='morning briefing', detail={'events_count': len(events), 'recipients': len(phones)})
             logger.info("Morning briefing sent to %d members", len(phones))
 
     except Exception as exc:
@@ -4123,6 +4234,12 @@ def _send_evening_preview() -> None:
         tz = pytz.timezone("Europe/London")
         tomorrow_date = datetime.now(tz).date() + timedelta(days=1)
         tomorrow_str = tomorrow_date.isoformat()
+
+        # --- PART 4: Check cortex_actions — skip if evening preview sent in last 6 hours ---
+        recent_evening = get_recent_actions(family_id, action_type='briefing_sent', hours=6, subject_contains='evening preview')
+        if recent_evening:
+            logger.debug("Skipping evening preview: already sent within the last 6 hours (cortex_actions)")
+            return
 
         # Fetch tomorrow's events
         events_res = db.table("family_events").select("*").eq("event_date", tomorrow_str).execute()
@@ -4186,6 +4303,7 @@ def _send_evening_preview() -> None:
                     logger.warning("Failed to send evening preview to %s: %s", phone, exc)
                     
             _log_briefing(family_id, "evening_preview", content_hash)
+            log_action(family_id, 'briefing_sent', subject='evening preview', detail={'events_count': len(events), 'recipients': len(phones)})
             logger.info("Evening preview sent to %d members", len(phones))
 
     except Exception as exc:

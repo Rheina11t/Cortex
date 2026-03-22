@@ -337,6 +337,13 @@ def poll_school_emails() -> None:
                     "extracted_info": extracted_info
                 }).execute()
 
+                # 3b. Log to cortex_actions
+                try:
+                    from .whatsapp_capture import log_action as _log_action
+                    _log_action(family_id, 'school_email_processed', subject=subject[:100], detail={'sender': sender, 'event_name': event_name, 'event_date': event_date, 'action_required': action_required})
+                except Exception as _log_exc:
+                    logger.warning("Failed to log school_email_processed action: %s", _log_exc)
+
                 # 4. Send WhatsApp notification
                 if twilio_client and family_id in family_phones_by_id:
                     notification_body = ""
