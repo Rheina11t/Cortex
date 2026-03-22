@@ -18,7 +18,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 CLIENT_ID = os.environ.get("GOOGLE_CALENDAR_CLIENT_ID", "71845778050-vgd7adv8s9i7ej0elnd7d17mpv3kh7jk.apps.googleusercontent.com")
 CLIENT_SECRET = os.environ.get("GOOGLE_CALENDAR_CLIENT_SECRET", "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")
-SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/gmail.readonly"
+]
 
 
 def main():

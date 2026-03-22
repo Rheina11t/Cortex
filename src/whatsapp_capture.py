@@ -1961,7 +1961,7 @@ def gcal_callback() -> Response:
         # Delete the used token
         db.table("gcal_connect_tokens").delete().eq("token", state_token).execute()
         
-        # Send confirmation WhatsApp message
+        # Send confirmation WhatsApp message and school email onboarding prompt
         try:
             from twilio.rest import Client as TwilioClient
             _s = get_settings()
@@ -1972,6 +1972,17 @@ def gcal_callback() -> Response:
                     to=f"whatsapp:{phone}",
                     body="✅ Google Calendar connected successfully! I will now sync your events.",
                 )
+                
+                # Send follow-up prompt for school email watching
+                twilio_client.messages.create(
+                    from_=_s.twilio_whatsapp_from,
+                    to=f"whatsapp:{phone}",
+                    body="One more thing — want me to watch for school emails too? I'll automatically pick up letters, trip reminders, and payment deadlines. I only look at emails from your child's school — never personal, work, or financial emails.\n\nReply YES to connect school emails, or SKIP to set up manually later.",
+                )
+                
+                # Set pending state for school email onboarding
+                _pending_school_email_onboarding[f"whatsapp:{phone}"] = family_id
+                
         except Exception as exc:
             logger.warning("Failed to send confirmation WhatsApp message: %s", exc)
             
@@ -2462,6 +2473,8 @@ _pending_edits: dict[str, dict] = {}
 _pending_recurring_events: dict[str, dict] = {}
 # Pending GDPR full-data-deletion confirmations: {from_number: family_id}
 _pending_data_deletion: dict[str, str] = {}
+# Pending school email onboarding: {from_number: family_id}
+_pending_school_email_onboarding: dict[str, str] = {}
 
 
 def _handle_memory_management(text: str, family_name: str, from_number: str) -> Response | None:
@@ -2544,6 +2557,33 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
         elif text_lower in ("no", "n", "cancel"):
             del _pending_edits[from_number]
             twiml.message("OK, cancelled. Nothing was changed.")
+            return Response(str(twiml), mimetype="application/xml")
+
+    # --- Handle pending school email onboarding ---
+    if from_number in _pending_school_email_onboarding:
+        family_id = _pending_school_email_onboarding[from_number]
+        if text_lower in ("yes", "y", "sure", "ok", "connect"):
+            del _pending_school_email_onboarding[from_number]
+            db = brain._supabase
+            if db:
+                db.table("families").update({"school_email_watch": True}).eq("family_id", family_id).execute()
+            twiml.message("✅ School email watching connected! I'll keep an eye out for letters, trips, and deadlines.")
+            return Response(str(twiml), mimetype="application/xml")
+        elif text_lower in ("skip", "no", "n", "later"):
+            del _pending_school_email_onboarding[from_number]
+            
+            # Get family token for fallback email
+            fallback_email = "your-family@familybrain.co"
+            db = brain._supabase
+            if db:
+                try:
+                    res = db.table("families").select("calendar_token").eq("family_id", family_id).execute()
+                    if res.data and res.data[0].get("calendar_token"):
+                        fallback_email = f"{res.data[0]['calendar_token']}@familybrain.co"
+                except Exception:
+                    pass
+                    
+            twiml.message(f"No problem! You can forward school emails to {fallback_email} any time and I'll handle them automatically.")
             return Response(str(twiml), mimetype="application/xml")
 
     # --- Confirm pending recurring event ---
@@ -4177,6 +4217,19 @@ def main() -> None:
             id="gcal_sync",
             next_run_time=__import__("datetime").datetime.now(),  # run immediately on startup
         )
+
+        # Gmail School Email Watcher (runs every 15 minutes)
+        try:
+            from . import gmail_watcher
+            alert_scheduler.add_job(
+                gmail_watcher.poll_school_emails,
+                trigger="interval",
+                minutes=15,
+                id="gmail_school_watcher",
+                next_run_time=__import__("datetime").datetime.now() + __import__("datetime").timedelta(minutes=2),  # offset slightly from gcal sync
+            )
+        except Exception as exc:
+            logger.warning("Could not register Gmail watcher job: %s", exc)
 
         # Morning Briefing (runs at 07:15 Europe/London)
         alert_scheduler.add_job(
