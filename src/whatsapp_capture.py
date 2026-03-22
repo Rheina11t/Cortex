@@ -2800,8 +2800,14 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     mem_mgmt_result = _handle_memory_management(text, family_name, from_number)
     if mem_mgmt_result is not None:
         return mem_mgmt_result
+    # --- Early interception for recurring events ---
+    # If the message contains recurring event keywords, bypass query detection
+    # and go straight to capture/event detection.
+    recurring_keywords = ["every", "weekly", "monthly", "fortnightly", "weekdays", "weekends"]
+    is_recurring_message = any(kw in text.lower() for kw in recurring_keywords)
+
     # --- Intent detection: Query vs Capture ---
-    if _is_query(text, from_number):
+    if not is_recurring_message and _is_query(text, from_number):
         history = _conversation_history.get(from_number, [])
         return _answer_query(text, from_number, conversation_history=history)
 
