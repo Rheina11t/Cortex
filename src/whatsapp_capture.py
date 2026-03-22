@@ -1507,6 +1507,261 @@ def kitchen_calendar_debug(family_token: str) -> Response:
         return Response(f"ERROR: {exc}\n\n{_tb.format_exc()}", status=500, mimetype="text/plain")
 
 
+# ---------------------------------------------------------------------------
+# iCal / webcal Feed Endpoint
+# ---------------------------------------------------------------------------
+
+@app.route("/calendar/feed/<family_token>.ics", methods=["GET"])
+def ical_feed(family_token: str) -> Response:
+    """Serve the family's events as a standards-compliant iCalendar (.ics) file.
+
+    Auth-free: the ``family_token`` (stored in ``families.calendar_token``) acts
+    as the shared secret.  The same token is already used by the kitchen-calendar
+    HTML page, so no new DB columns are required.
+
+    Supports:
+    - One-off events (VEVENT with DTSTART / DTEND)
+    - Recurring events (RRULE expansion up to 2 years ahead)
+    - All-day events (DATE value type) and timed events (DATE-TIME)
+
+    The ``webcal://`` scheme is simply ``https://`` with the protocol swapped;
+    iOS Safari / Apple Calendar intercepts ``webcal://`` links and offers a
+    one-tap "Subscribe" prompt, giving iPhone users instant read-only access
+    without any Settings navigation.
+    """
+    import uuid as _uuid
+    from datetime import date as _date, datetime as _datetime, timedelta as _timedelta
+
+    db = brain._supabase
+    if not db:
+        logger.error("ical_feed: no DB connection")
+        return Response("Service unavailable", status=503, mimetype="text/plain")
+
+    # ---- 1. Resolve family_id from token --------------------------------
+    try:
+        fam_res = db.table("families").select("family_id").eq("calendar_token", family_token).limit(1).execute()
+        if not fam_res.data:
+            logger.warning("ical_feed: unknown token %s", family_token)
+            return Response("Calendar not found.", status=404, mimetype="text/plain")
+        family_id: str = fam_res.data[0]["family_id"]
+    except Exception as exc:
+        logger.error("ical_feed: DB lookup failed: %s", exc)
+        return Response("Error loading calendar.", status=500, mimetype="text/plain")
+
+    # ---- 2. Fetch events ------------------------------------------------
+    try:
+        ev_res = db.table("family_events") \
+            .select("id,title,event_name,event_date,event_time,end_date,end_time,"
+                    "family_member,notes,location,is_recurring,recurrence_rule,recurrence_end") \
+            .eq("family_id", family_id) \
+            .execute()
+        rows = ev_res.data or []
+    except Exception as exc:
+        logger.error("ical_feed: events query failed: %s", exc)
+        return Response("Error loading events.", status=500, mimetype="text/plain")
+
+    # ---- 3. Build iCalendar text ----------------------------------------
+    london_tz = pytz.timezone("Europe/London")
+    now_utc = datetime.now(pytz.utc)
+    dtstamp = now_utc.strftime("%Y%m%dT%H%M%SZ")
+
+    # Horizon for recurring-event expansion: 2 years from today
+    expand_until = _date.today().replace(year=_date.today().year + 2)
+
+    lines: list[str] = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//FamilyBrain//FamilyBrain Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Family Calendar",
+        "X-WR-TIMEZONE:Europe/London",
+        "X-WR-CALDESC:Your FamilyBrain family calendar",
+        # VTIMEZONE block for Europe/London (abbreviated; clients fall back gracefully)
+        "BEGIN:VTIMEZONE",
+        "TZID:Europe/London",
+        "BEGIN:STANDARD",
+        "DTSTART:19701025T020000",
+        "RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10",
+        "TZOFFSETFROM:+0100",
+        "TZOFFSETTO:+0000",
+        "TZNAME:GMT",
+        "END:STANDARD",
+        "BEGIN:DAYLIGHT",
+        "DTSTART:19700329T010000",
+        "RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3",
+        "TZOFFSETFROM:+0000",
+        "TZOFFSETTO:+0100",
+        "TZNAME:BST",
+        "END:DAYLIGHT",
+        "END:VTIMEZONE",
+    ]
+
+    def _fold(line: str) -> str:
+        """RFC 5545 line folding: max 75 octets per line, continuation with a space."""
+        encoded = line.encode("utf-8")
+        if len(encoded) <= 75:
+            return line
+        result_parts: list[str] = []
+        while len(encoded) > 75:
+            # Find safe split point (avoid splitting multi-byte chars)
+            split = 75
+            while split > 0 and (encoded[split] & 0xC0) == 0x80:
+                split -= 1
+            result_parts.append(encoded[:split].decode("utf-8"))
+            encoded = b" " + encoded[split:]
+        result_parts.append(encoded.decode("utf-8"))
+        return "\r\n".join(result_parts)
+
+    def _ical_escape(text: str) -> str:
+        """Escape special characters per RFC 5545."""
+        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+    def _emit_vevent(
+        uid: str,
+        summary: str,
+        dtstart_date: _date,
+        dtstart_time: str,
+        dtend_date: _date,
+        dtend_time: str,
+        description: str,
+        location_str: str,
+        rrule_str: str = "",
+        recurrence_end: _date | None = None,
+    ) -> list[str]:
+        """Build VEVENT lines for one event (or recurring series)."""
+        ev_lines: list[str] = ["BEGIN:VEVENT"]
+        ev_lines.append(f"UID:{uid}")
+        ev_lines.append(f"DTSTAMP:{dtstamp}")
+
+        if dtstart_time:
+            # Timed event
+            try:
+                dt = _datetime.fromisoformat(f"{dtstart_date}T{dtstart_time}")
+                dt_london = london_tz.localize(dt)
+                ev_lines.append(f"DTSTART;TZID=Europe/London:{dt_london.strftime('%Y%m%dT%H%M%S')}")
+            except Exception:
+                ev_lines.append(f"DTSTART;VALUE=DATE:{dtstart_date.strftime('%Y%m%d')}")
+        else:
+            # All-day event
+            ev_lines.append(f"DTSTART;VALUE=DATE:{dtstart_date.strftime('%Y%m%d')}")
+
+        if dtend_time and dtstart_time:
+            try:
+                end_d = dtend_date if dtend_date else dtstart_date
+                dt_end = _datetime.fromisoformat(f"{end_d}T{dtend_time}")
+                dt_end_london = london_tz.localize(dt_end)
+                ev_lines.append(f"DTEND;TZID=Europe/London:{dt_end_london.strftime('%Y%m%dT%H%M%S')}")
+            except Exception:
+                pass
+        elif dtend_date and not dtstart_time:
+            # All-day multi-day: DTEND is exclusive (next day)
+            try:
+                exclusive_end = dtend_date + _timedelta(days=1)
+                ev_lines.append(f"DTEND;VALUE=DATE:{exclusive_end.strftime('%Y%m%d')}")
+            except Exception:
+                pass
+
+        if rrule_str:
+            # Append UNTIL to the RRULE if we have a recurrence_end
+            if recurrence_end and "UNTIL" not in rrule_str:
+                rrule_str = rrule_str.rstrip(";") + f";UNTIL={recurrence_end.strftime('%Y%m%d')}T235959Z"
+            ev_lines.append(f"RRULE:{rrule_str}")
+
+        ev_lines.append(_fold(f"SUMMARY:{_ical_escape(summary)}"))
+        if description:
+            ev_lines.append(_fold(f"DESCRIPTION:{_ical_escape(description)}"))
+        if location_str:
+            ev_lines.append(_fold(f"LOCATION:{_ical_escape(location_str)}"))
+        ev_lines.append("END:VEVENT")
+        return ev_lines
+
+    for row in rows:
+        try:
+            event_date_str = row.get("event_date", "")
+            if not event_date_str:
+                continue
+
+            dtstart_date = _date.fromisoformat(str(event_date_str))
+            event_time = (row.get("event_time") or "").strip()
+            end_date_str = (row.get("end_date") or "").strip()
+            end_time = (row.get("end_time") or "").strip()
+            dtend_date = _date.fromisoformat(end_date_str) if end_date_str else dtstart_date
+
+            raw_title = (row.get("title") or row.get("event_name") or "Event").strip()
+            member = (row.get("family_member") or "").strip()
+            summary = f"{raw_title} ({member})" if member and member.lower() not in ("family", "") else raw_title
+
+            notes = (row.get("notes") or "").strip()
+            location_str = (row.get("location") or "").strip()
+            uid = f"{row.get('id', _uuid.uuid4())}@familybrain"
+
+            is_recurring = bool(row.get("is_recurring", False))
+            recurrence_rule_raw = (row.get("recurrence_rule") or "").strip()
+            rec_end_str = (row.get("recurrence_end") or "").strip()
+            rec_end_date: _date | None = None
+            if rec_end_str:
+                try:
+                    rec_end_date = _date.fromisoformat(rec_end_str)
+                except Exception:
+                    pass
+
+            # Build RRULE string from our shorthand or raw value
+            rrule_str = ""
+            if is_recurring and recurrence_rule_raw:
+                rule_upper = recurrence_rule_raw.upper()
+                if rule_upper == "WEEKLY":
+                    rrule_str = "FREQ=WEEKLY"
+                elif rule_upper == "BIWEEKLY":
+                    rrule_str = "FREQ=WEEKLY;INTERVAL=2"
+                elif rule_upper == "MONTHLY":
+                    rrule_str = "FREQ=MONTHLY"
+                elif rule_upper == "WEEKDAYS":
+                    rrule_str = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+                elif rule_upper == "WEEKENDS":
+                    rrule_str = "FREQ=WEEKLY;BYDAY=SA,SU"
+                elif recurrence_rule_raw.startswith("RRULE:"):
+                    rrule_str = recurrence_rule_raw[6:]
+                else:
+                    rrule_str = recurrence_rule_raw
+
+                # Cap expansion at 2 years if no explicit end
+                if not rec_end_date:
+                    rec_end_date = expand_until
+
+            ev_lines = _emit_vevent(
+                uid=uid,
+                summary=summary,
+                dtstart_date=dtstart_date,
+                dtstart_time=event_time,
+                dtend_date=dtend_date,
+                dtend_time=end_time,
+                description=notes,
+                location_str=location_str,
+                rrule_str=rrule_str,
+                recurrence_end=rec_end_date,
+            )
+            lines.extend(ev_lines)
+        except Exception as row_exc:
+            logger.warning("ical_feed: skipping malformed row %s: %s", row.get("id"), row_exc)
+
+    lines.append("END:VCALENDAR")
+
+    # RFC 5545 requires CRLF line endings
+    ical_body = "\r\n".join(lines) + "\r\n"
+
+    return Response(
+        ical_body,
+        status=200,
+        mimetype="text/calendar",
+        headers={
+            "Content-Disposition": f'attachment; filename="family-calendar.ics"',
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @app.route("/gcal/connect", methods=["GET"])
 def gcal_connect() -> Response:
     """Validates the one-time token and redirects to Google OAuth consent screen."""
@@ -1735,19 +1990,26 @@ def handle_whatsapp() -> Response:
 # ---------------------------------------------------------------------------
 # Google Calendar Connect Helper
 # ---------------------------------------------------------------------------
-def _send_gcal_connect_link(phone: str, family_id: str) -> str:
-    """Generate a one-time token and return the connect URL. Also attempts to send via Twilio."""
+def _send_gcal_connect_link(phone: str, family_id: str) -> tuple[str, str]:
+    """Generate a one-time Google OAuth token and return (google_connect_url, webcal_url).
+
+    Returns a tuple of:
+    - google_connect_url: the one-time OAuth link (expires in 1 hour)
+    - webcal_url: the auth-free webcal:// subscription link for Apple Calendar
+
+    Either value may be an empty string on failure.
+    """
     import secrets
     from datetime import datetime, timedelta, timezone
-    
+
     token = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-    
+
     db = brain._supabase
     if not db:
         logger.error("Cannot send gcal connect link: no database connection")
-        return ""
-        
+        return ("", "")
+
     try:
         db.table("gcal_connect_tokens").insert({
             "token": token,
@@ -1755,15 +2017,26 @@ def _send_gcal_connect_link(phone: str, family_id: str) -> str:
             "family_id": family_id,
             "expires_at": expires_at
         }).execute()
-        
-        # Construct URL
+
         base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
         connect_url = f"{base_url}/gcal/connect?token={token}"
-        logger.info("Generated Google Calendar connect link for %s", phone)
-        return connect_url
+
+        # Build the webcal:// subscription URL using the family's calendar_token
+        webcal_url = ""
+        try:
+            cal_token = _get_or_create_calendar_token(family_id)
+            if cal_token:
+                # webcal:// is https:// with the scheme replaced; iOS Safari intercepts it
+                feed_https = f"{base_url}/calendar/feed/{cal_token}.ics"
+                webcal_url = feed_https.replace("https://", "webcal://", 1).replace("http://", "webcal://", 1)
+        except Exception as wc_exc:
+            logger.warning("Could not build webcal URL for %s: %s", phone, wc_exc)
+
+        logger.info("Generated hybrid calendar links for %s (gcal=%s, webcal=%s)", phone, bool(connect_url), bool(webcal_url))
+        return (connect_url, webcal_url)
     except Exception as exc:
         logger.error("Failed to generate gcal connect link: %s", exc)
-        return ""
+        return ("", "")
 
 
 # ---------------------------------------------------------------------------
@@ -2360,10 +2633,28 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     # --- Google Calendar Connect Command ---
     text_lower = text.lower().strip()
     if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar", "/connect", "/connect google", "connect google calendar") or text_lower.startswith("/connect cal") or text_lower.startswith("/setup cal"):
-        connect_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
+        gcal_url, webcal_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         twiml = MessagingResponse()
-        if connect_url:
-            twiml.message(f"To connect your Google Calendar, tap this link:\n{connect_url}\n\nThis link expires in 1 hour.")
+        if gcal_url:
+            msg_lines = [
+                "📅 Connect your family calendar — two options:",
+                "",
+                "*Option 1 — Google Calendar (Android & iPhone, two-way sync):*",
+                gcal_url,
+                "Tap the link above to sign in with Google. Events sync both ways. Link expires in 1 hour.",
+            ]
+            if webcal_url:
+                msg_lines += [
+                    "",
+                    "*Option 2 — Apple Calendar (iPhone, one-tap subscribe):*",
+                    webcal_url,
+                    "On iPhone, tap the link above in Safari — you'll see a one-tap \"Subscribe\" prompt. Read-only, but instant.",
+                ]
+            msg_lines += [
+                "",
+                "📌 *For families with children:* By connecting your calendar you confirm you have parental consent to share any events involving under-18s with FamilyBrain. Events are stored securely and never shared outside your family.",
+            ]
+            twiml.message("\n".join(msg_lines))
         else:
             twiml.message("⚠️ Sorry, I couldn't generate your calendar link right now. Please try again.")
         return Response(str(twiml), mimetype="application/xml")
@@ -2407,32 +2698,46 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                     # Check if we already sent them a link recently to avoid spamming
                     recent_tokens = db.table("gcal_connect_tokens").select("token").eq("phone", from_number.replace("whatsapp:", "")).execute()
                     if not recent_tokens.data:
-                        # Send welcome message with link
-                        import secrets
-                        from datetime import datetime, timedelta, timezone
-                        token = secrets.token_urlsafe(32)
-                        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-                        db.table("gcal_connect_tokens").insert({
-                            "token": token,
-                            "phone": from_number.replace("whatsapp:", ""),
-                            "family_id": _family_id,
-                            "expires_at": expires_at
-                        }).execute()
-                        
-                        base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/")).rstrip("/")
-                        connect_url = f"{base_url}/gcal/connect?token={token}"
-                        
-                        # We don't return here, we just send an extra message via Twilio client
-                        # so the normal processing of their first message continues
-                        from twilio.rest import Client as TwilioClient
-                        _s = get_settings()
-                        if _s.twilio_account_sid and _s.twilio_auth_token:
-                            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-                            twilio_client.messages.create(
-                                from_=_s.twilio_whatsapp_from,
-                                to=from_number,
-                                body=f"Welcome to FamilyBrain! To sync your family calendar, tap here: {connect_url}",
-                            )
+                        # Generate hybrid calendar links (Google OAuth + webcal subscription)
+                        gcal_url, webcal_url = _send_gcal_connect_link(
+                            from_number.replace("whatsapp:", ""), _family_id
+                        )
+
+                        if gcal_url:
+                            welcome_lines = [
+                                "👋 Welcome to FamilyBrain! I'm your family's memory and calendar assistant.",
+                                "",
+                                "To get the most out of me, connect your family calendar:",
+                                "",
+                                "*Option 1 — Google Calendar (Android & iPhone, two-way sync):*",
+                                gcal_url,
+                                "Sign in with Google — events sync both ways. Link expires in 1 hour.",
+                            ]
+                            if webcal_url:
+                                welcome_lines += [
+                                    "",
+                                    "*Option 2 — Apple Calendar (iPhone, one-tap subscribe):*",
+                                    webcal_url,
+                                    "Open in Safari on your iPhone for a one-tap \"Subscribe\" prompt. Read-only, but instant.",
+                                ]
+                            welcome_lines += [
+                                "",
+                                "You can also just start chatting — send me anything to remember, or ask me a question.",
+                                "",
+                                "📌 *For families with children:* By connecting your calendar you confirm you have parental consent to share any events involving under-18s with FamilyBrain. Events are stored securely and never shared outside your family.",
+                            ]
+                            welcome_body = "\n".join(welcome_lines)
+
+                            # We don't return here — normal processing of their first message continues
+                            from twilio.rest import Client as TwilioClient
+                            _s = get_settings()
+                            if _s.twilio_account_sid and _s.twilio_auth_token:
+                                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                                twilio_client.messages.create(
+                                    from_=_s.twilio_whatsapp_from,
+                                    to=from_number,
+                                    body=welcome_body,
+                                )
         except Exception as exc:
             logger.warning("Failed to auto-prompt for calendar connection: %s", exc)
 
