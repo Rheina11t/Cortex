@@ -1400,6 +1400,7 @@ def _render_calendar_page(family_id: str, calendar_token: str) -> str:
         firstDay: 1,
         eventDisplay: 'block',
         dayMaxEvents: 4,
+        eventTimeFormat: {{ hour: '2-digit', minute: '2-digit', hour12: false }},
         eventMouseEnter: function(info) {{
           var props = info.event.extendedProps;
           var lines = [];
