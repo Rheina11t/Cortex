@@ -788,6 +788,217 @@ p { color: #2C2C2C; }
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* ========== GRAPH INTELLIGENCE DEMO ========== */
+.graph-demo { background: #fff; overflow: hidden; }
+.graph-demo-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.graph-demo-copy { max-width: 480px; }
+.graph-demo-copy .section-label { margin-bottom: 14px; }
+.graph-demo-copy h2 { margin-bottom: 20px; font-size: 2.5rem; }
+.graph-demo-copy .lead {
+  font-size: 1.08rem;
+  color: #7A7A7A;
+  line-height: 1.75;
+  margin-bottom: 32px;
+}
+.graph-demo-copy .graph-note {
+  font-size: 0.82rem;
+  color: #9A9A9A;
+  font-style: italic;
+  line-height: 1.65;
+  border-left: 3px solid #C8E0D8;
+  padding-left: 14px;
+  margin-top: 28px;
+}
+.graph-demo-copy .graph-note strong { color: #4A8C7A; font-style: normal; }
+
+/* Phone shell */
+.gd-phone {
+  background: #1C1C1E;
+  border-radius: 44px;
+  box-shadow:
+    0 40px 80px rgba(0,0,0,0.22),
+    0 0 0 1px rgba(255,255,255,0.06),
+    inset 0 0 0 2px rgba(255,255,255,0.04);
+  overflow: hidden;
+  max-width: 340px;
+  margin: 0 auto;
+  position: relative;
+}
+/* Notch */
+.gd-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 28px;
+  background: #1C1C1E;
+  border-radius: 0 0 18px 18px;
+  z-index: 10;
+}
+/* Status bar */
+.gd-statusbar {
+  background: #075E54;
+  padding: 32px 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.02em;
+}
+.gd-statusbar-time { font-weight: 600; color: #fff; font-size: 0.78rem; }
+.gd-statusbar-icons { display: flex; gap: 5px; align-items: center; }
+/* WA header */
+.gd-header {
+  background: #075E54;
+  padding: 10px 16px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.gd-back {
+  color: rgba(255,255,255,0.85);
+  font-size: 1.3rem;
+  line-height: 1;
+  margin-right: 2px;
+}
+.gd-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a7264 0%, #5bb89a 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.gd-avatar svg { width: 20px; height: 20px; }
+.gd-header-info { flex: 1; }
+.gd-header-name { font-weight: 600; font-size: 0.9rem; color: #fff; }
+.gd-header-status { font-size: 0.7rem; color: rgba(255,255,255,0.7); }
+.gd-header-icons { display: flex; gap: 14px; color: rgba(255,255,255,0.8); font-size: 1.1rem; }
+/* Chat area */
+.gd-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 14px 12px;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+/* Bubbles */
+.gd-bubble {
+  max-width: 84%;
+  padding: 8px 11px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  position: relative;
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  transition: opacity 0.38s ease, transform 0.38s ease;
+  word-break: break-word;
+}
+.gd-bubble.gd-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.gd-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: #1a1a1a;
+}
+.gd-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.gd-time {
+  font-size: 0.62rem;
+  color: #9E9E9E;
+  text-align: right;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.gd-ticks { color: #53BDEB; font-size: 0.72rem; }
+.gd-bot .gd-time { justify-content: flex-end; }
+/* Typing indicator */
+.gd-typing {
+  background: #fff;
+  align-self: flex-start;
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 10px 14px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.gd-typing.gd-visible { opacity: 1; transform: translateY(0); }
+.gd-typing span {
+  width: 7px; height: 7px;
+  background: #B0B0B0;
+  border-radius: 50%;
+  animation: gdDot 1.2s infinite ease-in-out;
+}
+.gd-typing span:nth-child(2) { animation-delay: 0.2s; }
+.gd-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes gdDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+/* Input bar */
+.gd-input-bar {
+  background: #F0F0F0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gd-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  color: #999;
+  border: none;
+  outline: none;
+}
+.gd-send {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.gd-send svg { width: 14px; height: 14px; fill: #fff; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .graph-demo-inner { grid-template-columns: 1fr; gap: 48px; }
+  .graph-demo-copy { max-width: 100%; text-align: center; }
+  .graph-demo-copy .graph-note { text-align: left; max-width: 540px; margin-left: auto; margin-right: auto; }
+  .gd-phone { max-width: 320px; }
+}
+@media (max-width: 480px) {
+  .gd-phone { max-width: 100%; }
+  .graph-demo-copy h2 { font-size: 2rem; }
+}
+
 /* ========== RESPONSIVE ========== */
 @media (max-width: 1024px) {
   .hero-grid { grid-template-columns: 1fr; text-align: center; }
@@ -1435,6 +1646,72 @@ p { color: #2C2C2C; }
   </div>
 </section>
 
+<!-- ==================== GRAPH INTELLIGENCE DEMO ==================== -->
+<section class="graph-demo section" id="graph-demo">
+  <div class="container">
+    <div class="graph-demo-inner">
+
+      <!-- Copy side -->
+      <div class="graph-demo-copy fade-in">
+        <p class="section-label">Graph Intelligence</p>
+        <h2>It just knows.</h2>
+        <p class="lead">FamilyBrain doesn't just store information — it connects it. Ask about any family member, any event, any document, and it draws on everything it knows to give you a complete answer. Instantly.</p>
+        <p class="graph-note"><strong>FamilyBrain connected</strong> Izzy's school schedule, dentist record, and your forwarded school letter — automatically.</p>
+      </div>
+
+      <!-- Phone mockup side -->
+      <div class="fade-in fade-in-delay-2">
+        <div class="gd-phone" id="gdPhone">
+          <!-- Notch -->
+          <div class="gd-notch"></div>
+          <!-- Status bar -->
+          <div class="gd-statusbar">
+            <span class="gd-statusbar-time">09:41</span>
+            <div class="gd-statusbar-icons">
+              <svg width="14" height="10" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+              <svg width="12" height="10" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+            </div>
+          </div>
+          <!-- WA Header -->
+          <div class="gd-header">
+            <span class="gd-back">&#8249;</span>
+            <div class="gd-avatar">
+              <!-- Brain icon SVG -->
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+                <circle cx="9" cy="9" r="1" fill="#3a7264"/>
+                <circle cx="15" cy="9" r="1" fill="#3a7264"/>
+                <circle cx="12" cy="13" r="1" fill="#3a7264"/>
+                <line x1="9" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
+                <line x1="15" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
+              </svg>
+            </div>
+            <div class="gd-header-info">
+              <div class="gd-header-name">FamilyBrain</div>
+              <div class="gd-header-status">online</div>
+            </div>
+            <div class="gd-header-icons">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </div>
+          </div>
+          <!-- Chat -->
+          <div class="gd-chat" id="gdChat">
+            <!-- Bubbles injected by JS -->
+          </div>
+          <!-- Input bar -->
+          <div class="gd-input-bar">
+            <div class="gd-input-field">Message</div>
+            <div class="gd-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- ==================== FAQ ==================== -->
 <section class="faq section fade-in" id="faq">
   <div class="container">
@@ -1654,6 +1931,106 @@ function switchTab(tabName, btn) {
     b.style.animationDelay = (0.3 + i * 0.5) + 's';
   });
 }
+
+// ===== GRAPH INTELLIGENCE DEMO =====
+(function() {
+  var messages = [
+    { type: 'user', text: 'What\u2019s happening with Izzy this week?', time: '09:41', ticks: true },
+    { type: 'typing', duration: 1400 },
+    {
+      type: 'bot',
+      text: 'Here\u2019s Izzy\u2019s week \ud83d\udc67\n\n\ud83d\udcda Tuesday \u2014 swimming at St Joseph\u2019s (don\u2019t forget the kit bag)\n\ud83e\uddb7 Thursday 4pm \u2014 dentist with Dr Patel at Smile Dental, Chiswick\n\ud83d\udccb Friday \u2014 school trip permission slip due (you haven\u2019t replied yet)\n\nWant me to add a reminder for the permission slip?',
+      time: '09:41'
+    },
+    { type: 'user', text: 'Yes please, and remind me about the kit bag Monday night', time: '09:42', ticks: true },
+    { type: 'typing', duration: 1100 },
+    {
+      type: 'bot',
+      text: 'Done \u2705\n\u2014 Reminder set: Monday 8pm \u2014 Izzy\u2019s swimming kit for Tuesday\n\u2014 Reminder set: Thursday 3:30pm \u2014 Izzy dentist at 4pm, Smile Dental Chiswick\n\nAnything else?',
+      time: '09:42'
+    }
+  ];
+
+  var chat = document.getElementById('gdChat');
+  var phone = document.getElementById('gdPhone');
+  var started = false;
+
+  function createBubble(msg) {
+    var el = document.createElement('div');
+    if (msg.type === 'typing') {
+      el.className = 'gd-typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    el.className = 'gd-bubble ' + (msg.type === 'user' ? 'gd-user' : 'gd-bot');
+    // Preserve newlines
+    var textNode = document.createElement('div');
+    textNode.style.whiteSpace = 'pre-wrap';
+    textNode.textContent = msg.text;
+    el.appendChild(textNode);
+    // Timestamp row
+    var timeRow = document.createElement('div');
+    timeRow.className = 'gd-time';
+    timeRow.textContent = msg.time;
+    if (msg.ticks) {
+      var ticks = document.createElement('span');
+      ticks.className = 'gd-ticks';
+      ticks.textContent = '\u2713\u2713';
+      timeRow.appendChild(ticks);
+    }
+    el.appendChild(timeRow);
+    return el;
+  }
+
+  function runSequence(items, idx) {
+    if (idx >= items.length) return;
+    var msg = items[idx];
+    if (msg.type === 'typing') {
+      var typingEl = createBubble(msg);
+      chat.appendChild(typingEl);
+      // Trigger show
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { typingEl.classList.add('gd-visible'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      setTimeout(function() {
+        chat.removeChild(typingEl);
+        runSequence(items, idx + 1);
+      }, msg.duration);
+    } else {
+      var bubbleEl = createBubble(msg);
+      chat.appendChild(bubbleEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { bubbleEl.classList.add('gd-visible'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      // Delay before next message
+      var nextDelay = (idx + 1 < items.length && items[idx + 1].type === 'typing') ? 600 : 800;
+      setTimeout(function() { runSequence(items, idx + 1); }, nextDelay);
+    }
+  }
+
+  function startDemo() {
+    if (started) return;
+    started = true;
+    // Clear any existing bubbles
+    chat.innerHTML = '';
+    setTimeout(function() { runSequence(messages, 0); }, 400);
+  }
+
+  // Scroll-triggered: start when phone enters viewport
+  if (phone) {
+    var gdObserver = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          startDemo();
+          gdObserver.disconnect();
+        }
+      });
+    }, { threshold: 0.35 });
+    gdObserver.observe(phone);
+  }
+})();
 
 // ===== FAQ ACCORDION =====
 function toggleFaq(btn) {
