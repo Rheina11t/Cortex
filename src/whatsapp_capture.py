@@ -2040,9 +2040,11 @@ def gcal_callback() -> Response:
 
 
 @app.route("/whatsapp", methods=["POST"])
+@app.route("/webhook/whatsapp", methods=["POST"])  # alias — matches Twilio console config
 @_validate_twilio_request
 def handle_whatsapp() -> Response:
     """Main Twilio webhook handler for incoming WhatsApp messages.
+    Registered on both /whatsapp (legacy) and /webhook/whatsapp (current Twilio config).
 
     Twilio sends a POST with form-encoded fields including:
       - From: the sender's WhatsApp number (e.g. "whatsapp:+447700900000")
