@@ -53,6 +53,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from .config import get_settings, logger as root_logger
 from . import brain
 from . import entity_graph
+from . import stripe_billing
 import threading
 
 logger = logging.getLogger("open_brain.whatsapp")
@@ -908,6 +909,11 @@ def _validate_twilio_request(f: Callable) -> Callable:
 # Flask application
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# Register Stripe billing routes (/join, /subscribe, /stripe/*)
+# ---------------------------------------------------------------------------
+app.register_blueprint(stripe_billing.billing_bp)
 
 
 @app.route("/whatsapp/health", methods=["GET"])
@@ -2073,6 +2079,22 @@ def handle_whatsapp() -> Response:
         )
         return Response(str(twiml), mimetype="application/xml")
 
+    # --- Subscription status check ---
+    # Grandfathered family-dan is always exempt.
+    # For all other families, if subscription is inactive, block and prompt to reactivate.
+    _family_id_for_sub_check = _get_family_id_for_phone(from_number)
+    if not stripe_billing.is_subscription_active(_family_id_for_sub_check):
+        logger.info(
+            "Blocked message from inactive subscriber: family=%s phone=%s",
+            _family_id_for_sub_check, from_number,
+        )
+        twiml = MessagingResponse()
+        twiml.message(
+            "Your FamilyBrain subscription is inactive. "
+            "To reactivate, visit familybrain.co.uk/subscribe"
+        )
+        return Response(str(twiml), mimetype="application/xml")
+
     # --- Route to appropriate handler ---
     if num_media > 0:
         media_url: str = request.values.get("MediaUrl0", "")
@@ -2633,13 +2655,13 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             del _pending_school_email_onboarding[from_number]
             
             # Get family token for fallback email
-            fallback_email = "your-family@familybrain.co"
+            fallback_email = "your-family@familybrain.co.uk"
             db = brain._supabase
             if db:
                 try:
                     res = db.table("families").select("calendar_token").eq("family_id", family_id).execute()
                     if res.data and res.data[0].get("calendar_token"):
-                        fallback_email = f"{res.data[0]['calendar_token']}@familybrain.co"
+                        fallback_email = f"{res.data[0]['calendar_token']}@familybrain.co.uk"
                 except Exception:
                     pass
                     
@@ -3091,7 +3113,7 @@ def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id
             
             msg_body = "All members have confirmed. The full family data deletion has been completed successfully."
             if deletion_results["errors"]:
-                msg_body = "All members confirmed. Deletion completed with some errors. Please contact privacy@familybrain.co."
+                msg_body = "All members confirmed. Deletion completed with some errors. Please contact privacy@familybrain.co.uk."
                 
             for phone in all_phones:
                 try:
@@ -3145,7 +3167,7 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
             twiml.message(
                 "\u26a0\ufe0f Your personal data deletion completed with some errors. "
                 "Most of your data has been removed, but please contact "
-                "privacy@familybrain.co to confirm full deletion.\n\n"
+                "privacy@familybrain.co.uk to confirm full deletion.\n\n"
                 f"Details: {error_summary}"
             )
             logger.error(
@@ -3280,7 +3302,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         
         invite_msg = (
             "👨‍👩‍👧 Hey! I've been using FamilyBrain to keep our family organised — school letters, calendar events, reminders, all through WhatsApp. No app to download.\n\n"
-            f"Try it free: https://familybrain.co/?ref={ref_code}\n\n"
+            f"Try it free: https://familybrain.co.uk/?ref={ref_code}\n\n"
             "Just message the bot and it walks you through setup 👋"
         )
         
@@ -4655,7 +4677,7 @@ def _expire_pending_delete_requests() -> None:
                 
                 msg_body = "The 48-hour window has passed and the required quorum of members confirmed. The full family data deletion has been completed successfully."
                 if deletion_results["errors"]:
-                    msg_body = "The 48-hour window passed and quorum was met. Deletion completed with some errors. Please contact privacy@familybrain.co."
+                    msg_body = "The 48-hour window passed and quorum was met. Deletion completed with some errors. Please contact privacy@familybrain.co.uk."
                     
                 for phone in all_phones:
                     try:

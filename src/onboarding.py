@@ -19,7 +19,7 @@ Environment variables required:
   TWILIO_ACCOUNT_SID          — Twilio account SID
   TWILIO_AUTH_TOKEN           — Twilio auth token
   TWILIO_WHATSAPP_FROM        — Twilio WhatsApp sender (e.g. whatsapp:+447XXXXXXXXX)
-  ONBOARDING_BASE_URL         — Public base URL of this service (e.g. https://api.familybrain.co)
+  ONBOARDING_BASE_URL         — Public base URL of this service (e.g. https://api.familybrain.co.uk)
   GOOGLE_CALENDAR_OAUTH_URL   — URL of the Google Calendar OAuth flow (optional)
 
 Optional:
@@ -61,7 +61,7 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "")
-ONBOARDING_BASE_URL = os.environ.get("ONBOARDING_BASE_URL", "https://familybrain.co")
+ONBOARDING_BASE_URL = os.environ.get("ONBOARDING_BASE_URL", "https://familybrain.co.uk")
 GCAL_OAUTH_URL = os.environ.get("GOOGLE_CALENDAR_OAUTH_URL", "")
 FOUNDING_MEMBER_SLOTS = int(os.environ.get("FOUNDING_MEMBER_SLOTS", "100"))
 
@@ -147,7 +147,7 @@ def _send_welcome_whatsapp(
         gcal_line = f"\n\n📅 *Connect your Google Calendar* (optional but recommended):\n{GCAL_OAUTH_URL}?family_id={family_id}"
 
     # Build the family's unique inbound email address
-    mailgun_domain = os.environ.get("MAILGUN_DOMAIN", "familybrain.co")
+    mailgun_domain = os.environ.get("MAILGUN_DOMAIN", "familybrain.co.uk")
     family_email = f"{family_id}@{mailgun_domain}"
     email_line = f"\n\n📧 *Your family email address*:\n{family_email}\nForward any school letters, documents or emails here — I'll read them and notify the whole family."
 

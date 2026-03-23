@@ -6,8 +6,8 @@ from Mailgun, extracts attachments, processes them using the same logic as the
 Gmail watcher, stores memories in Supabase, and sends WhatsApp notifications.
 
 Mailgun Configuration:
-1. Create a Mailgun account and add familybrain.co as a domain.
-2. Set up a catch-all route: match_recipient(".*@familybrain.co") -> forward to this webhook URL.
+1. Create a Mailgun account and add familybrain.co.uk as a domain.
+2. Set up a catch-all route: match_recipient(".*@familybrain.co.uk") -> forward to this webhook URL.
 3. Add the webhook signing key to Railway env vars (MAILGUN_WEBHOOK_SIGNING_KEY).
 """
 
@@ -49,12 +49,12 @@ def verify_mailgun_signature(token: str, timestamp: str, signature: str) -> bool
 
 def get_family_email_address(family_id: str) -> str:
     """Return the inbound email address for a family."""
-    domain = os.environ.get("MAILGUN_DOMAIN", "familybrain.co")
+    domain = os.environ.get("MAILGUN_DOMAIN", "familybrain.co.uk")
     return f"{family_id}@{domain}"
 
 def _extract_family_id_from_recipient(recipient: str) -> Optional[str]:
     """Extract family_id from the recipient email address."""
-    # e.g. family-dan@familybrain.co -> family-dan
+    # e.g. family-dan@familybrain.co.uk -> family-dan
     match = re.search(r"([^@<]+)@", recipient)
     if match:
         return match.group(1).strip()

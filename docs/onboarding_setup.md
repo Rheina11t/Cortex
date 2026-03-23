@@ -3,7 +3,7 @@
 ## Overview
 
 The onboarding backend (`src/onboarding.py`) is a separate Flask service that handles:
-1. New family sign-ups via the FamilyBrain.co landing page
+1. New family sign-ups via the FamilyBrain.co.uk landing page
 2. Stripe checkout and subscription management
 3. Automatic family provisioning in Supabase
 4. Welcome WhatsApp messages sent on payment confirmation
@@ -59,7 +59,7 @@ Set these environment variables:
 | `TWILIO_ACCOUNT_SID` | Same as main service |
 | `TWILIO_AUTH_TOKEN` | Same as main service |
 | `TWILIO_WHATSAPP_FROM` | `whatsapp:+447XXXXXXXXX` |
-| `ONBOARDING_BASE_URL` | `https://familybrain.co` |
+| `ONBOARDING_BASE_URL` | `https://familybrain.co.uk` |
 | `GOOGLE_CALENDAR_OAUTH_URL` | Optional — URL of your Google Calendar OAuth flow |
 | `FOUNDING_MEMBER_SLOTS` | `100` (default) |
 

@@ -198,7 +198,7 @@ class Settings:
     )
 
     # -- Mailgun Inbound Email (optional) ---------------------------------
-    # Required to receive inbound emails forwarded to {family_id}@familybrain.co.
+    # Required to receive inbound emails forwarded to {family_id}@familybrain.co.uk.
     # Obtain from: https://app.mailgun.com/app/account/security/api_keys
     mailgun_api_key: str = field(
         default_factory=lambda: os.getenv("MAILGUN_API_KEY", "")
@@ -208,9 +208,9 @@ class Settings:
     mailgun_webhook_signing_key: str = field(
         default_factory=lambda: os.getenv("MAILGUN_WEBHOOK_SIGNING_KEY", "")
     )
-    # The Mailgun domain configured for inbound routing (e.g. familybrain.co).
+    # The Mailgun domain configured for inbound routing (e.g. familybrain.co.uk).
     mailgun_domain: str = field(
-        default_factory=lambda: os.getenv("MAILGUN_DOMAIN", "familybrain.co")
+        default_factory=lambda: os.getenv("MAILGUN_DOMAIN", "familybrain.co.uk")
     )
 
     # -- Daily Digest (optional) -------------------------------------------
