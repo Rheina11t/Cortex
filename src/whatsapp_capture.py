@@ -2764,25 +2764,27 @@ def _handle_delete_my_data_command(from_number: str, family_id: str) -> Response
     _pending_data_deletion[from_number] = family_id
     twiml = MessagingResponse()
     twiml.message(
-        "Are you sure you want to delete all your FamilyBrain data? "
-        "This will remove all your memories, documents, and calendar events "
-        "stored by FamilyBrain.\n\n"
-        "Reply DELETE to confirm."
+        "Are you sure you want to delete your personal FamilyBrain data? "
+        "This will remove all memories, documents, and calendar events "
+        "submitted by you.\n\n"
+        "Reply DELETE to confirm.\n\n"
+        "(To delete the entire family's data, use /delete-all-family-data)"
     )
     logger.info(
-        "Data deletion confirmation requested by %s (family_id=%s)",
+        "Personal data deletion confirmation requested by %s (family_id=%s)",
         from_number, family_id,
     )
     return Response(str(twiml), mimetype="application/xml")
 
 
-def _execute_family_data_deletion(family_id: str, from_number: str) -> dict[str, Any]:
-    """Delete all data for a family from every relevant table.
+def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
+    """Delete all data for a family from every relevant table (Tier 2 full wipe).
 
     Deletes rows from:
       - memories          (family-scoped via metadata JSONB)
       - family_events     (family_id column)
       - cortex_briefings  (family_id column)
+      - cortex_actions    (family_id column)
 
     Returns a dict with keys 'deleted' (table -> count) and 'errors' (list).
     """
@@ -2793,7 +2795,7 @@ def _execute_family_data_deletion(family_id: str, from_number: str) -> dict[str,
         results["errors"].append("No database connection")
         return results
 
-    # 1. Delete all memories for this family (scoped via metadata JSONB)
+    # 1. Delete all memories for this family
     try:
         mem_result = (
             db.table("memories")
@@ -2803,13 +2805,11 @@ def _execute_family_data_deletion(family_id: str, from_number: str) -> dict[str,
         )
         count = len(mem_result.data) if mem_result.data else 0
         results["deleted"]["memories"] = count
-        logger.info(
-            "Data deletion: removed %d memories for family_id=%s", count, family_id
-        )
+        logger.info("Full data deletion: removed %d memories for family_id=%s", count, family_id)
     except Exception as exc:
         msg = f"memories: {exc}"
         results["errors"].append(msg)
-        logger.error("Data deletion error — %s", msg)
+        logger.error("Full data deletion error — %s", msg)
 
     # 2. Delete all family_events for this family
     try:
@@ -2821,13 +2821,11 @@ def _execute_family_data_deletion(family_id: str, from_number: str) -> dict[str,
         )
         count = len(ev_result.data) if ev_result.data else 0
         results["deleted"]["family_events"] = count
-        logger.info(
-            "Data deletion: removed %d family_events for family_id=%s", count, family_id
-        )
+        logger.info("Full data deletion: removed %d family_events for family_id=%s", count, family_id)
     except Exception as exc:
         msg = f"family_events: {exc}"
         results["errors"].append(msg)
-        logger.error("Data deletion error — %s", msg)
+        logger.error("Full data deletion error — %s", msg)
 
     # 3. Delete all cortex_briefings for this family
     try:
@@ -2839,30 +2837,264 @@ def _execute_family_data_deletion(family_id: str, from_number: str) -> dict[str,
         )
         count = len(br_result.data) if br_result.data else 0
         results["deleted"]["cortex_briefings"] = count
-        logger.info(
-            "Data deletion: removed %d cortex_briefings for family_id=%s",
-            count, family_id,
-        )
+        logger.info("Full data deletion: removed %d cortex_briefings for family_id=%s", count, family_id)
     except Exception as exc:
         msg = f"cortex_briefings: {exc}"
         results["errors"].append(msg)
-        logger.error("Data deletion error — %s", msg)
+        logger.error("Full data deletion error — %s", msg)
 
-    # 4. Attempt to delete any emergency PDFs from Supabase Storage
+    # 4. Delete all cortex_actions for this family
+    try:
+        act_result = (
+            db.table("cortex_actions")
+            .delete()
+            .eq("family_id", family_id)
+            .execute()
+        )
+        count = len(act_result.data) if act_result.data else 0
+        results["deleted"]["cortex_actions"] = count
+        logger.info("Full data deletion: removed %d cortex_actions for family_id=%s", count, family_id)
+    except Exception as exc:
+        msg = f"cortex_actions: {exc}"
+        results["errors"].append(msg)
+        logger.error("Full data deletion error — %s", msg)
+
+    # 5. Attempt to delete any emergency PDFs from Supabase Storage
     try:
         db.storage.from_("emergency-pdfs").remove([family_id + "/"])
-        logger.info(
-            "Data deletion: attempted removal of emergency PDFs for family_id=%s",
-            family_id,
-        )
+        logger.info("Full data deletion: attempted removal of emergency PDFs for family_id=%s", family_id)
     except Exception as exc:
-        # Storage deletion failure is non-fatal — log and continue
-        logger.warning(
-            "Data deletion: could not remove emergency PDFs for family_id=%s: %s",
-            family_id, exc,
-        )
+        logger.warning("Full data deletion: could not remove emergency PDFs for family_id=%s: %s", family_id, exc)
 
     return results
+
+
+def _execute_personal_data_deletion(family_id: str, from_number: str) -> dict[str, Any]:
+    """Delete personal data submitted by a specific user (Tier 1 deletion).
+
+    Deletes rows from:
+      - memories          (where metadata->>whatsapp_from == from_number)
+      - family_events     (where family_id == family_id AND source == 'whatsapp' AND notes contains from_number or similar, though we don't have a direct sender column, we'll delete events where family_member matches their name)
+      - cortex_actions    (where phone_number == from_number)
+
+    Returns a dict with keys 'deleted' (table -> count) and 'errors' (list).
+    """
+    db = brain._supabase
+    results: dict[str, Any] = {"deleted": {}, "errors": []}
+
+    if not db:
+        results["errors"].append("No database connection")
+        return results
+
+    # Get the user's name to delete their events
+    user_name = _get_family_name(from_number) or "Unknown"
+
+    # 1. Delete memories submitted by this user
+    try:
+        mem_result = (
+            db.table("memories")
+            .delete()
+            .contains("metadata", {"family_id": family_id, "whatsapp_from": from_number})
+            .execute()
+        )
+        count = len(mem_result.data) if mem_result.data else 0
+        results["deleted"]["memories"] = count
+        logger.info(
+            "Personal data deletion: removed %d memories for %s", count, from_number
+        )
+    except Exception as exc:
+        msg = f"memories: {exc}"
+        results["errors"].append(msg)
+        logger.error("Personal data deletion error — %s", msg)
+
+    # 2. Delete family_events associated with this user
+    try:
+        ev_result = (
+            db.table("family_events")
+            .delete()
+            .eq("family_id", family_id)
+            .eq("family_member", user_name)
+            .execute()
+        )
+        count = len(ev_result.data) if ev_result.data else 0
+        results["deleted"]["family_events"] = count
+        logger.info(
+            "Personal data deletion: removed %d family_events for %s", count, user_name
+        )
+    except Exception as exc:
+        msg = f"family_events: {exc}"
+        results["errors"].append(msg)
+        logger.error("Personal data deletion error — %s", msg)
+
+    # 3. Delete cortex_actions associated with this user
+    try:
+        act_result = (
+            db.table("cortex_actions")
+            .delete()
+            .eq("family_id", family_id)
+            .eq("phone_number", from_number)
+            .execute()
+        )
+        count = len(act_result.data) if act_result.data else 0
+        results["deleted"]["cortex_actions"] = count
+        logger.info(
+            "Personal data deletion: removed %d cortex_actions for %s", count, from_number
+        )
+    except Exception as exc:
+        msg = f"cortex_actions: {exc}"
+        results["errors"].append(msg)
+        logger.error("Personal data deletion error — %s", msg)
+
+    return results
+
+
+def _handle_full_family_wipe_command(from_number: str, family_name: str, family_id: str) -> Response:
+    """Handle the /delete-all-family-data command (Tier 2 deletion).
+    
+    Creates a pending delete_requests record and notifies all adult members
+    to confirm.
+    """
+    twiml = MessagingResponse()
+    db = brain._supabase
+    if not db:
+        twiml.message("Database connection error. Please try again later.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # Check if there's already a pending request
+    existing = db.table("delete_requests").select("id").eq("family_id", family_id).eq("status", "pending").execute()
+    if existing.data:
+        twiml.message("There is already a pending full deletion request for your family. Please check your messages and reply YES to confirm.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # Create the request
+    try:
+        db.table("delete_requests").insert({
+            "family_id": family_id,
+            "requested_by": from_number,
+            "status": "pending",
+            "confirmations": []
+        }).execute()
+    except Exception as exc:
+        logger.error("Failed to create delete_request: %s", exc)
+        twiml.message("Failed to initiate deletion request. Please try again.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # Fetch all family members
+    members_res = db.table("whatsapp_members").select("phone").eq("family_id", family_id).execute()
+    phones = [row["phone"] for row in (members_res.data or []) if row.get("phone")]
+    
+    if not phones:
+        phones = [from_number.replace("whatsapp:", "")]
+
+    # Send notification to all members
+    try:
+        from twilio.rest import Client as TwilioClient
+        _s = get_settings()
+        twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+        
+        msg_body = (
+            f"{family_name} has requested a full deletion of all FamilyBrain family data. "
+            "Reply YES to confirm, or ignore to cancel. "
+            "All members must confirm within 48 hours for deletion to proceed."
+        )
+        
+        for phone in phones:
+            try:
+                twilio_client.messages.create(
+                    from_=_s.twilio_whatsapp_from,
+                    to=f"whatsapp:{phone}",
+                    body=msg_body,
+                )
+            except Exception as exc:
+                logger.warning("Failed to send deletion request to %s: %s", phone, exc)
+                
+    except Exception as exc:
+        logger.error("Failed to send deletion notifications: %s", exc)
+
+    # We don't need to return a message to the requester here because they will receive the Twilio broadcast above
+    return Response(str(twiml), mimetype="application/xml")
+
+
+def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id: str) -> Response | None:
+    """Check if the user is replying YES to a pending full family wipe request."""
+    db = brain._supabase
+    if not db:
+        return None
+
+    text_stripped = text.strip().upper()
+    if text_stripped != "YES":
+        return None
+
+    # Check for pending request
+    req_res = db.table("delete_requests").select("*").eq("family_id", family_id).eq("status", "pending").execute()
+    if not req_res.data:
+        return None
+
+    request = req_res.data[0]
+    req_id = request["id"]
+    confirmations = request.get("confirmations", [])
+    
+    phone_clean = from_number.replace("whatsapp:", "")
+    
+    if phone_clean in confirmations:
+        twiml = MessagingResponse()
+        twiml.message("You have already confirmed the deletion request.")
+        return Response(str(twiml), mimetype="application/xml")
+
+    # Add confirmation
+    confirmations.append(phone_clean)
+    
+    # Check if all adults have confirmed
+    members_res = db.table("whatsapp_members").select("phone").eq("family_id", family_id).execute()
+    all_phones = [row["phone"] for row in (members_res.data or []) if row.get("phone")]
+    
+    if not all_phones:
+        all_phones = [phone_clean]
+
+    missing = [p for p in all_phones if p not in confirmations]
+    
+    twiml = MessagingResponse()
+    
+    if not missing:
+        # Everyone confirmed! Execute full wipe
+        db.table("delete_requests").update({"status": "confirmed", "confirmations": confirmations}).eq("id", req_id).execute()
+        
+        logger.info("Full family wipe CONFIRMED by all members for family_id=%s", family_id)
+        deletion_results = _execute_family_data_deletion(family_id)
+        
+        # Notify everyone
+        try:
+            from twilio.rest import Client as TwilioClient
+            _s = get_settings()
+            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+            
+            msg_body = "All members have confirmed. The full family data deletion has been completed successfully."
+            if deletion_results["errors"]:
+                msg_body = "All members confirmed. Deletion completed with some errors. Please contact privacy@familybrain.co."
+                
+            for phone in all_phones:
+                try:
+                    twilio_client.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=f"whatsapp:{phone}",
+                        body=msg_body,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to send wipe confirmation to %s: %s", phone, exc)
+        except Exception as exc:
+            logger.error("Failed to send wipe confirmations: %s", exc)
+            
+        # Clear memory state for the current user
+        _conversation_history.pop(from_number, None)
+        _pending_deletes.pop(from_number, None)
+        
+        # Return empty response since we sent via Twilio client
+        return Response(str(MessagingResponse()), mimetype="application/xml")
+    else:
+        # Still waiting for others
+        db.table("delete_requests").update({"confirmations": confirmations}).eq("id", req_id).execute()
+        twiml.message(f"Confirmation received. Still waiting for {len(missing)} other member(s) to confirm.")
+        return Response(str(twiml), mimetype="application/xml")
 
 
 def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response | None:
@@ -2881,31 +3113,31 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
         # User confirmed — execute deletion
         del _pending_data_deletion[from_number]
         logger.info(
-            "Data deletion CONFIRMED by %s (family_id=%s)", from_number, family_id
+            "Personal data deletion CONFIRMED by %s (family_id=%s)", from_number, family_id
         )
 
-        deletion_results = _execute_family_data_deletion(family_id, from_number)
+        deletion_results = _execute_personal_data_deletion(family_id, from_number)
 
         if deletion_results["errors"]:
             # Partial failure
             error_summary = "; ".join(deletion_results["errors"])
             twiml.message(
-                "\u26a0\ufe0f Your data deletion completed with some errors. "
+                "\u26a0\ufe0f Your personal data deletion completed with some errors. "
                 "Most of your data has been removed, but please contact "
                 "privacy@familybrain.co to confirm full deletion.\n\n"
                 f"Details: {error_summary}"
             )
             logger.error(
-                "Data deletion partial failure for %s: %s",
+                "Personal data deletion partial failure for %s: %s",
                 from_number, error_summary,
             )
         else:
             twiml.message(
-                "Done. All your FamilyBrain data has been deleted. "
+                "Done. All your personal FamilyBrain data has been deleted. "
                 "You can start fresh by sending any message."
             )
             logger.info(
-                "Data deletion completed successfully for %s (family_id=%s). "
+                "Personal data deletion completed successfully for %s (family_id=%s). "
                 "Deleted: %s",
                 from_number, family_id, deletion_results["deleted"],
             )
@@ -2979,6 +3211,9 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     # --- GDPR Data Deletion Command ---
     if text_lower in ("/delete-my-data", "/deletemydata", "/gdpr-delete", "/delete my data"):
         return _handle_delete_my_data_command(from_number, _family_id)
+
+    if text_lower in ("/delete-all-family-data", "/deleteallfamilydata", "/wipe-family"):
+        return _handle_full_family_wipe_command(from_number, family_name, _family_id)
 
     # --- SOS / Emergency File Command ---
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
@@ -3117,6 +3352,11 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     deletion_confirm_result = _handle_data_deletion_confirmation(text, from_number)
     if deletion_confirm_result is not None:
         return deletion_confirm_result
+
+    # --- Full family wipe confirmation ---
+    wipe_confirm_result = _handle_full_family_wipe_confirmation(text, from_number, _family_id)
+    if wipe_confirm_result is not None:
+        return wipe_confirm_result
 
     # --- Memory management commands (delete, edit, list) ---
     mem_mgmt_result = _handle_memory_management(text, family_name, from_number)
@@ -4221,6 +4461,44 @@ def _send_morning_briefing() -> None:
     except Exception as exc:
         logger.error("Morning briefing failed: %s", exc)
 
+def _expire_pending_delete_requests() -> None:
+    """Check for pending delete requests older than 48 hours and expire them."""
+    db = brain._supabase
+    if not db:
+        return
+
+    try:
+        cutoff = (datetime.now(pytz.UTC) - timedelta(hours=48)).isoformat()
+        expired_res = db.table("delete_requests").select("*").eq("status", "pending").lt("requested_at", cutoff).execute()
+        
+        if not expired_res.data:
+            return
+            
+        from twilio.rest import Client as TwilioClient
+        _s = get_settings()
+        twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+        
+        for req in expired_res.data:
+            req_id = req["id"]
+            requester = req["requested_by"]
+            
+            # Mark as expired
+            db.table("delete_requests").update({"status": "expired"}).eq("id", req_id).execute()
+            
+            # Notify requester
+            try:
+                twilio_client.messages.create(
+                    from_=_s.twilio_whatsapp_from,
+                    to=requester,
+                    body="Your request to delete all family data has expired because not all members confirmed within 48 hours. No data was deleted.",
+                )
+            except Exception as exc:
+                logger.warning("Failed to notify requester of expired deletion: %s", exc)
+                
+    except Exception as exc:
+        logger.error("Error expiring delete requests: %s", exc)
+
+
 def _send_evening_preview() -> None:
     """Send a daily evening preview of tomorrow's events."""
     if _is_quiet_hours():
@@ -4327,6 +4605,14 @@ def main() -> None:
             hour=8,
             minute=0,
             id="daily_expiry_alerts",
+        )
+
+        # Expire pending delete requests (runs hourly)
+        alert_scheduler.add_job(
+            _expire_pending_delete_requests,
+            trigger="interval",
+            hours=1,
+            id="expire_delete_requests",
         )
 
 
