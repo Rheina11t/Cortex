@@ -4852,6 +4852,24 @@ def main() -> None:
             id="evening_preview",
         )
 
+        # Weekly Entity Relation Inference (runs every Sunday at 02:00)
+        def _run_weekly_relation_inference():
+            try:
+                logger.info("Starting weekly entity relation inference for family-dan")
+                new_rels = entity_graph.infer_relations("family-dan")
+                logger.info("Weekly relation inference complete: %d new relations found", new_rels)
+            except Exception as exc:
+                logger.error("Weekly relation inference failed: %s", exc)
+
+        alert_scheduler.add_job(
+            _run_weekly_relation_inference,
+            trigger="cron",
+            day_of_week="sun",
+            hour=2,
+            minute=0,
+            id="weekly_relation_inference",
+        )
+
         alert_scheduler.start()
         logger.info(
             "Schedulers started: daily expiry alerts (08:00), "
