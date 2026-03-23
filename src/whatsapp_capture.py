@@ -3292,6 +3292,13 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     # --- Help Command ---
     if text_lower in ("/help", "/commands", "help", "commands"):
         twiml = MessagingResponse()
+        # Build the family's inbound email address
+        try:
+            from .email_inbound import get_family_email_address as _get_family_email
+            _family_email = _get_family_email(_family_id)
+            _email_line = f"\n\n📧 *Forward emails to FamilyBrain*:\nSend school letters, documents or any email to *{_family_email}* — I'll process it and notify the family."
+        except Exception:
+            _email_line = ""
         help_text = (
             "🤖 *FamilyBrain Commands*\n\n"
             "Here are the commands you can use anytime:\n\n"
@@ -3302,7 +3309,8 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/graph* — View your family's knowledge graph (people, places, relationships)\n"
             "*/delete-my-data* — Delete all data submitted by your number\n"
             "*/delete-all-family-data* — Request a full wipe of all family data (requires confirmation from all members)\n"
-            "*/help* — Show this list of commands\n\n"
+            "*/help* — Show this list of commands"
+            + _email_line + "\n\n"
             "You don't need commands for most things! Just send me photos, documents, voice notes, or ask me questions normally."
         )
         twiml.message(help_text)

@@ -197,6 +197,22 @@ class Settings:
         default_factory=lambda: int(os.getenv("OAUTH_TOKEN_TTL", "86400"))
     )
 
+    # -- Mailgun Inbound Email (optional) ---------------------------------
+    # Required to receive inbound emails forwarded to {family_id}@familybrain.co.
+    # Obtain from: https://app.mailgun.com/app/account/security/api_keys
+    mailgun_api_key: str = field(
+        default_factory=lambda: os.getenv("MAILGUN_API_KEY", "")
+    )
+    # The signing key used to verify Mailgun webhook payloads.
+    # Found in: Mailgun Dashboard -> Webhooks -> HTTP webhook signing key
+    mailgun_webhook_signing_key: str = field(
+        default_factory=lambda: os.getenv("MAILGUN_WEBHOOK_SIGNING_KEY", "")
+    )
+    # The Mailgun domain configured for inbound routing (e.g. familybrain.co).
+    mailgun_domain: str = field(
+        default_factory=lambda: os.getenv("MAILGUN_DOMAIN", "familybrain.co")
+    )
+
     # -- Daily Digest (optional) -------------------------------------------
     # Telegram user IDs to receive the daily digest (comma-separated).
     # Defaults to all family member IDs if not set.
@@ -275,6 +291,10 @@ class Settings:
     def has_email_capture(self) -> bool:
         """Return True if email capture is configured."""
         return bool(self.family_brain_email and self.family_brain_email_password)
+
+    def has_mailgun_inbound(self) -> bool:
+        """Return True if Mailgun inbound email is configured."""
+        return bool(self.mailgun_webhook_signing_key and self.mailgun_domain)
 
     def get_digest_recipients(self) -> list[int]:
         """Return the list of Telegram user IDs for the daily digest."""

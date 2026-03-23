@@ -146,6 +146,11 @@ def _send_welcome_whatsapp(
     if GCAL_OAUTH_URL:
         gcal_line = f"\n\n📅 *Connect your Google Calendar* (optional but recommended):\n{GCAL_OAUTH_URL}?family_id={family_id}"
 
+    # Build the family's unique inbound email address
+    mailgun_domain = os.environ.get("MAILGUN_DOMAIN", "familybrain.co")
+    family_email = f"{family_id}@{mailgun_domain}"
+    email_line = f"\n\n📧 *Your family email address*:\n{family_email}\nForward any school letters, documents or emails here — I'll read them and notify the whole family."
+
     welcome_msg = (
         f"👋 Welcome to FamilyBrain, {first_name}!\n\n"
         f"You're all set on the *{plan_display}* plan.\n\n"
@@ -154,7 +159,8 @@ def _send_welcome_whatsapp(
         f"🎤 *Voice notes* — just talk. I'll transcribe and store what you say.\n\n"
         f"❓ *Ask anything* — \"When does my car insurance renew?\", \"Is Edi free Thursday?\", \"What's Jake's prescription?\"\n\n"
         f"🧠 *Every Sunday morning* I'll send you a proactive summary of anything that needs your attention — renewals, deadlines, things to update.\n\n"
-        f"{gcal_line}\n\n"
+        f"{gcal_line}"
+        f"{email_line}\n\n"
         f"To add other family members, just forward them this number and ask them to say hello — I'll recognise their number automatically.\n\n"
         f"Let's get started. What's the first thing you'd like me to remember? 🗂️"
     )
