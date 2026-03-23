@@ -148,6 +148,47 @@ p { color: #2C2C2C; }
 .hero-link { color: #4A8C7A; font-weight: 500; font-size: 0.95rem; transition: color 0.2s; }
 .hero-link:hover { color: #3a7264; }
 
+/* ========== HERO VIDEO ========== */
+.hero-video-wrap {
+  position: relative;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.14), 0 1px 3px rgba(0,0,0,0.06);
+  max-width: 420px;
+  margin: 0 auto;
+  aspect-ratio: 9/16;
+  background: #1a1a1a;
+}
+.hero-video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.hero-video-overlay {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 20px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+  letter-spacing: 0.01em;
+  border: 1px solid rgba(255,255,255,0.15);
+  max-width: 90%;
+  text-align: center;
+}
+.hero-video-overlay.visible { opacity: 1; }
+
 /* ========== WHATSAPP MOCKUP ========== */
 .wa-phone {
   background: #fff;
@@ -788,6 +829,233 @@ p { color: #2C2C2C; }
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* ========== SCREEN RECORDING WALKTHROUGH ========== */
+.walkthrough { background: #F7F5F1; }
+.walkthrough-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.walkthrough-copy { max-width: 480px; }
+.walkthrough-copy .section-label { margin-bottom: 14px; }
+.walkthrough-copy h2 { margin-bottom: 20px; }
+.walkthrough-copy p { font-size: 1.05rem; color: #7A7A7A; line-height: 1.75; margin-bottom: 28px; }
+.wt-scene-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 32px;
+}
+.wt-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #C8E0D8;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.wt-dot.active { background: #4A8C7A; transform: scale(1.3); }
+.wt-scene-label {
+  font-size: 0.8rem;
+  color: #9A9A9A;
+  margin-top: 10px;
+  font-style: italic;
+  min-height: 1.4em;
+  transition: opacity 0.4s ease;
+}
+
+/* Phone frame */
+.wt-phone {
+  background: #1C1C1E;
+  border-radius: 44px;
+  box-shadow:
+    0 40px 80px rgba(0,0,0,0.22),
+    0 0 0 1px rgba(255,255,255,0.06),
+    inset 0 0 0 2px rgba(255,255,255,0.04);
+  overflow: hidden;
+  max-width: 320px;
+  margin: 0 auto;
+  position: relative;
+}
+.wt-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 110px; height: 26px;
+  background: #1C1C1E;
+  border-radius: 0 0 16px 16px;
+  z-index: 10;
+}
+.wt-statusbar {
+  background: #075E54;
+  padding: 30px 18px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.7);
+}
+.wt-statusbar-time { font-weight: 600; color: #fff; font-size: 0.75rem; }
+.wt-statusbar-icons { display: flex; gap: 5px; align-items: center; }
+/* Notification banner */
+.wt-notification {
+  background: rgba(255,255,255,0.96);
+  margin: 8px 10px 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.wt-notification.wt-visible { opacity: 1; transform: translateY(0); }
+.wt-notif-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.wt-notif-body { flex: 1; }
+.wt-notif-app { font-size: 0.62rem; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.wt-notif-title { font-size: 0.75rem; font-weight: 600; color: #1a1a1a; margin-top: 1px; }
+.wt-notif-sub { font-size: 0.7rem; color: #666; margin-top: 1px; }
+/* WA header */
+.wt-header {
+  background: #075E54;
+  padding: 8px 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.wt-back { color: rgba(255,255,255,0.85); font-size: 1.3rem; line-height: 1; margin-right: 2px; }
+.wt-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a7264 0%, #5bb89a 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.wt-avatar svg { width: 18px; height: 18px; }
+.wt-header-info { flex: 1; }
+.wt-header-name { font-weight: 600; font-size: 0.85rem; color: #fff; }
+.wt-header-status { font-size: 0.67rem; color: rgba(255,255,255,0.7); }
+.wt-header-icons { display: flex; gap: 12px; color: rgba(255,255,255,0.8); font-size: 1rem; }
+/* Chat */
+.wt-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 10px 10px;
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+}
+/* Bubbles */
+.wt-bubble {
+  max-width: 86%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  position: relative;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  word-break: break-word;
+}
+.wt-bubble.wt-visible { opacity: 1; transform: translateY(0) scale(1); }
+.wt-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: #1a1a1a;
+}
+.wt-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.wt-time {
+  font-size: 0.6rem;
+  color: #9E9E9E;
+  text-align: right;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.wt-ticks { color: #53BDEB; font-size: 0.68rem; }
+/* Typing */
+.wt-typing {
+  background: #fff;
+  align-self: flex-start;
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 9px 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.wt-typing.wt-visible { opacity: 1; transform: translateY(0); }
+.wt-typing span {
+  width: 6px; height: 6px;
+  background: #B0B0B0;
+  border-radius: 50%;
+  animation: wtDot 1.2s infinite ease-in-out;
+}
+.wt-typing span:nth-child(2) { animation-delay: 0.2s; }
+.wt-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes wtDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+/* Input bar */
+.wt-input-bar {
+  background: #F0F0F0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.wt-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #999;
+  border: none;
+}
+.wt-send {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.wt-send svg { width: 13px; height: 13px; fill: #fff; }
+/* Scene transition fade */
+.wt-chat.wt-fade-out { opacity: 0; transition: opacity 0.3s ease; }
+.wt-chat.wt-fade-in-anim { opacity: 1; transition: opacity 0.3s ease; }
+.wt-notification.wt-fade-out { opacity: 0; transition: opacity 0.3s ease; }
+
+@media (max-width: 1024px) {
+  .walkthrough-inner { grid-template-columns: 1fr; gap: 48px; }
+  .walkthrough-copy { max-width: 100%; text-align: center; }
+  .wt-scene-dots { justify-content: center; }
+  .wt-phone { max-width: 300px; }
+}
+@media (max-width: 480px) {
+  .wt-phone { max-width: 100%; }
+}
+
 /* ========== GRAPH INTELLIGENCE DEMO ========== */
 .graph-demo { background: #fff; overflow: hidden; }
 .graph-demo-inner {
@@ -1078,27 +1346,11 @@ p { color: #2C2C2C; }
         </div>
       </div>
       <div class="fade-in fade-in-delay-2">
-        <div class="wa-phone">
-          <div class="wa-header">
-            <div class="wa-avatar">FB</div>
-            <div class="wa-header-info">
-              <div class="wa-header-name">FamilyBrain</div>
-              <div class="wa-header-status">online</div>
-            </div>
-          </div>
-          <div class="wa-chat">
-            <div class="wa-bubble wa-bubble-user">Are we covered for a hire car in Spain?<div class="wa-time">10:14</div></div>
-            <div class="wa-bubble wa-bubble-bot">Yes! Your Admiral policy covers hire cars in EU countries up to 21 days. I found this in the policy document you forwarded in January. Your policy renews 14th June — I'll remind you 30 days before. 🚗<div class="wa-time">10:14</div></div>
-            <div class="wa-bubble wa-bubble-user">Does Emma's passport need renewing before July?<div class="wa-time">10:15</div></div>
-            <div class="wa-bubble wa-bubble-bot">Emma's passport expires 3rd September 2026 — she's fine for July. But Jake's expired last year. Want me to find the application form? 📋<div class="wa-time">10:15</div></div>
-            <div class="wa-bubble wa-bubble-proactive">By the way — I noticed your Will is from 2019 and you moved house in 2022. You might want to update it. Want me to remind you to look into this? 📋<div class="wa-time">10:16</div></div>
-          </div>
-          <div class="wa-input-bar">
-            <div class="wa-input-field">Type a message</div>
-            <div class="wa-send-btn">
-              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-            </div>
-          </div>
+        <div class="hero-video-wrap">
+          <video id="heroVideo" autoplay muted loop playsinline preload="auto">
+            <source src="familybrain_hero_premium.mp4" type="video/mp4">
+          </video>
+          <div class="hero-video-overlay" id="heroOverlay">Forwarding Izzy's school letter to FamilyBrain...</div>
         </div>
       </div>
     </div>
@@ -1322,6 +1574,142 @@ p { color: #2C2C2C; }
         <h3>Your family emergency file, always ready</h3>
         <p>Type <strong>/sos</strong> and FamilyBrain generates a complete emergency document — legal, financial, insurance, pensions, and more — in seconds.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== GRAPH INTELLIGENCE DEMO ==================== -->
+<section class="graph-demo section" id="graph-demo">
+  <div class="container">
+    <div class="graph-demo-inner">
+
+      <!-- Copy side -->
+      <div class="graph-demo-copy fade-in">
+        <p class="section-label">Graph Intelligence</p>
+        <h2>It just knows.</h2>
+        <p class="lead">FamilyBrain doesn't just store information — it connects it. Ask about any family member, any event, any document, and it draws on everything it knows to give you a complete answer. Instantly.</p>
+        <p class="graph-note"><strong>FamilyBrain connected</strong> Izzy's school schedule, dentist record, and your forwarded school letter — automatically.</p>
+      </div>
+
+      <!-- Phone mockup side -->
+      <div class="fade-in fade-in-delay-2">
+        <div class="gd-phone" id="gdPhone">
+          <!-- Notch -->
+          <div class="gd-notch"></div>
+          <!-- Status bar -->
+          <div class="gd-statusbar">
+            <span class="gd-statusbar-time">09:41</span>
+            <div class="gd-statusbar-icons">
+              <svg width="14" height="10" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+              <svg width="12" height="10" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+            </div>
+          </div>
+          <!-- WA Header -->
+          <div class="gd-header">
+            <span class="gd-back">&#8249;</span>
+            <div class="gd-avatar">
+              <!-- Brain icon SVG -->
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+                <circle cx="9" cy="9" r="1" fill="#3a7264"/>
+                <circle cx="15" cy="9" r="1" fill="#3a7264"/>
+                <circle cx="12" cy="13" r="1" fill="#3a7264"/>
+                <line x1="9" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
+                <line x1="15" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
+              </svg>
+            </div>
+            <div class="gd-header-info">
+              <div class="gd-header-name">FamilyBrain</div>
+              <div class="gd-header-status">online</div>
+            </div>
+            <div class="gd-header-icons">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </div>
+          </div>
+          <!-- Chat -->
+          <div class="gd-chat" id="gdChat">
+            <!-- Bubbles injected by JS -->
+          </div>
+          <!-- Input bar -->
+          <div class="gd-input-bar">
+            <div class="gd-input-field">Message</div>
+            <div class="gd-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ==================== SCREEN RECORDING WALKTHROUGH ==================== -->
+<section class="walkthrough section" id="walkthrough">
+  <div class="container">
+    <div class="walkthrough-inner">
+
+      <!-- Copy side -->
+      <div class="walkthrough-copy fade-in">
+        <p class="section-label">See It In Action</p>
+        <h2>Watch FamilyBrain work.</h2>
+        <p>A real conversation, in real time. Forward an email, ask a question, set a reminder — all from WhatsApp. No new apps, no learning curve.</p>
+        <div class="wt-scene-dots">
+          <div class="wt-dot active" id="wtDot0"></div>
+          <div class="wt-dot" id="wtDot1"></div>
+        </div>
+        <div class="wt-scene-label" id="wtSceneLabel">Scene 1 of 2 — Forwarding a school email</div>
+      </div>
+
+      <!-- Phone side -->
+      <div class="fade-in fade-in-delay-2">
+        <div class="wt-phone" id="wtPhone">
+          <div class="wt-notch"></div>
+          <!-- Status bar -->
+          <div class="wt-statusbar">
+            <span class="wt-statusbar-time">09:41</span>
+            <div class="wt-statusbar-icons">
+              <svg width="13" height="9" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+              <svg width="11" height="9" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+              <svg width="20" height="9" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+            </div>
+          </div>
+          <!-- Email notification -->
+          <div class="wt-notification" id="wtNotif">
+            <div class="wt-notif-icon">📧</div>
+            <div class="wt-notif-body">
+              <div class="wt-notif-app">Mail</div>
+              <div class="wt-notif-title">St Joseph's School: Spring Term Trip</div>
+              <div class="wt-notif-sub">Permission slip due Friday 9th May...</div>
+            </div>
+          </div>
+          <!-- WA Header -->
+          <div class="wt-header">
+            <span class="wt-back">&#8249;</span>
+            <div class="wt-avatar">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+              </svg>
+            </div>
+            <div class="wt-header-info">
+              <div class="wt-header-name">FamilyBrain</div>
+              <div class="wt-header-status" id="wtStatus">online</div>
+            </div>
+            <div class="wt-header-icons">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </div>
+          </div>
+          <!-- Chat area -->
+          <div class="wt-chat" id="wtChat"></div>
+          <!-- Input bar -->
+          <div class="wt-input-bar">
+            <div class="wt-input-field">Message</div>
+            <div class="wt-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
@@ -1646,72 +2034,6 @@ p { color: #2C2C2C; }
   </div>
 </section>
 
-<!-- ==================== GRAPH INTELLIGENCE DEMO ==================== -->
-<section class="graph-demo section" id="graph-demo">
-  <div class="container">
-    <div class="graph-demo-inner">
-
-      <!-- Copy side -->
-      <div class="graph-demo-copy fade-in">
-        <p class="section-label">Graph Intelligence</p>
-        <h2>It just knows.</h2>
-        <p class="lead">FamilyBrain doesn't just store information — it connects it. Ask about any family member, any event, any document, and it draws on everything it knows to give you a complete answer. Instantly.</p>
-        <p class="graph-note"><strong>FamilyBrain connected</strong> Izzy's school schedule, dentist record, and your forwarded school letter — automatically.</p>
-      </div>
-
-      <!-- Phone mockup side -->
-      <div class="fade-in fade-in-delay-2">
-        <div class="gd-phone" id="gdPhone">
-          <!-- Notch -->
-          <div class="gd-notch"></div>
-          <!-- Status bar -->
-          <div class="gd-statusbar">
-            <span class="gd-statusbar-time">09:41</span>
-            <div class="gd-statusbar-icons">
-              <svg width="14" height="10" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
-              <svg width="12" height="10" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
-              <svg width="22" height="10" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
-            </div>
-          </div>
-          <!-- WA Header -->
-          <div class="gd-header">
-            <span class="gd-back">&#8249;</span>
-            <div class="gd-avatar">
-              <!-- Brain icon SVG -->
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
-                <circle cx="9" cy="9" r="1" fill="#3a7264"/>
-                <circle cx="15" cy="9" r="1" fill="#3a7264"/>
-                <circle cx="12" cy="13" r="1" fill="#3a7264"/>
-                <line x1="9" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
-                <line x1="15" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
-              </svg>
-            </div>
-            <div class="gd-header-info">
-              <div class="gd-header-name">FamilyBrain</div>
-              <div class="gd-header-status">online</div>
-            </div>
-            <div class="gd-header-icons">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-            </div>
-          </div>
-          <!-- Chat -->
-          <div class="gd-chat" id="gdChat">
-            <!-- Bubbles injected by JS -->
-          </div>
-          <!-- Input bar -->
-          <div class="gd-input-bar">
-            <div class="gd-input-field">Message</div>
-            <div class="gd-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
 <!-- ==================== FAQ ==================== -->
 <section class="faq section fade-in" id="faq">
   <div class="container">
@@ -1931,6 +2253,175 @@ function switchTab(tabName, btn) {
     b.style.animationDelay = (0.3 + i * 0.5) + 's';
   });
 }
+
+// ===== HERO VIDEO OVERLAY =====
+(function() {
+  var overlay = document.getElementById('heroOverlay');
+  if (!overlay) return;
+  // Phase 1: show first message after 2s
+  setTimeout(function() {
+    overlay.textContent = 'Forwarding Izzy\u2019s school letter to FamilyBrain...';
+    overlay.classList.add('visible');
+    // Phase 2: switch to confirmation after 2 more seconds
+    setTimeout(function() {
+      overlay.style.transition = 'opacity 0.4s ease';
+      overlay.style.opacity = '0';
+      setTimeout(function() {
+        overlay.textContent = '\u2713 Done. FamilyBrain has it.';
+        overlay.style.opacity = '1';
+        // Fade out after 3s
+        setTimeout(function() {
+          overlay.style.opacity = '0';
+        }, 3000);
+      }, 400);
+    }, 2000);
+  }, 2000);
+})();
+
+// ===== SCREEN RECORDING WALKTHROUGH =====
+(function() {
+  var phone = document.getElementById('wtPhone');
+  var chat = document.getElementById('wtChat');
+  var notif = document.getElementById('wtNotif');
+  var sceneLabel = document.getElementById('wtSceneLabel');
+  var dot0 = document.getElementById('wtDot0');
+  var dot1 = document.getElementById('wtDot1');
+  if (!phone || !chat) return;
+
+  var scenes = [
+    {
+      label: 'Scene 1 of 2 \u2014 Forwarding a school email',
+      showNotif: true,
+      messages: [
+        { type: 'user', text: 'just forwarded the school trip email', time: '09:41', ticks: true },
+        { type: 'typing', duration: 1600 },
+        { type: 'bot', text: 'Got it \u2705 School trip to the Science Museum \u2014 Wednesday 14th May. Permission slip due Friday 9th May. Shall I add it to the family calendar?', time: '09:41' },
+        { type: 'user', text: 'Yes please', time: '09:42', ticks: true },
+        { type: 'typing', duration: 1000 },
+        { type: 'bot', text: 'Done! Added to your calendar. I\u2019ll remind you about the permission slip on Wednesday. \ud83d\udcc5', time: '09:42' }
+      ]
+    },
+    {
+      label: 'Scene 2 of 2 \u2014 Asking about Izzy\u2019s week',
+      showNotif: false,
+      messages: [
+        { type: 'user', text: 'What\u2019s Izzy got on this week?', time: '09:44', ticks: true },
+        { type: 'typing', duration: 1500 },
+        { type: 'bot', text: 'Here\u2019s Izzy\u2019s week \ud83d\udc67\n\n\ud83d\udcda Tuesday \u2014 swimming at St Joseph\u2019s (don\u2019t forget the kit bag)\n\ud83e\uddb7 Thursday 4pm \u2014 dentist with Dr Patel\n\ud83d\udccb Friday \u2014 school trip permission slip due \u26a0\ufe0f', time: '09:44' }
+      ]
+    }
+  ];
+
+  var currentScene = 0;
+  var started = false;
+  var loopTimer = null;
+
+  function createBubble(msg) {
+    var el = document.createElement('div');
+    if (msg.type === 'typing') {
+      el.className = 'wt-typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    el.className = 'wt-bubble ' + (msg.type === 'user' ? 'wt-user' : 'wt-bot');
+    var textDiv = document.createElement('div');
+    textDiv.style.whiteSpace = 'pre-wrap';
+    textDiv.textContent = msg.text;
+    el.appendChild(textDiv);
+    var timeRow = document.createElement('div');
+    timeRow.className = 'wt-time';
+    timeRow.textContent = msg.time;
+    if (msg.ticks) {
+      var ticks = document.createElement('span');
+      ticks.className = 'wt-ticks';
+      ticks.textContent = '\u2713\u2713';
+      timeRow.appendChild(ticks);
+    }
+    el.appendChild(timeRow);
+    return el;
+  }
+
+  function runMessages(msgs, idx, onDone) {
+    if (idx >= msgs.length) { if (onDone) onDone(); return; }
+    var msg = msgs[idx];
+    if (msg.type === 'typing') {
+      var typingEl = createBubble(msg);
+      chat.appendChild(typingEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { typingEl.classList.add('wt-visible'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      setTimeout(function() {
+        chat.removeChild(typingEl);
+        runMessages(msgs, idx + 1, onDone);
+      }, msg.duration);
+    } else {
+      var bubbleEl = createBubble(msg);
+      chat.appendChild(bubbleEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { bubbleEl.classList.add('wt-visible'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      var delay = (idx + 1 < msgs.length && msgs[idx + 1].type === 'typing') ? 500 : 700;
+      setTimeout(function() { runMessages(msgs, idx + 1, onDone); }, delay);
+    }
+  }
+
+  function playScene(sceneIdx) {
+    var scene = scenes[sceneIdx];
+    // Update dots and label
+    dot0.classList.toggle('active', sceneIdx === 0);
+    dot1.classList.toggle('active', sceneIdx === 1);
+    if (sceneLabel) sceneLabel.textContent = scene.label;
+    // Show/hide notification
+    if (notif) {
+      if (scene.showNotif) {
+        notif.style.display = 'flex';
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() { notif.classList.add('wt-visible'); });
+        });
+      } else {
+        notif.classList.remove('wt-visible');
+        notif.style.display = 'none';
+      }
+    }
+    // Clear chat
+    chat.innerHTML = '';
+    // Play messages
+    setTimeout(function() {
+      runMessages(scene.messages, 0, function() {
+        // After scene completes, wait 3s then advance
+        loopTimer = setTimeout(function() {
+          var next = (sceneIdx + 1) % scenes.length;
+          // Fade out chat
+          chat.style.opacity = '0';
+          chat.style.transition = 'opacity 0.35s ease';
+          setTimeout(function() {
+            currentScene = next;
+            playScene(next);
+            chat.style.opacity = '1';
+          }, 350);
+        }, 3000);
+      });
+    }, scene.showNotif ? 800 : 400);
+  }
+
+  function startWalkthrough() {
+    if (started) return;
+    started = true;
+    playScene(0);
+  }
+
+  var wtObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        startWalkthrough();
+        wtObserver.disconnect();
+      }
+    });
+  }, { threshold: 0.3 });
+  wtObserver.observe(phone);
+})();
 
 // ===== GRAPH INTELLIGENCE DEMO =====
 (function() {
