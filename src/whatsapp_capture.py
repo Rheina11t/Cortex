@@ -3458,31 +3458,13 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
 
                         if gcal_url:
                             welcome_lines = [
-                                "👋 Welcome to FamilyBrain! I'm your family's memory and calendar assistant.",
+                                "👋 Welcome to FamilyBrain! I'm here to help keep your family organised — just chat with me like you would a friend. Send me anything to remember, ask me questions, or forward school letters.",
                                 "",
-                                "To get the most out of me, connect your family calendar:",
+                                "💾 Save this number as 'FamilyBrain' so you can find me easily.",
                                 "",
-                                "*Option 1 — Google Calendar (Android & iPhone, two-way sync):*",
-                                gcal_url,
-                                "Sign in with Google — events sync both ways. Link expires in 1 hour.",
-                            ]
-                            if webcal_url:
-                                import re as _re2
-                                _sub_url = webcal_url.replace("webcal://", "https://", 1)
-                                _sub_url = _re2.sub(r"/calendar/feed/(.+)\.ics$", r"/calendar/subscribe/\1", _sub_url)
-                                welcome_lines += [
-                                    "",
-                                    "*Option 2 — Apple Calendar (iPhone, one-tap subscribe):*",
-                                    _sub_url,
-                                    "Tap the link above — it opens a page that subscribes you to the family calendar instantly. Read-only, no login needed.",
-                                ]
-                            welcome_lines += [
+                                "📅 Want to sync your family calendar? Reply /connect to set it up — works with Google Calendar and Apple Calendar.",
                                 "",
-                                "You can also just start chatting — send me anything to remember, or ask me a question.",
-                                "",
-                                "📌 *For families with children:* By connecting your calendar you confirm you have parental consent to share any events involving under-18s with FamilyBrain. Events are stored securely and never shared outside your family.",
-                                "",
-                                "🔞 *FamilyBrain is for adults (18+) only. By using this service you confirm you are 18 or over.*",
+                                "📌 *A quick note on privacy:* By using FamilyBrain, you confirm you are 18 or over, and have parental consent to share any family events involving children. Your data is stored securely and never shared outside your family.",
                             ]
                             welcome_body = "\n".join(welcome_lines)
 
