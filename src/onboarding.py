@@ -346,6 +346,12 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
         member_phones = []
 
     all_phones = [primary_phone] + [p for p in member_phones if p != primary_phone]
+    
+    # Enforce 6-adult member cap
+    if len(all_phones) > 6:
+        logger.warning("Family %s attempted to register with %d members. Capping at 6.", family_id, len(all_phones))
+        all_phones = all_phones[:6]
+        member_phones = [p for p in all_phones if p != primary_phone]
 
     try:
         # 1. Provision in Supabase

@@ -2990,14 +2990,11 @@ def _handle_full_family_wipe_command(from_number: str, family_name: str, family_
     try:
         from twilio.rest import Client as TwilioClient
         _s = get_settings()
-        twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-        
-        msg_body = (
-            f"{family_name} has requested a full deletion of all FamilyBrain family data. "
-            "Reply YES to confirm, or ignore to cancel. "
-            "All members must confirm within 48 hours for deletion to proceed."
-        )
-        
+        twilio_client = TwilioClient(_s.twilio_account_si        msg_body = (
+            f"⚠️ *Data Deletion Request*\n\n"
+            f"{requester_name} has requested a full deletion of all FamilyBrain family data.\n\n"
+            f"Reply *YES* to confirm, or ignore to cancel. All members must confirm within 48 hours, or if 80% confirm the deletion will proceed after 48 hours."
+        )   
         for phone in phones:
             try:
                 twilio_client.messages.create(
@@ -3055,6 +3052,8 @@ def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id
     
     twiml = MessagingResponse()
     
+    # Quorum logic: 100% required if <= 2 members, otherwise 80% after 48h (handled in expiry job)
+    # Here we only execute if 100% have confirmed
     if not missing:
         # Everyone confirmed! Execute full wipe
         db.table("delete_requests").update({"status": "confirmed", "confirmations": confirmations}).eq("id", req_id).execute()
@@ -3218,6 +3217,23 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     # --- SOS / Emergency File Command ---
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
         return _handle_sos_command(from_number, family_name, _family_id)
+
+    # --- Help Command ---
+    if text_lower in ("/help", "/commands", "help", "commands"):
+        twiml = MessagingResponse()
+        help_text = (
+            "🤖 *FamilyBrain Commands*\n\n"
+            "Here are the commands you can use anytime:\n\n"
+            "*/sos* — Generate your family emergency file (PDF)\n"
+            "*/history* — See what I've done for your family this week\n"
+            "*/connect* — Connect your Google or Apple Calendar\n"
+            "*/delete-my-data* — Delete all data submitted by your number\n"
+            "*/delete-all-family-data* — Request a full wipe of all family data (requires confirmation from all members)\n"
+            "*/help* — Show this list of commands\n\n"
+            "You don't need commands for most things! Just send me photos, documents, voice notes, or ask me questions normally."
+        )
+        twiml.message(help_text)
+        return Response(str(twiml), mimetype="application/xml")
 
     # --- History Command ---
     if text_lower in ("/history", "history", "what have you done", "show history", "what did you do this week"):
@@ -4481,19 +4497,51 @@ def _expire_pending_delete_requests() -> None:
         for req in expired_res.data:
             req_id = req["id"]
             requester = req["requested_by"]
+            family_id = req["family_id"]
+            confirmations = req.get("confirmations", [])
             
-            # Mark as expired
-            db.table("delete_requests").update({"status": "expired"}).eq("id", req_id).execute()
+            # Check quorum
+            members_res = db.table("whatsapp_members").select("phone").eq("family_id", family_id).execute()
+            all_phones = [row["phone"] for row in (members_res.data or []) if row.get("phone")]
+            total_members = len(all_phones)
             
-            # Notify requester
-            try:
-                twilio_client.messages.create(
-                    from_=_s.twilio_whatsapp_from,
-                    to=requester,
-                    body="Your request to delete all family data has expired because not all members confirmed within 48 hours. No data was deleted.",
-                )
-            except Exception as exc:
-                logger.warning("Failed to notify requester of expired deletion: %s", exc)
+            if total_members <= 2:
+                quorum_met = len(confirmations) == total_members
+            else:
+                quorum_met = len(confirmations) >= (total_members * 0.8)
+                
+            if quorum_met:
+                # Execute deletion based on quorum
+                db.table("delete_requests").update({"status": "confirmed"}).eq("id", req_id).execute()
+                logger.info("Full family wipe CONFIRMED by quorum (%d/%d) after 48h for family_id=%s", len(confirmations), total_members, family_id)
+                deletion_results = _execute_family_data_deletion(family_id)
+                
+                msg_body = "The 48-hour window has passed and the required quorum of members confirmed. The full family data deletion has been completed successfully."
+                if deletion_results["errors"]:
+                    msg_body = "The 48-hour window passed and quorum was met. Deletion completed with some errors. Please contact privacy@familybrain.co."
+                    
+                for phone in all_phones:
+                    try:
+                        twilio_client.messages.create(
+                            from_=_s.twilio_whatsapp_from,
+                            to=f"whatsapp:{phone}",
+                            body=msg_body,
+                        )
+                    except Exception as exc:
+                        logger.warning("Failed to send wipe confirmation to %s: %s", phone, exc)
+            else:
+                # Mark as expired
+                db.table("delete_requests").update({"status": "expired"}).eq("id", req_id).execute()
+                
+                # Notify requester
+                try:
+                    twilio_client.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=requester,
+                        body="Your request to delete all family data has expired because the required number of members did not confirm within 48 hours. No data was deleted.",
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to notify requester of expired deletion: %s", exc)
                 
     except Exception as exc:
         logger.error("Error expiring delete requests: %s", exc)
