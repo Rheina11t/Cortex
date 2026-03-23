@@ -4329,18 +4329,7 @@ def main() -> None:
             id="daily_expiry_alerts",
         )
 
-        # Automated data retention enforcement (runs at 03:00 every day)
-        try:
-            from . import data_retention
-            alert_scheduler.add_job(
-                data_retention.enforce_data_retention,
-                trigger="cron",
-                hour=3,
-                minute=0,
-                id="data_retention_enforcement",
-            )
-        except Exception as exc:
-            logger.warning("Could not register data retention job: %s", exc)
+
 
         # Google Calendar → WhatsApp two-way sync (runs every 15 minutes)
         alert_scheduler.add_job(
