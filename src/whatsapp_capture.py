@@ -52,6 +52,8 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from .config import get_settings, logger as root_logger
 from . import brain
+from . import entity_graph
+import threading
 
 logger = logging.getLogger("open_brain.whatsapp")
 
@@ -2370,10 +2372,27 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             from datetime import date as _date, datetime as _datetime, timezone as _tz_utc
             today_str = _date.today().strftime("%d %B %Y")
             now_utc = _datetime.now(_tz_utc.utc)
+
+            # --- Entity graph context (GraphRAG) ---
+            graph_context = ""
+            try:
+                graph_context = entity_graph.get_entity_context(text, family_id)
+            except Exception as _gc_exc:
+                logger.warning("Entity graph context lookup failed (non-fatal): %s", _gc_exc)
+
+            graph_prompt_section = ""
+            if graph_context:
+                graph_prompt_section = (
+                    "Known family relationships (from the knowledge graph):\n"
+                    + graph_context + "\n\n"
+                    "Use these relationships to enrich your answer where relevant. "
+                )
+
             prompt = (
                 f"You are Family Brain, a personal AI assistant for the {family_name} family. "
                 f"The person asking this question is {family_name}. "
                 f"Today's date is {today_str}. "
+                + graph_prompt_section +
                 "Each stored memory below is prefixed with a [stored: <timestamp>] label showing when it was saved. "
                 "MEMORY FRESHNESS RULE (STRICT): If a memory uses relative time words such as 'tonight', 'today', "
                 "'tomorrow', 'this week', 'next week', 'yesterday', or similar, you MUST check its [stored:] "
@@ -2990,7 +3009,8 @@ def _handle_full_family_wipe_command(from_number: str, family_name: str, family_
     try:
         from twilio.rest import Client as TwilioClient
         _s = get_settings()
-        twilio_client = TwilioClient(_s.twilio_account_si        msg_body = (
+        twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+        msg_body = (
             f"⚠️ *Data Deletion Request*\n\n"
             f"{requester_name} has requested a full deletion of all FamilyBrain family data.\n\n"
             f"Reply *YES* to confirm, or ignore to cancel. All members must confirm within 48 hours, or if 80% confirm the deletion will proceed after 48 hours."
@@ -3279,12 +3299,27 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/history* — See what I've done for your family this week\n"
             "*/connect* — Connect your Google or Apple Calendar\n"
             "*/invite* — Get a link to invite friends to FamilyBrain\n"
+            "*/graph* — View your family's knowledge graph (people, places, relationships)\n"
             "*/delete-my-data* — Delete all data submitted by your number\n"
             "*/delete-all-family-data* — Request a full wipe of all family data (requires confirmation from all members)\n"
             "*/help* — Show this list of commands\n\n"
             "You don't need commands for most things! Just send me photos, documents, voice notes, or ask me questions normally."
         )
         twiml.message(help_text)
+        return Response(str(twiml), mimetype="application/xml")
+
+    # --- Graph Command ---
+    if text_lower in ("/graph", "graph", "knowledge graph", "show graph", "entity graph"):
+        twiml = MessagingResponse()
+        try:
+            summary = entity_graph.get_entity_graph_summary(_family_id)
+            # WhatsApp has a ~4096 char limit per message
+            if len(summary) > 3800:
+                summary = summary[:3800] + "\n\n_(truncated — graph is growing!)_"
+            twiml.message(summary)
+        except Exception as exc:
+            logger.error("Failed to generate graph summary: %s", exc)
+            twiml.message("\u26a0\ufe0f Sorry, I couldn't retrieve your knowledge graph right now.")
         return Response(str(twiml), mimetype="application/xml")
 
     # --- History Command ---
@@ -3506,6 +3541,16 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         tags: list[str] = extracted.get("tags", [])
         category: str = extracted.get("category", "other")
         action_items: list[str] = extracted.get("action_items", [])
+
+        # Step 3b: Extract entities for the knowledge graph (async — don't block response)
+        try:
+            threading.Thread(
+                target=entity_graph.extract_and_store_entities,
+                args=(cleaned_content, _family_id, memory_id),
+                daemon=True,
+            ).start()
+        except Exception as _eg_exc:
+            logger.warning("Entity extraction thread failed to start: %s", _eg_exc)
 
         # Step 4: Check for schedulable events
         event_info = ""
@@ -3838,6 +3883,16 @@ def _handle_media_message(
             "Media memory captured by %s (type=%s, id=%s)", family_name, doc_type, memory_id
         )
         log_action(_family_id, 'document_stored', subject=f"{doc_type} {source_type}", detail={'memory_id': memory_id, 'doc_type': doc_type, 'source_type': source_type, 'tags': metadata.get('tags', [])}, phone_number=from_number)
+
+        # --- Extract entities for the knowledge graph (async — don't block response) ---
+        try:
+            threading.Thread(
+                target=entity_graph.extract_and_store_entities,
+                args=(enriched_content, _family_id, memory_id),
+                daemon=True,
+            ).start()
+        except Exception as _eg_exc:
+            logger.warning("Entity extraction thread failed to start (media): %s", _eg_exc)
 
         # --- Category prompt if unclear ---
         if not emergency_cat and source_type != "whatsapp-voice":
