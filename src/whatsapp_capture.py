@@ -3218,6 +3218,57 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
         return _handle_sos_command(from_number, family_name, _family_id)
 
+    # --- Invite Command ---
+    if text_lower in ("/invite", "invite", "refer", "/refer"):
+        twiml = MessagingResponse()
+        db = brain._supabase
+        if not db:
+            twiml.message("Sorry, I can't generate an invite link right now.")
+            return Response(str(twiml), mimetype="application/xml")
+            
+        # Look up existing ref code or generate one
+        ref_res = db.table("referrals").select("ref_code").eq("family_id", _family_id).is_("referred_family_id", "null").execute()
+        
+        if ref_res.data:
+            ref_code = ref_res.data[0]["ref_code"]
+        else:
+            # Generate a new unique code (e.g. first 3 letters of family name + random digits)
+            import random
+            import string
+            prefix = "".join(c for c in family_name if c.isalpha())[:3].upper()
+            if not prefix:
+                prefix = "FAM"
+            while True:
+                suffix = "".join(random.choices(string.digits, k=3))
+                ref_code = f"{prefix}{suffix}"
+                # Check uniqueness
+                check = db.table("referrals").select("id").eq("ref_code", ref_code).execute()
+                if not check.data:
+                    break
+            
+            # Store the new base referral code for this family
+            db.table("referrals").insert({
+                "family_id": _family_id,
+                "ref_code": ref_code
+            }).execute()
+            
+        # Count successful referrals
+        count_res = db.table("referrals").select("id", count="exact").eq("family_id", _family_id).not_.is_("referred_family_id", "null").execute()
+        ref_count = count_res.count if count_res.count is not None else 0
+        
+        invite_msg = (
+            "👨‍👩‍👧 Hey! I've been using FamilyBrain to keep our family organised — school letters, calendar events, reminders, all through WhatsApp. No app to download.\n\n"
+            f"Try it free: https://familybrain.co/?ref={ref_code}\n\n"
+            "Just message the bot and it walks you through setup 👋"
+        )
+        
+        twiml.message(invite_msg)
+        
+        if ref_count > 0:
+            twiml.message(f"You've invited {ref_count} famil{'ies' if ref_count != 1 else 'y'} so far 🎉")
+            
+        return Response(str(twiml), mimetype="application/xml")
+
     # --- Help Command ---
     if text_lower in ("/help", "/commands", "help", "commands"):
         twiml = MessagingResponse()
@@ -3227,6 +3278,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/sos* — Generate your family emergency file (PDF)\n"
             "*/history* — See what I've done for your family this week\n"
             "*/connect* — Connect your Google or Apple Calendar\n"
+            "*/invite* — Get a link to invite friends to FamilyBrain\n"
             "*/delete-my-data* — Delete all data submitted by your number\n"
             "*/delete-all-family-data* — Request a full wipe of all family data (requires confirmation from all members)\n"
             "*/help* — Show this list of commands\n\n"
@@ -3306,6 +3358,44 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         try:
             db = brain._supabase
             if db:
+                # Check for referral code in the first message
+                import re
+                ref_match = re.search(r"\(ref:([A-Z0-9]+)\)", text, re.IGNORECASE)
+                if ref_match:
+                    ref_code = ref_match.group(1).upper()
+                    # Look up the referrer
+                    ref_res = db.table("referrals").select("id, family_id").eq("ref_code", ref_code).is_("referred_family_id", "null").execute()
+                    if ref_res.data:
+                        referrer_id = ref_res.data[0]["id"]
+                        referrer_family_id = ref_res.data[0]["family_id"]
+                        
+                        # Mark referral as converted
+                        db.table("referrals").update({
+                            "referred_family_id": _family_id,
+                            "converted_at": datetime.now(pytz.UTC).isoformat()
+                        }).eq("id", referrer_id).execute()
+                        
+                        # Notify the referrer
+                        count_res = db.table("referrals").select("id", count="exact").eq("family_id", referrer_family_id).not_.is_("referred_family_id", "null").execute()
+                        ref_count = count_res.count if count_res.count is not None else 1
+                        
+                        # Find a phone number for the referring family to notify them
+                        referrer_phones_res = db.table("whatsapp_members").select("phone").eq("family_id", referrer_family_id).execute()
+                        if referrer_phones_res.data:
+                            from twilio.rest import Client as TwilioClient
+                            _s = get_settings()
+                            if _s.twilio_account_sid and _s.twilio_auth_token:
+                                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                                for row in referrer_phones_res.data:
+                                    try:
+                                        twilio_client.messages.create(
+                                            from_=_s.twilio_whatsapp_from,
+                                            to=f"whatsapp:{row['phone']}",
+                                            body=f"🎉 Someone just joined FamilyBrain using your invite link! You've now referred {ref_count} famil{'ies' if ref_count != 1 else 'y'}.",
+                                        )
+                                    except Exception as exc:
+                                        logger.warning("Failed to notify referrer %s: %s", row['phone'], exc)
+
                 # Check if family has a token
                 fam_res = db.table("families").select("google_refresh_token").eq("family_id", _family_id).execute()
                 has_token = False
