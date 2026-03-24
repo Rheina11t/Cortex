@@ -1,105 +1,2741 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FamilyBrain — Coming Soon</title>
-  <meta name="description" content="FamilyBrain — a smarter way to keep your family organised. Coming soon." />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FamilyBrain — Your Family's Second Brain. Just WhatsApp.</title>
+<meta name="description" content="Send FamilyBrain your documents, photos, and voice notes. Ask any question later — about insurance, passports, prescriptions, school trips, or anything else. It remembers everything so you don't have to.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; font-size: 17px; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #FAF8F4;
+  color: #2C2C2C;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img { max-width: 100%; display: block; }
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; border: none; font-family: inherit; }
 
-    :root {
-      --teal:      #0d9488;
-      --teal-dark: #0f766e;
-      --navy:      #1e3a5f;
-      --bg:        #f0fdf9;
-      --text:      #1a202c;
-      --muted:     #4a5568;
-    }
+/* ========== TYPOGRAPHY ========== */
+h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; font-weight: 500; line-height: 1.2; color: #2C2C2C; font-optical-sizing: auto; font-synthesis: none; }
+h1 { font-size: 3.3rem; letter-spacing: -0.02em; }
+h2 { font-size: 2.35rem; letter-spacing: -0.01em; }
+h3 { font-size: 1.4rem; }
+p { color: #2C2C2C; }
+.text-secondary { color: #7A7A7A; }
 
-    html, body {
-      height: 100%;
-    }
+/* ========== LAYOUT ========== */
+.container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.section { padding: 100px 0; }
+.section-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #4A8C7A;
+  margin-bottom: 12px;
+}
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                   "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 24px;
-    }
+/* ========== BUTTONS ========== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.25s ease;
+}
+.btn-primary {
+  background: #E8714A;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(232, 113, 74, 0.35);
+}
+.btn-primary:hover {
+  background: #d4613c;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(232, 113, 74, 0.45);
+}
+.btn-secondary { background: transparent; color: #4A8C7A; font-weight: 500; }
+.btn-secondary:hover { color: #3a7264; }
+.btn-outline {
+  background: transparent;
+  border: 2px solid #E8714A;
+  color: #E8714A;
+}
+.btn-outline:hover { background: #E8714A; color: #fff; }
 
-    .card {
-      background: #ffffff;
-      border-radius: 20px;
-      box-shadow: 0 4px 32px rgba(13, 148, 136, 0.12), 0 1px 6px rgba(0,0,0,0.06);
-      padding: 56px 48px 48px;
-      max-width: 480px;
-      width: 100%;
-      text-align: center;
-    }
+/* ========== ANIMATIONS ========== */
+.fade-in {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+.fade-in-delay-1 { transition-delay: 0.1s; }
+.fade-in-delay-2 { transition-delay: 0.2s; }
+.fade-in-delay-3 { transition-delay: 0.3s; }
+.fade-in-delay-4 { transition-delay: 0.4s; }
+.fade-in-delay-5 { transition-delay: 0.5s; }
 
-    .logo-mark {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 64px;
-      height: 64px;
-      background: linear-gradient(135deg, var(--teal) 0%, var(--navy) 100%);
-      border-radius: 16px;
-      font-size: 32px;
-      margin-bottom: 20px;
-      box-shadow: 0 4px 16px rgba(13, 148, 136, 0.3);
-    }
+/* ========== STICKY NAV ========== */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  background: rgba(250, 248, 244, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  transition: box-shadow 0.3s ease;
+}
+.nav.scrolled { box-shadow: 0 2px 20px rgba(0,0,0,0.06); }
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.nav-logo { font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; font-weight: 700; color: #4A8C7A; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-links a { font-size: 0.9rem; font-weight: 500; color: #7A7A7A; transition: color 0.2s; }
+.nav-links a:hover { color: #2C2C2C; }
+.nav-cta {
+  background: #E8714A;
+  color: #fff !important;
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-weight: 600 !important;
+  transition: all 0.25s ease !important;
+  box-shadow: 0 2px 10px rgba(232,113,74,0.25);
+}
+.nav-cta:hover { background: #d4613c !important; color: #fff !important; transform: translateY(-1px); }
+.nav-hamburger { display: none; flex-direction: column; gap: 5px; background: none; padding: 4px; }
+.nav-hamburger span { display: block; width: 24px; height: 2.5px; background: #2C2C2C; border-radius: 2px; transition: all 0.3s ease; }
+.mobile-menu {
+  display: none;
+  position: fixed;
+  top: 72px; left: 0; right: 0;
+  background: rgba(250,248,244,0.98);
+  backdrop-filter: blur(12px);
+  padding: 24px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  z-index: 999;
+}
+.mobile-menu.open { display: block; }
+.mobile-menu a { display: block; padding: 14px 0; font-size: 1.05rem; font-weight: 500; color: #2C2C2C; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.mobile-menu .btn { width: 100%; margin-top: 16px; text-align: center; }
 
-    .brand-name {
-      font-size: 1.8rem;
-      font-weight: 800;
-      color: var(--navy);
-      letter-spacing: -0.5px;
-      margin-bottom: 28px;
-    }
+/* ========== HERO ========== */
+.hero { padding-top: 140px; padding-bottom: 80px; min-height: 90vh; display: flex; align-items: center; }
+.hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+.hero-content h1 { margin-bottom: 20px; }
+.hero-content p { font-size: 1.18rem; color: #7A7A7A; line-height: 1.7; margin-bottom: 36px; max-width: 520px; }
+.hero-buttons { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.hero-link { color: #4A8C7A; font-weight: 500; font-size: 0.95rem; transition: color 0.2s; }
+.hero-link:hover { color: #3a7264; }
 
-    .divider {
-      width: 48px;
-      height: 3px;
-      background: linear-gradient(90deg, var(--teal), var(--navy));
-      border-radius: 2px;
-      margin: 0 auto 28px;
-    }
+/* ========== HERO PHONE WALKTHROUGH ========== */
+.hero-phone-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+/* Aurora glow behind the phone */
+.hero-aurora {
+  position: absolute;
+  inset: -40px;
+  border-radius: 60px;
+  background: radial-gradient(ellipse 70% 60% at 50% 50%,
+    rgba(74,140,122,0.22) 0%,
+    rgba(32,90,120,0.14) 45%,
+    transparent 75%);
+  filter: blur(28px);
+  animation: heroAurora 8s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+@keyframes heroAurora {
+  0%   { transform: scale(1) rotate(-2deg); opacity: 0.8; }
+  33%  { transform: scale(1.06) rotate(1deg); opacity: 1; }
+  66%  { transform: scale(0.96) rotate(-1deg); opacity: 0.85; }
+  100% { transform: scale(1.04) rotate(2deg); opacity: 0.95; }
+}
+/* iPhone shell */
+.hero-phone {
+  position: relative;
+  z-index: 1;
+  background: #1C1C1E;
+  border-radius: 48px;
+  box-shadow:
+    0 48px 96px rgba(0,0,0,0.28),
+    0 0 0 1px rgba(255,255,255,0.07),
+    inset 0 0 0 2px rgba(255,255,255,0.05);
+  overflow: hidden;
+  width: 300px;
+  max-width: 100%;
+}
+.hero-phone-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 110px; height: 26px;
+  background: #1C1C1E;
+  border-radius: 0 0 16px 16px;
+  z-index: 10;
+}
+.hero-phone-statusbar {
+  background: #075E54;
+  padding: 30px 18px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.7);
+}
+.hero-phone-statusbar-time { font-weight: 600; color: #fff; font-size: 0.75rem; }
+.hero-phone-statusbar-icons { display: flex; gap: 5px; align-items: center; }
+.hero-phone-wa-header {
+  background: #075E54;
+  padding: 8px 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.hero-phone-wa-back { color: rgba(255,255,255,0.85); font-size: 1.3rem; line-height: 1; margin-right: 2px; }
+.hero-phone-wa-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a7264 0%, #5bb89a 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hero-phone-wa-avatar svg { width: 18px; height: 18px; }
+.hero-phone-wa-info { flex: 1; }
+.hero-phone-wa-name { font-weight: 600; font-size: 0.85rem; color: #fff; }
+.hero-phone-wa-status { font-size: 0.67rem; color: rgba(255,255,255,0.7); }
+.hero-phone-wa-icons { display: flex; gap: 12px; color: rgba(255,255,255,0.8); }
+/* Chat area */
+.hero-phone-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 10px;
+  min-height: 380px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  position: relative;
+}
+/* Insight badge inside hero phone */
+.hero-phone-insight {
+  background: linear-gradient(135deg, #F0F8F5 0%, #E8F5EF 100%);
+  border: 1px solid #A8D4C0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 0.73rem;
+  color: #3a7264;
+  font-style: italic;
+  margin: 0 10px 8px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.hero-phone-insight.hp-vis { opacity: 1; transform: translateY(0); }
+@keyframes hpPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74,140,122,0); }
+  50% { box-shadow: 0 0 0 5px rgba(74,140,122,0.12); }
+}
+.hero-phone-insight.hp-vis { animation: hpPulse 2s ease 0.5s 2; }
+/* Input bar */
+.hero-phone-input-bar {
+  background: #F0F0F0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.hero-phone-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #999;
+}
+.hero-phone-send {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hero-phone-send svg { width: 13px; height: 13px; fill: #fff; }
+/* Bubbles */
+.hp-bubble {
+  max-width: 86%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  word-break: break-word;
+  flex-shrink: 0;
+}
+.hp-bubble.hp-vis { opacity: 1; transform: translateY(0) scale(1); }
+.hp-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: #1a1a1a;
+}
+.hp-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.hp-time {
+  font-size: 0.6rem;
+  color: #9E9E9E;
+  text-align: right;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.hp-ticks { color: #53BDEB; font-size: 0.68rem; }
+/* Typing indicator */
+.hp-typing {
+  background: #fff;
+  align-self: flex-start;
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 9px 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  flex-shrink: 0;
+}
+.hp-typing.hp-vis { opacity: 1; transform: translateY(0); }
+.hp-typing span {
+  width: 6px; height: 6px;
+  background: #B0B0B0;
+  border-radius: 50%;
+  animation: hpDot 1.2s infinite ease-in-out;
+}
+.hp-typing span:nth-child(2) { animation-delay: 0.2s; }
+.hp-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes hpDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+/* Attachment bubbles in hero phone */
+.hp-attach-img {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 4px 4px 6px;
+  max-width: 200px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  flex-shrink: 0;
+}
+.hp-attach-img.hp-vis { opacity: 1; transform: translateY(0) scale(1); }
+.hp-attach-doc {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 5px 5px 6px;
+  max-width: 220px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  flex-shrink: 0;
+}
+.hp-attach-doc.hp-vis { opacity: 1; transform: translateY(0) scale(1); }
+/* Scene dots below the phone */
+.hero-phone-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+.hp-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(74,140,122,0.3);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.hp-dot.active { background: #4A8C7A; transform: scale(1.3); }
+@media (max-width: 1024px) {
+  .hero-phone { width: 260px; }
+  .hero-phone-chat { min-height: 320px; max-height: 320px; }
+}
+@media (max-width: 768px) {
+  .hero-phone-wrap { margin-top: 32px; }
+  .hero-phone { width: 100%; max-width: 300px; }
+}
 
-    .tagline {
-      font-size: 1.15rem;
-      font-weight: 600;
-      color: var(--text);
-      line-height: 1.5;
-      margin-bottom: 16px;
-    }
+/* ========== WHATSAPP MOCKUP ========== */
+.wa-phone {
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
+  max-width: 380px;
+  margin: 0 auto;
+}
+.wa-header {
+  background: #075E54;
+  color: #fff;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wa-avatar {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4A8C7A, #6db89f);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif; font-weight: 700; font-size: 0.85rem; color: #fff;
+  flex-shrink: 0;
+}
+.wa-header-info { flex: 1; }
+.wa-header-name { font-weight: 600; font-size: 0.95rem; }
+.wa-header-status { font-size: 0.75rem; opacity: 0.8; }
+.wa-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 16px;
+  min-height: 300px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.wa-bubble {
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  position: relative;
+  animation: bubbleIn 0.4s ease forwards;
+  opacity: 0;
+}
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.wa-bubble:nth-child(1) { animation-delay: 0.3s; }
+.wa-bubble:nth-child(2) { animation-delay: 0.8s; }
+.wa-bubble:nth-child(3) { animation-delay: 1.3s; }
+.wa-bubble:nth-child(4) { animation-delay: 1.8s; }
+.wa-bubble:nth-child(5) { animation-delay: 2.2s; }
+.wa-bubble:nth-child(6) { animation-delay: 2.7s; }
+.wa-bubble:nth-child(7) { animation-delay: 3.1s; }
+.wa-bubble-user { background: #DCF8C6; align-self: flex-end; border-bottom-right-radius: 4px; }
+.wa-bubble-bot { background: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
+.wa-bubble .wa-time { font-size: 0.68rem; color: #999; text-align: right; margin-top: 4px; }
+.wa-bubble-proactive {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  border-left: 3px solid #E8714A;
+}
+.wa-input-bar {
+  background: #F0F0F0;
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.wa-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  color: #999;
+  border: none;
+}
+.wa-send-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+}
+.wa-send-btn svg { width: 16px; height: 16px; fill: #fff; }
 
-    .domain {
-      font-size: 0.9rem;
-      color: var(--teal-dark);
-      font-weight: 600;
-      letter-spacing: 0.03em;
-    }
+/* ========== SOCIAL PROOF BAR ========== */
+.social-proof {
+  background: #fff;
+  border-top: 1px solid rgba(0,0,0,0.05);
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  padding: 40px 0;
+}
+.social-proof-inner { display: flex; align-items: center; justify-content: center; gap: 48px; flex-wrap: wrap; }
+.social-proof-stat { text-align: center; }
+.social-proof-stars { color: #F5A623; font-size: 1.3rem; letter-spacing: 2px; margin-bottom: 4px; }
+.social-proof-text { font-size: 0.9rem; color: #7A7A7A; font-weight: 500; }
+.social-proof-divider { width: 1px; height: 40px; background: rgba(0,0,0,0.1); }
+.social-proof-quotes { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; }
+.social-proof-quote { font-size: 0.88rem; color: #7A7A7A; font-style: italic; max-width: 240px; text-align: center; line-height: 1.5; }
+.social-proof-quote strong { display: block; font-style: normal; color: #2C2C2C; margin-top: 6px; font-size: 0.8rem; }
 
-    @media (max-width: 480px) {
-      .card { padding: 40px 28px 36px; }
-      .brand-name { font-size: 1.5rem; }
-    }
-  </style>
+/* ========== PROBLEM SECTION ========== */
+.problem { background: #FAF8F4; }
+.problem-header { text-align: center; max-width: 680px; margin: 0 auto 56px; }
+.problem-header h2 { margin-bottom: 18px; }
+.problem-header p { font-size: 1.08rem; color: #7A7A7A; line-height: 1.75; }
+.pain-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.pain-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 24px;
+  text-align: center;
+  border: 1px solid rgba(0,0,0,0.05);
+  transition: all 0.3s ease;
+}
+.pain-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.06); }
+.pain-card-icon {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: #F5C4A8;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  margin: 0 auto 14px;
+}
+.pain-card h4 { font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 600; color: #2C2C2C; }
+
+/* ========== HOW IT WORKS ========== */
+.how-it-works { background: #fff; }
+.how-header { text-align: center; max-width: 560px; margin: 0 auto 64px; }
+.how-header h2 { margin-bottom: 12px; }
+.how-header p { color: #7A7A7A; font-size: 1.05rem; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; }
+.step { text-align: center; }
+.step-number {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: #4A8C7A;
+  color: #fff;
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 0.9rem;
+  letter-spacing: 0.03em;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px;
+}
+.step h3 { font-size: 1.15rem; margin-bottom: 10px; }
+.step p { font-size: 0.95rem; color: #7A7A7A; margin-bottom: 20px; line-height: 1.6; }
+.step .wa-phone { max-width: 280px; margin: 0 auto; }
+.step .wa-chat { min-height: auto; padding: 12px; }
+.step .wa-bubble { font-size: 0.8rem; padding: 6px 10px; animation-delay: 0s; opacity: 1; }
+.step .wa-bubble-proactive { font-size: 0.8rem; padding: 6px 10px; animation-delay: 0s; opacity: 1; }
+.step .wa-header { padding: 10px 14px; }
+.step .wa-avatar { width: 30px; height: 30px; font-size: 0.7rem; }
+.step .wa-header-name { font-size: 0.85rem; }
+.step .wa-input-bar { padding: 8px 12px; }
+
+/* ========== FEATURES GRID ========== */
+.features { background: #FAF8F4; }
+.features-header { text-align: center; max-width: 560px; margin: 0 auto 56px; }
+.features-header h2 { margin-bottom: 12px; }
+.features-header p { color: #7A7A7A; font-size: 1.05rem; }
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.feature-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 32px 28px;
+  border: 1px solid rgba(0,0,0,0.05);
+  transition: all 0.3s ease;
+}
+.feature-card:hover { transform: translateY(-4px); box-shadow: 0 12px 36px rgba(0,0,0,0.07); }
+.feature-card.feature-highlight {
+  border-color: #4A8C7A;
+  background: linear-gradient(135deg, #f0f8f5 0%, #fff 100%);
+}
+.feature-icon { font-size: 2rem; margin-bottom: 16px; }
+.feature-card h3 { font-size: 1.12rem; margin-bottom: 10px; }
+.feature-card p { font-size: 0.93rem; color: #7A7A7A; line-height: 1.6; }
+.feature-sos { border-color: rgba(232,113,74,0.3); background: rgba(232,113,74,0.03); }
+.feature-sos:hover { border-color: #E8714A; }
+
+/* ========== EMERGENCY SECTION ========== */
+.emergency {
+  background: linear-gradient(135deg, #fdf6f2 0%, #fef0e8 100%);
+  position: relative;
+  overflow: hidden;
+}
+.emergency::before {
+  content: '';
+  position: absolute; top: -80px; right: -80px;
+  width: 320px; height: 320px;
+  border-radius: 50%;
+  background: rgba(232,113,74,0.07);
+  pointer-events: none;
+}
+.emergency-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.emergency-content { position: relative; z-index: 1; }
+.emergency-content h2 { margin-bottom: 20px; }
+.emergency-content > p { color: #7A7A7A; font-size: 1.05rem; line-height: 1.75; margin-bottom: 20px; }
+.emergency-content > p strong { color: #2C2C2C; }
+.emergency-what {
+  background: rgba(255,255,255,0.7);
+  border: 1px solid rgba(232,113,74,0.2);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
+}
+.emergency-what-title {
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #E8714A; margin-bottom: 12px;
+}
+.emergency-what-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+.emergency-what-item {
+  font-size: 0.83rem; color: #2C2C2C;
+  display: flex; align-items: center; gap: 6px;
+}
+.emergency-what-item::before {
+  content: '';
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #E8714A; flex-shrink: 0;
+}
+.emergency-peace {
+  font-size: 0.95rem; color: #7A7A7A;
+  font-style: italic; border-left: 3px solid #E8714A;
+  padding-left: 16px; margin-bottom: 32px; line-height: 1.6;
+}
+.emergency-mockup { position: relative; z-index: 1; }
+.emergency-mockup .wa-phone { max-width: 340px; margin: 0 auto; }
+.sos-command {
+  font-family: 'Inter', monospace; font-weight: 700;
+  color: #4A8C7A; background: rgba(74,140,122,0.1);
+  padding: 1px 6px; border-radius: 4px; font-size: 0.9em;
+}
+.sos-pdf-preview {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 0 auto;
+  max-width: 340px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+.sos-pdf-header {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(0,0,0,0.07);
+  margin-bottom: 12px;
+}
+.sos-pdf-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: #E8714A; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; flex-shrink: 0;
+}
+.sos-pdf-title { font-weight: 700; font-size: 0.9rem; color: #2C2C2C; }
+.sos-pdf-subtitle { font-size: 0.75rem; color: #7A7A7A; }
+.sos-pdf-sections { display: flex; flex-direction: column; gap: 5px; }
+.sos-pdf-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.8rem; color: #2C2C2C;
+}
+.sos-pdf-tick { color: #4A8C7A; font-size: 0.85rem; flex-shrink: 0; }
+@media (max-width: 1024px) {
+  .emergency-inner { grid-template-columns: 1fr; gap: 48px; }
+  .emergency-content { text-align: center; }
+  .emergency-peace { text-align: left; }
+  .emergency-what-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .emergency-what-grid { grid-template-columns: 1fr; }
+}
+
+/* ========== WHAT FAMILYBRAIN KNOWS ========== */
+.knows { background: #fff; }
+.knows-header { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+.knows-header h2 { margin-bottom: 14px; }
+.knows-header p { color: #7A7A7A; font-size: 1.08rem; line-height: 1.7; }
+.knows-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.knows-tile {
+  background: #FAF8F4;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 14px;
+  padding: 20px 14px;
+  text-align: center;
+  transition: all 0.25s ease;
+  cursor: default;
+}
+.knows-tile:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.07); border-color: rgba(74,140,122,0.25); }
+.knows-tile-icon { font-size: 1.8rem; margin-bottom: 8px; }
+.knows-tile-name { font-size: 0.82rem; font-weight: 600; color: #2C2C2C; line-height: 1.3; }
+
+/* ========== INTERACTIVE DEMO ========== */
+.demo { background: linear-gradient(180deg, #fff 0%, #f3f0eb 100%); }
+.demo-header { text-align: center; max-width: 640px; margin: 0 auto 48px; }
+.demo-header h2 { margin-bottom: 12px; }
+.demo-header p { color: #7A7A7A; font-size: 1.05rem; }
+.demo-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 36px;
+  flex-wrap: wrap;
+}
+.demo-tab {
+  padding: 10px 24px;
+  border-radius: 100px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: #fff;
+  color: #7A7A7A;
+  border: 2px solid rgba(0,0,0,0.08);
+  transition: all 0.2s ease;
+}
+.demo-tab:hover { border-color: #4A8C7A; color: #4A8C7A; }
+.demo-tab.active { background: #4A8C7A; color: #fff; border-color: #4A8C7A; }
+.demo-tab-label {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 6px;
+}
+.demo-tab-label.storage { background: #e8f5f1; color: #4A8C7A; }
+.demo-tab-label.retrieval { background: #e8f0ff; color: #4A6AC7; }
+.demo-tab-label.reasoning { background: #fff0eb; color: #E8714A; }
+.demo-panel { display: none; }
+.demo-panel.active { display: block; }
+.demo .wa-phone { max-width: 480px; margin: 0 auto; }
+.demo .wa-chat { min-height: 420px; }
+.demo-reasoning-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff8f5;
+  border: 1px solid rgba(232,113,74,0.2);
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin: 0 auto 24px;
+  max-width: 480px;
+  font-size: 0.88rem;
+  color: #7A7A7A;
+  line-height: 1.5;
+}
+.demo-reasoning-badge strong { color: #E8714A; }
+
+/* ========== TESTIMONIALS ========== */
+.testimonials { background: #fff; }
+.testimonials-header { text-align: center; max-width: 560px; margin: 0 auto 56px; }
+.testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.testimonial-card { background: #FAF8F4; border-radius: 18px; padding: 32px 28px; border: 1px solid rgba(0,0,0,0.04); }
+.testimonial-stars { color: #F5A623; font-size: 1rem; letter-spacing: 1px; margin-bottom: 16px; }
+.testimonial-card blockquote { font-size: 0.95rem; color: #2C2C2C; line-height: 1.7; margin-bottom: 20px; font-style: italic; }
+.testimonial-author { display: flex; align-items: center; gap: 12px; }
+.testimonial-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4A8C7A, #6db89f);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 0.85rem;
+}
+.testimonial-name { font-weight: 600; font-size: 0.9rem; }
+.testimonial-role { font-size: 0.8rem; color: #7A7A7A; }
+
+/* ========== PRICING ========== */
+.pricing { background: #FAF8F4; }
+.pricing-header { text-align: center; max-width: 560px; margin: 0 auto 20px; }
+.pricing-header h2 { margin-bottom: 12px; }
+.pricing-header p { color: #7A7A7A; font-size: 1.05rem; }
+.pricing-toggle { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 48px; }
+.pricing-toggle span { font-size: 0.9rem; font-weight: 500; color: #7A7A7A; transition: color 0.2s; }
+.pricing-toggle span.active { color: #2C2C2C; font-weight: 600; }
+.toggle-switch {
+  width: 52px; height: 28px;
+  background: #ccc;
+  border-radius: 14px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+.toggle-switch.active { background: #4A8C7A; }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 22px; height: 22px;
+  background: #fff;
+  border-radius: 50%;
+  top: 3px; left: 3px;
+  transition: transform 0.3s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.toggle-switch.active::after { transform: translateX(24px); }
+.save-badge { background: #E8714A; color: #fff; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+.pricing-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; max-width: 780px; margin: 0 auto; }
+.pricing-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 36px 32px;
+  border: 2px solid rgba(0,0,0,0.06);
+  position: relative;
+  transition: all 0.3s ease;
+}
+.pricing-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
+.pricing-card.featured { border-color: #E8714A; box-shadow: 0 8px 32px rgba(232,113,74,0.15); }
+.pricing-badge {
+  position: absolute;
+  top: -14px; left: 50%;
+  transform: translateX(-50%);
+  background: #E8714A;
+  color: #fff;
+  font-size: 0.78rem; font-weight: 600;
+  padding: 5px 18px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.pricing-card h3 { font-size: 1.25rem; margin-bottom: 8px; }
+.pricing-price { font-family: 'Fraunces', serif; font-size: 2.8rem; font-weight: 700; color: #2C2C2C; line-height: 1; margin-bottom: 4px; }
+.pricing-price .period { font-size: 1rem; font-weight: 400; color: #7A7A7A; }
+.pricing-price .original { font-size: 1rem; color: #7A7A7A; text-decoration: line-through; margin-left: 8px; font-weight: 400; }
+.pricing-note { font-size: 0.85rem; color: #E8714A; font-weight: 500; margin-bottom: 24px; margin-top: 4px; }
+.pricing-features { list-style: none; margin-bottom: 28px; }
+.pricing-features li { padding: 8px 0; font-size: 0.93rem; color: #2C2C2C; display: flex; align-items: center; gap: 10px; }
+.pricing-features li::before { content: '✓'; color: #4A8C7A; font-weight: 700; font-size: 0.9rem; }
+.pricing-card .btn { width: 100%; }
+.pricing-card .small-note { font-size: 0.8rem; color: #7A7A7A; text-align: center; margin-top: 12px; }
+.spots-badge { display: inline-flex; align-items: center; gap: 6px; background: #FFF3EE; color: #E8714A; font-size: 0.82rem; font-weight: 600; padding: 6px 14px; border-radius: 8px; margin-bottom: 20px; }
+
+/* ========== PRIVACY ========== */
+.privacy { background: #fff; }
+.privacy-header { text-align: center; max-width: 560px; margin: 0 auto 56px; }
+.privacy-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.privacy-card { text-align: center; padding: 28px 20px; }
+.privacy-icon { font-size: 2.2rem; margin-bottom: 14px; }
+.privacy-card h4 { font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.privacy-card p { font-size: 0.88rem; color: #7A7A7A; line-height: 1.5; }
+
+/* ========== FAQ ========== */
+.faq { background: #FAF8F4; }
+.faq-header { text-align: center; max-width: 560px; margin: 0 auto 48px; }
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item { background: #fff; border-radius: 14px; margin-bottom: 12px; border: 1px solid rgba(0,0,0,0.05); overflow: hidden; transition: box-shadow 0.3s ease; }
+.faq-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
+.faq-question { width: 100%; background: none; padding: 22px 28px; display: flex; align-items: center; justify-content: space-between; font-size: 1rem; font-weight: 600; color: #2C2C2C; text-align: left; gap: 16px; }
+.faq-question:hover { color: #4A8C7A; }
+.faq-icon { width: 24px; height: 24px; border-radius: 50%; background: #F5C4A8; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: #E8714A; transition: transform 0.3s ease; flex-shrink: 0; }
+.faq-item.open .faq-icon { transform: rotate(45deg); }
+.faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; }
+.faq-answer-inner { padding: 0 28px 22px; font-size: 0.93rem; color: #7A7A7A; line-height: 1.7; }
+
+/* ========== PROACTIVE ADVISOR ========== */
+.advisor { background: #FAF8F4; }
+.advisor-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.advisor-content h2 { margin-bottom: 16px; }
+.advisor-content > p { color: #7A7A7A; font-size: 1.05rem; line-height: 1.7; margin-bottom: 28px; }
+.advisor-bullets {
+  list-style: none;
+  margin-bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.advisor-bullets li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.97rem;
+  color: #2C2C2C;
+  font-weight: 500;
+}
+.advisor-bullet-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #4A8C7A;
+  flex-shrink: 0;
+}
+.advisor-mockup { position: relative; }
+.advisor-time-label {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #7A7A7A;
+  font-weight: 500;
+  margin-bottom: 10px;
+  letter-spacing: 0.04em;
+}
+.advisor-chat { min-height: auto !important; }
+.advisor-bubble {
+  opacity: 1 !important;
+  animation: none !important;
+  font-size: 0.88rem !important;
+  line-height: 1.6 !important;
+  padding: 14px 16px !important;
+  max-width: 92% !important;
+}
+@media (max-width: 1024px) {
+  .advisor-inner { grid-template-columns: 1fr; gap: 48px; }
+  .advisor-content { text-align: center; }
+  .advisor-bullets { align-items: center; }
+  .advisor-mockup .wa-phone { max-width: 400px; }
+}
+
+/* ========== FINAL CTA ========== */
+.final-cta { background: linear-gradient(135deg, #4A8C7A 0%, #3a7264 100%); text-align: center; padding: 100px 0; }
+.final-cta h2 { color: #fff; font-size: 2.5rem; margin-bottom: 16px; }
+.final-cta p { color: rgba(255,255,255,0.85); font-size: 1.1rem; margin-bottom: 36px; max-width: 520px; margin-left: auto; margin-right: auto; }
+.final-cta .btn-primary { background: #E8714A; font-size: 1.1rem; padding: 18px 40px; }
+.final-cta .small-note { color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-top: 16px; }
+
+/* ========== FOOTER ========== */
+.footer { background: #2C2C2C; color: rgba(255,255,255,0.6); padding: 40px 0; text-align: center; font-size: 0.85rem; }
+.footer-inner { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
+.footer-logo { font-family: 'Fraunces', serif; font-weight: 700; font-size: 1.2rem; color: #fff; }
+.footer a { transition: color 0.2s; }
+.footer a:hover { color: #fff; }
+
+/* ========== MODAL ========== */
+.modal-overlay {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  align-items: center; justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: #fff; border-radius: 24px; padding: 44px 40px;
+  max-width: 520px; width: 100%; position: relative;
+  animation: modalIn 0.3s ease;
+  max-height: 92vh; overflow-y: auto;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-close { position: absolute; top: 16px; right: 20px; background: none; font-size: 1.5rem; color: #7A7A7A; line-height: 1; z-index: 1; }
+.modal-close:hover { color: #2C2C2C; }
+.modal h3 { font-size: 1.5rem; margin-bottom: 6px; }
+.modal > p { color: #7A7A7A; font-size: 0.93rem; margin-bottom: 28px; }
+.modal-form { display: flex; flex-direction: column; gap: 14px; }
+.modal-form label {
+  display: block; font-size: 0.82rem; font-weight: 600;
+  color: #2C2C2C; margin-bottom: 5px; letter-spacing: 0.02em;
+}
+.modal-form .field-hint {
+  font-size: 0.76rem; color: #7A7A7A; font-weight: 400; margin-left: 6px;
+}
+.modal-form input[type="text"],
+.modal-form input[type="tel"] {
+  width: 100%; padding: 13px 16px;
+  border: 2px solid rgba(0,0,0,0.09); border-radius: 10px;
+  font-size: 0.95rem; font-family: 'Inter', sans-serif;
+  transition: border-color 0.2s; background: #FAF8F4; color: #2C2C2C;
+}
+.modal-form input:focus { outline: none; border-color: #4A8C7A; background: #fff; }
+.modal-form input.input-error { border-color: #e05252; }
+.field-error { font-size: 0.78rem; color: #e05252; margin-top: 3px; display: none; }
+.field-error.visible { display: block; }
+/* Plan selector */
+.plan-selector { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.plan-option {
+  display: flex; align-items: flex-start; gap: 12px;
+  border: 2px solid rgba(0,0,0,0.09); border-radius: 12px;
+  padding: 14px 16px; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+.plan-option:hover { border-color: #4A8C7A; }
+.plan-option.selected { border-color: #4A8C7A; background: rgba(74,140,122,0.05); }
+.plan-option.plan-featured { border-color: #E8714A; background: rgba(232,113,74,0.04); }
+.plan-option.plan-featured.selected { border-color: #E8714A; background: rgba(232,113,74,0.09); }
+.plan-option input[type="radio"] { margin-top: 3px; accent-color: #4A8C7A; flex-shrink: 0; width: 16px; height: 16px; }
+.plan-option.plan-featured input[type="radio"] { accent-color: #E8714A; }
+.plan-option-body { flex: 1; }
+.plan-option-name { font-weight: 600; font-size: 0.95rem; color: #2C2C2C; }
+.plan-option-price { font-size: 0.88rem; color: #7A7A7A; margin-top: 2px; }
+.plan-badge {
+  position: absolute; top: -10px; right: 12px;
+  background: #E8714A; color: #fff;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 3px 10px; border-radius: 20px;
+}
+.plan-slots {
+  font-size: 0.76rem; color: #E8714A; font-weight: 600; margin-top: 4px;
+}
+/* Add member link */
+.add-member-link {
+  font-size: 0.85rem; color: #4A8C7A; font-weight: 600;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  background: none; border: none; padding: 0; text-align: left;
+}
+.add-member-link:hover { color: #3a7264; }
+.member-field { display: none; }
+.member-field.visible { display: block; }
+/* Submit & states */
+.modal-form .btn-submit {
+  width: 100%; padding: 16px; font-size: 1rem; font-weight: 700;
+  background: #E8714A; color: #fff; border-radius: 12px;
+  border: none; cursor: pointer; transition: all 0.25s;
+  box-shadow: 0 4px 14px rgba(232,113,74,0.35);
+  margin-top: 6px;
+}
+.modal-form .btn-submit:hover:not(:disabled) { background: #d4613c; transform: translateY(-1px); }
+.modal-form .btn-submit:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+.modal-form .small-note { font-size: 0.78rem; color: #7A7A7A; text-align: center; }
+.form-error-msg {
+  background: #fff3f3; border: 1px solid #fcc; border-radius: 10px;
+  padding: 12px 14px; font-size: 0.85rem; color: #c0392b;
+  display: none; line-height: 1.5;
+}
+.form-error-msg.visible { display: block; }
+/* Success banner */
+.success-banner {
+  display: none; background: #4A8C7A; color: #fff;
+  text-align: center; padding: 14px 24px;
+  font-size: 0.95rem; font-weight: 500; line-height: 1.5;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 3000;
+  animation: slideDown 0.4s ease;
+}
+.success-banner.visible { display: block; }
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+
+/* ========== GRAPH INTELLIGENCE DEMO ========== */
+.graph-demo { background: #fff; overflow: hidden; }
+.graph-demo-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.graph-demo-copy { max-width: 480px; }
+.graph-demo-copy .section-label { margin-bottom: 14px; }
+.graph-demo-copy h2 { margin-bottom: 20px; font-size: 2.5rem; }
+.graph-demo-copy .lead {
+  font-size: 1.08rem;
+  color: #7A7A7A;
+  line-height: 1.75;
+  margin-bottom: 32px;
+}
+.graph-demo-copy .graph-note {
+  font-size: 0.82rem;
+  color: #9A9A9A;
+  font-style: italic;
+  line-height: 1.65;
+  border-left: 3px solid #C8E0D8;
+  padding-left: 14px;
+  margin-top: 28px;
+}
+.graph-demo-copy .graph-note strong { color: #4A8C7A; font-style: normal; }
+
+/* Phone shell */
+.gd-phone {
+  background: #1C1C1E;
+  border-radius: 44px;
+  box-shadow:
+    0 40px 80px rgba(0,0,0,0.22),
+    0 0 0 1px rgba(255,255,255,0.06),
+    inset 0 0 0 2px rgba(255,255,255,0.04);
+  overflow: hidden;
+  max-width: 340px;
+  margin: 0 auto;
+  position: relative;
+}
+/* Notch */
+.gd-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 28px;
+  background: #1C1C1E;
+  border-radius: 0 0 18px 18px;
+  z-index: 10;
+}
+/* Status bar */
+.gd-statusbar {
+  background: #075E54;
+  padding: 32px 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.02em;
+}
+.gd-statusbar-time { font-weight: 600; color: #fff; font-size: 0.78rem; }
+.gd-statusbar-icons { display: flex; gap: 5px; align-items: center; }
+/* WA header */
+.gd-header {
+  background: #075E54;
+  padding: 10px 16px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.gd-back {
+  color: rgba(255,255,255,0.85);
+  font-size: 1.3rem;
+  line-height: 1;
+  margin-right: 2px;
+}
+.gd-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a7264 0%, #5bb89a 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.gd-avatar svg { width: 20px; height: 20px; }
+.gd-header-info { flex: 1; }
+.gd-header-name { font-weight: 600; font-size: 0.9rem; color: #fff; }
+.gd-header-status { font-size: 0.7rem; color: rgba(255,255,255,0.7); }
+.gd-header-icons { display: flex; gap: 14px; color: rgba(255,255,255,0.8); font-size: 1.1rem; }
+/* Chat area */
+.gd-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 14px 12px;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+/* Bubbles */
+.gd-bubble {
+  max-width: 84%;
+  padding: 8px 11px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  position: relative;
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  transition: opacity 0.38s ease, transform 0.38s ease;
+  word-break: break-word;
+}
+.gd-bubble.gd-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.gd-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: #1a1a1a;
+}
+.gd-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.gd-time {
+  font-size: 0.62rem;
+  color: #9E9E9E;
+  text-align: right;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.gd-ticks { color: #53BDEB; font-size: 0.72rem; }
+.gd-bot .gd-time { justify-content: flex-end; }
+/* Typing indicator */
+.gd-typing {
+  background: #fff;
+  align-self: flex-start;
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 10px 14px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.gd-typing.gd-visible { opacity: 1; transform: translateY(0); }
+.gd-typing span {
+  width: 7px; height: 7px;
+  background: #B0B0B0;
+  border-radius: 50%;
+  animation: gdDot 1.2s infinite ease-in-out;
+}
+.gd-typing span:nth-child(2) { animation-delay: 0.2s; }
+.gd-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes gdDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+/* Input bar */
+.gd-input-bar {
+  background: #F0F0F0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gd-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  color: #999;
+  border: none;
+  outline: none;
+}
+.gd-send {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.gd-send svg { width: 14px; height: 14px; fill: #fff; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .graph-demo-inner { grid-template-columns: 1fr; gap: 48px; }
+  .graph-demo-copy { max-width: 100%; text-align: center; }
+  .graph-demo-copy .graph-note { text-align: left; max-width: 540px; margin-left: auto; margin-right: auto; }
+  .gd-phone { max-width: 320px; }
+}
+@media (max-width: 480px) {
+  .gd-phone { max-width: 100%; }
+  .graph-demo-copy h2 { font-size: 2rem; }
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 1024px) {
+  .hero-grid { grid-template-columns: 1fr; text-align: center; }
+  .hero-content p { margin-left: auto; margin-right: auto; }
+  .hero-buttons { justify-content: center; }
+  .wa-phone { max-width: 360px; }
+  .steps { grid-template-columns: repeat(2, 1fr); max-width: 720px; margin: 0 auto; gap: 40px; }
+  .features-grid { grid-template-columns: repeat(2, 1fr); }
+  .testimonials-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
+  .privacy-grid { grid-template-columns: repeat(2, 1fr); }
+  .knows-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+  html { font-size: 16px; }
+  h1 { font-size: 2.38rem; }
+  h2 { font-size: 1.75rem; }
+  .section { padding: 72px 0; }
+  .nav-links { display: none; }
+  .nav-hamburger { display: flex; }
+  .hero { padding-top: 120px; padding-bottom: 60px; min-height: auto; }
+  .steps { grid-template-columns: 1fr !important; max-width: 360px !important; margin: 0 auto; gap: 48px; }
+  .pain-cards { grid-template-columns: repeat(2, 1fr); }
+  .features-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+  .pricing-cards { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+  .privacy-grid { grid-template-columns: 1fr; }
+  .social-proof-inner { flex-direction: column; gap: 24px; }
+  .social-proof-divider { width: 40px; height: 1px; }
+  .social-proof-quotes { flex-direction: column; align-items: center; }
+  .final-cta h2 { font-size: 2rem; }
+  .modal { padding: 32px 24px; }
+  .knows-grid { grid-template-columns: repeat(2, 1fr); }
+  .demo .wa-phone { max-width: 100%; }
+}
+@media (max-width: 480px) {
+  h1 { font-size: 2rem; }
+  .pain-cards { grid-template-columns: 1fr; }
+  .hero-buttons { flex-direction: column; width: 100%; }
+  .hero-buttons .btn { width: 100%; }
+  .knows-grid { grid-template-columns: repeat(2, 1fr); }
+}
+/* ========== WHATSAPP ATTACHMENT BUBBLES ========== */
+/* Image attachment — used in static wa-phone cards and animated scenes */
+.wa-attach-img {
+  width: 200px;
+  height: 140px;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  cursor: default;
+  flex-shrink: 0;
+}
+.wa-attach-img-bg {
+  width: 100%; height: 100%;
+  background: linear-gradient(135deg,
+    #dce8f5 0%,
+    #eaf3fb 30%,
+    #f5f9fe 50%,
+    #e2edf8 70%,
+    #cfe0f2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.wa-attach-img-lines {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 18px, rgba(180,210,240,0.25) 18px, rgba(180,210,240,0.25) 19px),
+    repeating-linear-gradient(90deg, transparent, transparent 28px, rgba(180,210,240,0.18) 28px, rgba(180,210,240,0.18) 29px);
+}
+.wa-attach-img-icon {
+  position: relative;
+  z-index: 1;
+  background: rgba(255,255,255,0.72);
+  border-radius: 50%;
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.wa-attach-img-icon svg { width: 18px; height: 18px; fill: #5a8fc0; }
+.wa-attach-caption {
+  font-size: 0.7rem;
+  color: rgba(0,0,0,0.55);
+  margin-top: 4px;
+  padding: 0 2px;
+}
+/* The outer bubble wrapper for image attachments */
+.wa-bubble-attach-img {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 4px 4px 6px;
+  max-width: 220px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.wa-bubble-attach-img.wt-visible,
+.wa-bubble-attach-img.gd-visible,
+.wa-bubble-attach-img.cal-vis { opacity: 1; transform: translateY(0) scale(1); }
+
+/* Document attachment — PDF style */
+.wa-attach-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.88);
+  border-radius: 8px;
+  padding: 9px 10px;
+  min-width: 190px;
+  max-width: 210px;
+}
+.wa-attach-doc-icon {
+  width: 34px; height: 40px;
+  background: #e53935;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+.wa-attach-doc-icon::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 10px; height: 10px;
+  background: rgba(255,255,255,0.25);
+  border-radius: 0 4px 0 6px;
+}
+.wa-attach-doc-icon svg { width: 16px; height: 16px; fill: #fff; }
+.wa-attach-doc-meta { flex: 1; min-width: 0; }
+.wa-attach-doc-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.wa-attach-doc-size {
+  font-size: 0.65rem;
+  color: #888;
+  margin-top: 2px;
+}
+/* The outer bubble wrapper for document attachments */
+.wa-bubble-attach-doc {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 5px 5px 6px;
+  max-width: 240px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.wa-bubble-attach-doc.wt-visible,
+.wa-bubble-attach-doc.gd-visible,
+.wa-bubble-attach-doc.cal-vis { opacity: 1; transform: translateY(0) scale(1); }
+/* Time row inside attachment bubbles */
+.wa-attach-time {
+  font-size: 0.6rem;
+  color: #9E9E9E;
+  text-align: right;
+  padding: 2px 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.wa-attach-ticks { color: #53BDEB; font-size: 0.68rem; }
+
+</style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo-mark">🧠</div>
-    <div class="brand-name">FamilyBrain</div>
-    <div class="divider"></div>
-    <p class="tagline">Coming soon — a smarter way to keep your family organised.</p>
-    <p class="domain">familybrain.co.uk</p>
+
+<!-- ==================== NAVIGATION ==================== -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">FamilyBrain</a>
+    <div class="nav-links">
+      <a href="#how-it-works">How It Works</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/join" class="nav-cta">Start Free Trial</a>
+    </div>
+    <button class="nav-hamburger" onclick="toggleMobileMenu()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
   </div>
+</nav>
+<div class="mobile-menu" id="mobileMenu">
+  <a href="#how-it-works" onclick="closeMobileMenu()">How It Works</a>
+  <a href="#features" onclick="closeMobileMenu()">Features</a>
+  <a href="#pricing" onclick="closeMobileMenu()">Pricing</a>
+  <a href="/join" class="btn btn-primary" onclick="closeMobileMenu();">Start Free Trial</a>
+</div>
+
+<!-- ==================== HERO ==================== -->
+<section class="hero section" id="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content fade-in">
+        <h1>Your family's second brain. Just WhatsApp.</h1>
+        <p>Send FamilyBrain your documents, photos, and voice notes. Ask any question later — about insurance, passports, prescriptions, school trips, or anything else. It remembers everything so you don't have to.</p>
+        <div class="hero-buttons">
+          <a href="/join" class="btn btn-primary">Start Your Free Trial</a>
+          <a href="#how-it-works" class="hero-link">See how it works ↓</a>
+        </div>
+      </div>
+      <div class="fade-in fade-in-delay-2">
+        <div class="hero-phone-wrap">
+          <div class="hero-aurora"></div>
+          <div class="hero-phone" id="hpPhone">
+            <div class="hero-phone-notch"></div>
+            <!-- Status bar -->
+            <div class="hero-phone-statusbar">
+              <span class="hero-phone-statusbar-time">08:41</span>
+              <div class="hero-phone-statusbar-icons">
+                <svg width="13" height="9" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+                <svg width="11" height="9" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+                <svg width="20" height="9" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+              </div>
+            </div>
+            <!-- WA Header -->
+            <div class="hero-phone-wa-header">
+              <span class="hero-phone-wa-back">&#8249;</span>
+              <div class="hero-phone-wa-avatar">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+                </svg>
+              </div>
+              <div class="hero-phone-wa-info">
+                <div class="hero-phone-wa-name">FamilyBrain</div>
+                <div class="hero-phone-wa-status">online</div>
+              </div>
+              <div class="hero-phone-wa-icons">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+              </div>
+            </div>
+            <!-- Chat -->
+            <div class="hero-phone-chat" id="hpChat"></div>
+            <!-- Insight badge -->
+            <div class="hero-phone-insight" id="hpInsight"></div>
+            <!-- Input bar -->
+            <div class="hero-phone-input-bar">
+              <div class="hero-phone-input-field">Message</div>
+              <div class="hero-phone-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+            </div>
+          </div>
+          <!-- Scene dots -->
+          <div class="hero-phone-dots">
+            <div class="hp-dot active" id="hpDot0"></div>
+            <div class="hp-dot" id="hpDot1"></div>
+            <div class="hp-dot" id="hpDot2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+ ==================== -->
+<section class="social-proof fade-in">
+  <div class="container">
+    <div class="social-proof-inner">
+      <div class="social-proof-stat">
+        <div class="social-proof-stars">★★★★★</div>
+        <div class="social-proof-text">Trusted by families across the UK</div>
+        <div class="social-proof-text" style="font-weight:600; color:#2C2C2C; margin-top:2px;">Used by 200+ families in beta</div>
+      </div>
+      <div class="social-proof-divider"></div>
+      <div class="social-proof-quotes">
+        <div class="social-proof-quote">"Finally, one place for everything. No more digging through emails."<strong>— Rebecca L., Manchester</strong></div>
+        <div class="social-proof-quote">"My husband and I both use it. It's saved us so many arguments!"<strong>— Priya K., Birmingham</strong></div>
+        <div class="social-proof-quote">"Set it up in a minute. Used it every single day since."<strong>— Tom H., Edinburgh</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== PROBLEM SECTION ==================== -->
+<section class="problem section fade-in" id="problem">
+  <div class="container">
+    <div class="problem-header">
+      <p class="section-label">The Problem</p>
+      <h2>The mental load of running a family is relentless.</h2>
+      <p>School forms. Vaccination records. Insurance renewals. Birthday lists. MOT dates. Most of it lives in your head — until it doesn't. FamilyBrain gives your family's information somewhere better to live.</p>
+    </div>
+    <div class="pain-cards">
+      <div class="pain-card fade-in">
+        <div class="pain-card-icon">🛡️</div>
+        <h4>Insurance Renewals</h4>
+      </div>
+      <div class="pain-card fade-in fade-in-delay-1">
+        <div class="pain-card-icon">🛂</div>
+        <h4>Passport Expiry Dates</h4>
+      </div>
+      <div class="pain-card fade-in fade-in-delay-2">
+        <div class="pain-card-icon">📋</div>
+        <h4>School Trip Forms</h4>
+      </div>
+      <div class="pain-card fade-in fade-in-delay-3">
+        <div class="pain-card-icon">📦</div>
+        <h4>Warranty Claims</h4>
+      </div>
+      <div class="pain-card fade-in fade-in-delay-4">
+        <div class="pain-card-icon">💊</div>
+        <h4>Prescription Repeats</h4>
+      </div>
+      <div class="pain-card fade-in fade-in-delay-5">
+        <div class="pain-card-icon">🚗</div>
+        <h4>MOT &amp; Service Records</h4>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== HOW IT WORKS ==================== -->
+<section class="how-it-works section fade-in" id="how-it-works">
+  <div class="container">
+    <div class="how-header">
+      <p class="section-label">How It Works</p>
+      <h2>Set up in 60 seconds. No new app. Just WhatsApp.</h2>
+      <p>Five steps that cover everything — from forwarding a document to generating your family's emergency file.</p>
+    </div>
+    <div class="steps">
+      <!-- Step 1 -->
+      <div class="step fade-in">
+        <div class="step-number">01</div>
+        <h3>Send anything</h3>
+        <p>Forward documents, photos, voice notes, emails, or just type a thought. Insurance policies, school letters, receipts, prescriptions — FamilyBrain reads them all.</p>
+        <div class="wa-phone">
+          <div class="wa-header">
+            <div class="wa-avatar">FB</div>
+            <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
+          </div>
+          <div class="wa-chat">
+            <div class="wa-bubble-attach-img wt-visible">
+              <div class="wa-attach-img">
+                <div class="wa-attach-img-bg">
+                  <div class="wa-attach-img-lines"></div>
+                  <div class="wa-attach-img-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 1 12 8.8a3.2 3.2 0 0 1 0 6.4zm0-8.4a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 12 6.8zM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="wa-attach-caption">Prescription.jpg</div>
+              <div class="wa-attach-time">09:14 <span class="wa-attach-ticks">✓✓</span></div>
+            </div>
+            <div class="wa-bubble wa-bubble-bot">Stored! Jake's Amoxicillin prescription from Dr. Patel, expires 14 April. I'll remind you when it's due. 💊<div class="wa-time">09:14</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Step 2 -->
+      <div class="step fade-in fade-in-delay-2">
+        <div class="step-number">02</div>
+        <h3>Remember everything</h3>
+        <p>FamilyBrain extracts the key details, categorises them, and stores them securely. Dates, names, reference numbers, amounts — all indexed and searchable.</p>
+        <div class="wa-phone">
+          <div class="wa-header">
+            <div class="wa-avatar">FB</div>
+            <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
+          </div>
+          <div class="wa-chat">
+            <div class="wa-bubble-attach-doc wt-visible">
+              <div class="wa-attach-doc">
+                <div class="wa-attach-doc-icon">
+                  <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                </div>
+                <div class="wa-attach-doc-meta">
+                  <div class="wa-attach-doc-name">St_Josephs_Spring_Newsletter.pdf</div>
+                  <div class="wa-attach-doc-size">284 KB &middot; PDF</div>
+                </div>
+              </div>
+              <div class="wa-attach-time">11:02 <span class="wa-attach-ticks">✓✓</span></div>
+            </div>
+            <div class="wa-bubble wa-bubble-bot">Got it. Year 6 trip to Brecon Beacons: 12th May, £45 due by 28th March, packed lunch required. Added to calendar. 🏕️<div class="wa-time">11:02</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Step 3 -->
+      <div class="step fade-in fade-in-delay-3">
+        <div class="step-number">03</div>
+        <h3>Ask anything</h3>
+        <p>FamilyBrain checks everyone's schedules, documents, and history to give you a complete answer — from calendar clashes to passport expiries.</p>
+        <div class="wa-phone">
+          <div class="wa-header">
+            <div class="wa-avatar">FB</div>
+            <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
+          </div>
+          <div class="wa-chat">
+            <div class="wa-bubble wa-bubble-user">Is Edi free for a playdate next Thursday?<div class="wa-time">09:58</div></div>
+            <div class="wa-bubble wa-bubble-bot">Next Thursday is actually quite busy — Dan's in London all day (back by 6pm), Izzy has ballet at 5pm, and your car is booked in at Kwik Fit for its MOT at 12pm. Edi looks free a week Thursday though — nothing in the calendar for any of you. Want me to pencil in a playdate then? 🎉<div class="wa-time">09:58</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Step 4 -->
+      <div class="step fade-in fade-in-delay-4">
+        <div class="step-number">04</div>
+        <h3>Suggest everything</h3>
+        <p>Every week, FamilyBrain reviews everything it knows and proactively flags what matters — renewals, deadlines, documents that need updating — without being asked.</p>
+        <div class="wa-phone">
+          <div class="wa-header">
+            <div class="wa-avatar">FB</div>
+            <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
+          </div>
+          <div class="wa-chat">
+            <div class="wa-bubble wa-bubble-bot" style="opacity:1;animation:none;">Good morning! A few things this week: ⚠️ Your Will may need updating (you've moved since 2019). 🔄 Car insurance renews in 34 days. 📋 Jake's school trip payment due in 8 days. ✅ Passports and MOT all fine. 🧠<div class="wa-time">08:14</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Step 5: Emergency File -->
+      <div class="step fade-in fade-in-delay-5" style="grid-column:1/-1; max-width:760px; margin:0 auto; background:linear-gradient(135deg,#fdf6f2,#fef0e8); border:1px solid rgba(232,113,74,0.2); border-radius:24px; padding:40px;">
+        <div class="step-number" style="background:linear-gradient(135deg,#E8714A,#d45e38);">05</div>
+        <h3>Your family emergency file — always ready</h3>
+        <p style="margin-bottom:12px;">As you add documents, FamilyBrain quietly builds your family emergency file in the background. When you need it, just type <span class="sos-command">/sos</span> in WhatsApp. You'll get a complete PDF covering legal documents, insurance, pensions, bank details, property, and more — ready to share with a trusted person.</p>
+        <p style="font-style:italic; color:#7A7A7A; font-size:0.9rem; margin-bottom:28px;">&ldquo;If anything ever happened to you, would your family know where everything is? Because the best time to organise it is before you need it.&rdquo;</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start;">
+          <div class="wa-phone">
+            <div class="wa-header">
+              <div class="wa-avatar">FB</div>
+              <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
+            </div>
+            <div class="wa-chat" style="min-height:auto;">
+              <div class="wa-bubble wa-bubble-user" style="opacity:1;animation:none;">/sos<div class="wa-time">19:42</div></div>
+              <div class="wa-bubble wa-bubble-bot" style="opacity:1;animation:none;">Generating your family emergency file... 📂<div class="wa-time">19:42</div></div>
+              <div class="wa-bubble wa-bubble-bot" style="opacity:1;animation:none;">Your file is ready. <strong>10 sections covered.</strong> Tap to download, or reply <span class="sos-command">/share</span> to send to a trusted contact. ✅<div class="wa-time">19:42</div></div>
+            </div>
+          </div>
+          <div class="sos-pdf-preview" style="margin:0;">
+            <div class="sos-pdf-header">
+              <div class="sos-pdf-icon">📄</div>
+              <div>
+                <div class="sos-pdf-title">Family Emergency File</div>
+                <div class="sos-pdf-subtitle">10 sections covered</div>
+              </div>
+            </div>
+            <div class="sos-pdf-sections">
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Legal Documents &amp; Will</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Bank &amp; Finance Details</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Insurance Policies</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Pensions &amp; Investments</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Property &amp; Assets</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Household Bills</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Emergency Contacts</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Digital Accounts</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Family Medical Information</div>
+              <div class="sos-pdf-row"><span class="sos-pdf-tick">✓</span> Funeral Wishes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FEATURES GRID ==================== -->
+<section class="features section fade-in" id="features">
+  <div class="container">
+    <div class="features-header">
+      <p class="section-label">Features</p>
+      <h2>Everything your family needs. Nothing it doesn't.</h2>
+      <p>FamilyBrain doesn't just answer questions — it proactively looks out for your family.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card fade-in">
+        <div class="feature-icon">📄</div>
+        <h3>Find any document in seconds</h3>
+        <p>Just ask. FamilyBrain searches everything you've ever shared — insurance policies, school letters, receipts, and more.</p>
+      </div>
+      <div class="feature-card feature-highlight fade-in fade-in-delay-1">
+        <div class="feature-icon">🧠</div>
+        <h3>Answers that connect the dots</h3>
+        <p>Ask about your Spain trip and FamilyBrain checks passports, insurance, and vaccinations — all at once. No question is too complex.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-2">
+        <div class="feature-icon">👨‍👩‍👧‍👦</div>
+        <h3>The whole family, on the same page</h3>
+        <p>Every family member can ask questions and capture memories. Everyone stays in the loop.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-3">
+        <div class="feature-icon">🎙️</div>
+        <h3>Send a voice note</h3>
+        <p>Speak your thought. FamilyBrain transcribes and stores it instantly — perfect for the school run.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-4">
+        <div class="feature-icon">🔍</div>
+        <h3>Surfaces insights you didn't know to ask for</h3>
+        <p>Every week, FamilyBrain reviews everything it knows about your family and flags what matters — renewals coming up, documents that need updating, things you might have missed.</p>
+      </div>
+      <div class="feature-card fade-in fade-in-delay-5">
+        <div class="feature-icon">📱</div>
+        <h3>No new app. Just WhatsApp.</h3>
+        <p>The app already on your phone, now running your family life. No downloads, no new habits, no friction.</p>
+      </div>
+      <div class="feature-card feature-sos fade-in fade-in-delay-5">
+        <div class="feature-icon">📂</div>
+        <h3>Your family emergency file, always ready</h3>
+        <p>Type <strong>/sos</strong> and FamilyBrain generates a complete emergency document — legal, financial, insurance, pensions, and more — in seconds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== GRAPH INTELLIGENCE DEMO ==================== -->
+<section class="graph-demo section" id="graph-demo">
+  <div class="container">
+    <div class="graph-demo-inner">
+
+      <!-- Copy side -->
+      <div class="graph-demo-copy fade-in">
+        <p class="section-label">Graph Intelligence</p>
+        <h2>It just knows.</h2>
+        <p class="lead">FamilyBrain doesn't just store information — it connects it. Ask about any family member, any event, any document, and it draws on everything it knows to give you a complete answer. Instantly.</p>
+        <p class="graph-note"><strong>FamilyBrain connected</strong> Izzy's school schedule, dentist record, and your forwarded school letter — automatically.</p>
+      </div>
+
+      <!-- Phone mockup side -->
+      <div class="fade-in fade-in-delay-2">
+        <div class="gd-phone" id="gdPhone">
+          <!-- Notch -->
+          <div class="gd-notch"></div>
+          <!-- Status bar -->
+          <div class="gd-statusbar">
+            <span class="gd-statusbar-time">09:41</span>
+            <div class="gd-statusbar-icons">
+              <svg width="14" height="10" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+              <svg width="12" height="10" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+            </div>
+          </div>
+          <!-- WA Header -->
+          <div class="gd-header">
+            <span class="gd-back">&#8249;</span>
+            <div class="gd-avatar">
+              <!-- Brain icon SVG -->
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+                <circle cx="9" cy="9" r="1" fill="#3a7264"/>
+                <circle cx="15" cy="9" r="1" fill="#3a7264"/>
+                <circle cx="12" cy="13" r="1" fill="#3a7264"/>
+                <line x1="9" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
+                <line x1="15" y1="9" x2="12" y2="13" stroke="#3a7264" stroke-width="0.8"/>
+              </svg>
+            </div>
+            <div class="gd-header-info">
+              <div class="gd-header-name">FamilyBrain</div>
+              <div class="gd-header-status">online</div>
+            </div>
+            <div class="gd-header-icons">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </div>
+          </div>
+          <!-- Chat -->
+          <div class="gd-chat" id="gdChat">
+            <!-- Bubbles injected by JS -->
+          </div>
+          <!-- Input bar -->
+          <div class="gd-input-bar">
+            <div class="gd-input-field">Message</div>
+            <div class="gd-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+ ==================== -->
+<section class="testimonials section fade-in" id="testimonials">
+  <div class="container">
+    <div class="testimonials-header">
+      <p class="section-label">Testimonials</p>
+      <h2>Loved by families like yours.</h2>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card fade-in">
+        <div class="testimonial-stars">★★★★★</div>
+        <blockquote>"I forwarded our insurance documents six months ago and forgot about them. Last week I asked if we were covered for a hire car — FamilyBrain found the answer in seconds. Genuinely life-changing."</blockquote>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">SM</div>
+          <div>
+            <div class="testimonial-name">Sarah M.</div>
+            <div class="testimonial-role">Mother of 3, Cardiff</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-in fade-in-delay-2">
+        <div class="testimonial-stars">★★★★★</div>
+        <blockquote>"My wife and I both use it. No more 'did you remember to...' conversations. FamilyBrain just knows."</blockquote>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">JT</div>
+          <div>
+            <div class="testimonial-name">James T.</div>
+            <div class="testimonial-role">Father of 2, Bristol</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-in fade-in-delay-4">
+        <div class="testimonial-stars">★★★★★</div>
+        <blockquote>"The voice note feature is brilliant. I just speak my thoughts on the school run and it captures everything. It's like having a PA."</blockquote>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar">ER</div>
+          <div>
+            <div class="testimonial-name">Emma R.</div>
+            <div class="testimonial-role">Parent, London</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== PROACTIVE ADVISOR ==================== -->
+<section class="advisor section fade-in" id="advisor">
+  <div class="container">
+    <div class="advisor-inner">
+      <div class="advisor-content fade-in">
+        <p class="section-label">Proactive Insights</p>
+        <h2>FamilyBrain thinks ahead, so you don't have to.</h2>
+        <p>Every week, FamilyBrain reviews everything it knows about your family and sends you a proactive summary — no prompting required.</p>
+        <ul class="advisor-bullets">
+          <li><span class="advisor-bullet-dot"></span>Sent every Sunday morning, automatically</li>
+          <li><span class="advisor-bullet-dot"></span>Connects the dots across all your documents and events</li>
+          <li><span class="advisor-bullet-dot"></span>Flags renewals, deadlines, and things that need attention</li>
+        </ul>
+        <a href="/join" class="btn btn-primary">Start Your Free Trial</a>
+      </div>
+      <div class="advisor-mockup fade-in fade-in-delay-2">
+        <div class="advisor-time-label">Sunday, 8:14am</div>
+        <div class="wa-phone">
+          <div class="wa-header">
+            <div class="wa-avatar">FB</div>
+            <div class="wa-header-info">
+              <div class="wa-header-name">FamilyBrain</div>
+              <div class="wa-header-status">online</div>
+            </div>
+          </div>
+          <div class="wa-chat advisor-chat">
+            <div class="wa-bubble wa-bubble-bot advisor-bubble">
+              Good morning! Here's your weekly family summary 👋
+              <br><br>
+              A few things worth your attention this week:
+              <br><br>
+              ⚠️ Your Will is dated 2019. You moved house in 2022 — it may need updating to reflect your current wishes.
+              <br><br>
+              🔄 Car insurance renews in 34 days (Admiral, 14th June). Last year you saved £180 by switching — worth a quick comparison.
+              <br><br>
+              📋 Jake's school trip payment (£45) is due by 28th March — 8 days away.
+              <br><br>
+              ✅ All passports valid. MOT done. Home insurance renewed last month.
+              <br><br>
+              Anything you'd like me to look into? 🧠
+              <div class="wa-time">08:14</div>
+            </div>
+          </div>
+          <div class="wa-input-bar">
+            <div class="wa-input-field">Type a message</div>
+            <div class="wa-send-btn"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== PRICING ==================== -->
+<section class="pricing section fade-in" id="pricing">
+  <div class="container">
+    <div class="pricing-header">
+      <p class="section-label">Pricing</p>
+      <h2>Simple, family pricing.</h2>
+      <p>One plan. Everything included. No surprises.</p>
+    </div>
+    <div class="pricing-toggle">
+      <span id="toggleMonthly" class="active">Monthly</span>
+      <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
+      <span id="toggleAnnual">Annual</span>
+      <span class="save-badge">Save £60</span>
+    </div>
+    <div class="pricing-cards">
+      <!-- Founding Member -->
+      <div class="pricing-card featured fade-in">
+        <div class="pricing-badge">Most Popular</div>
+        <h3>Founding Member</h3>
+        <div class="pricing-price">
+          <span id="founderPrice">£9.99</span><span class="period" id="founderPeriod">/month</span>
+          <span class="original" id="founderOriginal">£19.99</span>
+        </div>
+        <div class="pricing-note" id="founderNote">Lock in this price forever — first 100 families only</div>
+        <div class="spots-badge" id="pricing-slots-counter">🔥 47 spots remaining</div>
+        <ul class="pricing-features">
+          <li>Unlimited documents</li>
+          <li>Up to 6 family members</li>
+          <li>Voice note transcription</li>
+          <li>Smart reminders</li>
+          <li>Google Calendar sync</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="/join" class="btn btn-primary">Claim Founding Member Price</a>
+      </div>
+      <!-- Standard -->
+      <div class="pricing-card fade-in fade-in-delay-2">
+        <h3>Standard</h3>
+        <div class="pricing-price">
+          <span id="standardPrice">£19.99</span><span class="period" id="standardPeriod">/month</span>
+        </div>
+        <div class="pricing-note" id="standardNote" style="color: #7A7A7A;">14-day free trial, cancel anytime</div>
+        <ul class="pricing-features">
+          <li>Unlimited documents</li>
+          <li>Up to 6 family members</li>
+          <li>Voice note transcription</li>
+          <li>Smart reminders</li>
+          <li>Google Calendar sync</li>
+          <li>Email support</li>
+        </ul>
+        <a href="/join" class="btn btn-outline">Start Free Trial</a>
+        <div class="small-note">14-day free trial, cancel anytime</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== PRIVACY ==================== -->
+<section class="privacy section fade-in" id="privacy">
+  <div class="container">
+    <div class="privacy-header">
+      <p class="section-label">Privacy &amp; Security</p>
+      <h2>Your family's data is yours. Always.</h2>
+    </div>
+    <div class="privacy-grid">
+      <div class="privacy-card fade-in">
+        <div class="privacy-icon">🔒</div>
+        <h4>End-to-end encrypted</h4>
+        <p>All your family's data is encrypted in transit and at rest. Only you can access it.</p>
+      </div>
+      <div class="privacy-card fade-in fade-in-delay-1">
+        <div class="privacy-icon">🚫</div>
+        <h4>Never used for AI training</h4>
+        <p>Your data is never used to train AI models. Period. It's yours and yours alone.</p>
+      </div>
+      <div class="privacy-card fade-in fade-in-delay-2">
+        <div class="privacy-icon">🇬🇧</div>
+        <h4>GDPR compliant, UK-based</h4>
+        <p>We're a UK company, fully GDPR compliant, with data stored securely in the UK.</p>
+      </div>
+      <div class="privacy-card fade-in fade-in-delay-3">
+        <div class="privacy-icon">🗑️</div>
+        <h4>Delete everything, anytime</h4>
+        <p>One click and all your data is permanently deleted. No questions, no delays.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FAQ ==================== -->
+<section class="faq section fade-in" id="faq">
+  <div class="container">
+    <div class="faq-header">
+      <p class="section-label">FAQ</p>
+      <h2>Got questions? We've got answers.</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Do all family members need WhatsApp?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <div class="faq-answer-inner">Yes, WhatsApp is the only app you need. All family members just message the same FamilyBrain number. No extra apps, no accounts to create — if you have WhatsApp, you're ready to go.</div>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Is my family's data private?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <div class="faq-answer-inner">Absolutely. All data is encrypted, stored securely in the UK, and never used to train AI models. You can delete everything at any time with a single message.</div>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          How does the free trial work?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <div class="faq-answer-inner">You get 14 days of full access, no credit card required. At the end of your trial, you choose a plan or your data is securely deleted. No pressure, no tricks.</div>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          Can I add my partner or children?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <div class="faq-answer-inner">Yes. Up to 6 family members can all use the same FamilyBrain, each with their own WhatsApp number. Everyone can ask questions and share documents.</div>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          What types of documents can FamilyBrain read?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <div class="faq-answer-inner">Insurance policies, MOT certificates, school letters, medical records, receipts, warranties, bank statements, photos of handwritten notes, and much more. If you can send it on WhatsApp, FamilyBrain can read it.</div>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          What if I want to cancel?
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <div class="faq-answer-inner">Cancel anytime from your account. No questions asked, no hidden fees. If you cancel, your data is securely deleted within 30 days.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FINAL CTA ==================== -->
+<section class="final-cta fade-in">
+  <div class="container">
+    <h2>Give your family the memory it deserves.</h2>
+    <p>Join 200+ families already using FamilyBrain. Start your free 14-day trial today.</p>
+    <a href="/join" class="btn btn-primary">Start Your Free Trial</a>
+    <div class="small-note">No credit card required. Cancel anytime.</div>
+  </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <span class="footer-logo">FamilyBrain</span>
+      <span>© 2026 FamilyBrain Ltd</span>
+      <a href="#">Privacy Policy</a>
+      <a href="#">Terms of Service</a>
+      <a href="mailto:hello@familybrain.co.uk">hello@familybrain.co.uk</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ==================== SUCCESS BANNER ==================== -->
+<div class="success-banner" id="successBanner">
+  🎉 Welcome to FamilyBrain! Check your WhatsApp — your welcome message is on its way.
+</div>
+
+<!-- ==================== SIGNUP MODAL ==================== -->
+<div class="modal-overlay" id="signupModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+    <h3>Start your free 14-day trial</h3>
+    <p>No credit card required. Get started in 60 seconds — we'll send your first WhatsApp message right away.</p>
+    <form class="modal-form" id="signupForm" onsubmit="handleSubmit(event)" novalidate>
+
+      <!-- Name -->
+      <div>
+        <label for="fb-name">Your name</label>
+        <input type="text" id="fb-name" name="primary_name" placeholder="Your name" required autocomplete="name">
+        <div class="field-error" id="err-name">Please enter your name.</div>
+      </div>
+
+      <!-- Primary WhatsApp -->
+      <div>
+        <label for="fb-phone">Your WhatsApp number <span class="field-hint">Include country code</span></label>
+        <input type="tel" id="fb-phone" name="primary_phone" placeholder="+44 7700 900000" required autocomplete="tel">
+        <div class="field-error" id="err-phone">Please enter a valid number starting with + (e.g. +44 7700 900000).</div>
+      </div>
+
+      <!-- Family members -->
+      <div>
+        <label>Family members' WhatsApp numbers <span class="field-hint">Optional</span></label>
+        <div id="member-fields">
+          <div class="member-field" id="member-1">
+            <input type="tel" name="member_phone_1" placeholder="+44 7700 900001" style="margin-bottom:8px;">
+            <div class="field-error" id="err-member-1">Please enter a valid number starting with +.</div>
+          </div>
+          <div class="member-field" id="member-2">
+            <input type="tel" name="member_phone_2" placeholder="+44 7700 900002" style="margin-bottom:8px;">
+            <div class="field-error" id="err-member-2">Please enter a valid number starting with +.</div>
+          </div>
+          <div class="member-field" id="member-3">
+            <input type="tel" name="member_phone_3" placeholder="+44 7700 900003" style="margin-bottom:8px;">
+            <div class="field-error" id="err-member-3">Please enter a valid number starting with +.</div>
+          </div>
+        </div>
+        <button type="button" class="add-member-link" id="addMemberBtn" onclick="addMemberField()">+ Add family member</button>
+      </div>
+
+      <!-- Plan selection -->
+      <div>
+        <label>Choose your plan</label>
+        <div class="plan-selector">
+          <label class="plan-option plan-featured selected" id="plan-founding" onclick="selectPlan(this,'founding')">
+            <span class="plan-badge">Most popular</span>
+            <input type="radio" name="plan" value="founding" checked>
+            <div class="plan-option-body">
+              <div class="plan-option-name">🌟 Founding Member — £9.99/month</div>
+              <div class="plan-option-price">Locked in forever. First 100 families only.</div>
+              <div class="plan-slots" id="modal-slots-counter">🌟 47 founding member spots remaining</div>
+            </div>
+          </label>
+          <label class="plan-option" id="plan-monthly" onclick="selectPlan(this,'monthly')">
+            <input type="radio" name="plan" value="monthly">
+            <div class="plan-option-body">
+              <div class="plan-option-name">Monthly — £19.99/month</div>
+              <div class="plan-option-price">14-day free trial, cancel anytime.</div>
+            </div>
+          </label>
+          <label class="plan-option" id="plan-annual" onclick="selectPlan(this,'annual')">
+            <input type="radio" name="plan" value="annual">
+            <div class="plan-option-body">
+              <div class="plan-option-name">Annual — £179/year</div>
+              <div class="plan-option-price">Save 25% vs monthly. Billed once a year.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Error message -->
+      <div class="form-error-msg" id="formError">Something went wrong — please try again or email <a href="mailto:hello@familybrain.co.uk" style="color:#c0392b;text-decoration:underline;">hello@familybrain.co.uk</a></div>
+
+      <!-- Submit -->
+      <button type="submit" class="btn-submit" id="submitBtn">Start my free 14-day trial &rarr;</button>
+      <div class="small-note">🔒 No credit card required. Cancel anytime.</div>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== JAVASCRIPT ==================== -->
+<script>
+// ===== NAV SCROLL EFFECT =====
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 20);
+});
+
+// ===== MOBILE MENU =====
+function toggleMobileMenu() {
+  document.getElementById('mobileMenu').classList.toggle('open');
+}
+function closeMobileMenu() {
+  document.getElementById('mobileMenu').classList.remove('open');
+}
+
+// ===== FADE-IN ON SCROLL =====
+const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -40px 0px' };
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) entry.target.classList.add('visible');
+  });
+}, observerOptions);
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ===== DEMO TABS =====
+function switchTab(tabName, btn) {
+  // Hide all panels
+  document.querySelectorAll('.demo-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
+  // Show selected
+  document.getElementById('panel-' + tabName).classList.add('active');
+  btn.classList.add('active');
+  // Re-trigger bubble animations for the newly shown panel
+  const bubbles = document.querySelectorAll('#panel-' + tabName + ' .wa-bubble');
+  bubbles.forEach((b, i) => {
+    b.style.animation = 'none';
+    b.style.opacity = '0';
+    void b.offsetWidth; // reflow
+    b.style.animation = '';
+    b.style.animationDelay = (0.3 + i * 0.5) + 's';
+  });
+}
+
+ =====
+(function() {
+  var chat = document.getElementById('hpChat');
+  var insight = document.getElementById('hpInsight');
+  var dots = [document.getElementById('hpDot0'), document.getElementById('hpDot1'), document.getElementById('hpDot2')];
+  if (!chat) return;
+
+  // ---- Scene definitions ----
+  var scenes = [
+    {
+      insight: '\ud83d\udca1 Spotted a conflict. Resolved it. You didn\u2019t have to think about it.',
+      messages: [
+        { type: 'doc-attach', filename: 'St_Josephs_Trip_14May.pdf', filesize: '312 KB \u00b7 PDF', time: '09:40' },
+        { type: 'user', text: 'Just forwarded the school trip letter', time: '09:40', ticks: true },
+        { type: 'typing', duration: 1400 },
+        { type: 'bot', text: '\ud83d\udccb Got it! School trip to the Science Museum \u2014 Wednesday 14th May.\nAdded to the family calendar \u2705\n\u26a0\ufe0f Heads up: you have a dentist appointment at 4pm that day. Want me to move it?', time: '09:41' },
+        { type: 'user', text: 'Yes, move it to Thursday', time: '09:41', ticks: true },
+        { type: 'typing', duration: 1000 },
+        { type: 'bot', text: 'Done \u2705 Dentist rescheduled to Thursday 15th May. Calendar updated.', time: '09:42' }
+      ]
+    },
+    {
+      insight: '\ud83d\udca1 Proactive briefings every morning. No prompting needed.',
+      messages: [
+        { type: 'bot', text: 'Good morning Dan \ud83d\udc4b\n\ud83d\udcc5 Today \u2014 Tuesday 13th May\n\u2022 \ud83c\udfca Izzy: swimming 4pm \u2014 don\u2019t forget the kit bag\n\u2022 \ud83d\udccb School trip permission slip due Friday\n\u2022 \u2705 Dentist moved to Thursday \u2014 today\u2019s clear\n\nAnything to add?', time: '08:14' },
+        { type: 'user', text: 'Add Edi football Thursday 5pm', time: '08:15', ticks: true },
+        { type: 'typing', duration: 900 },
+        { type: 'bot', text: 'Done \u2705 Edi: football Thursday 5pm added.', time: '08:15' }
+      ]
+    },
+    {
+      insight: '\ud83d\udca1 FamilyBrain remembers the details so you don\u2019t have to.',
+      messages: [
+        { type: 'img-attach', filename: 'Prescription.jpg', time: '09:12' },
+        { type: 'typing', duration: 1200 },
+        { type: 'bot', text: '\ud83d\udccb Saved \u2014 Dr Patel\u2019s prescription for Izzy, 12th May.\nMedication: Amoxicillin 250mg, 7-day course.\nAdded to Izzy\u2019s medical notes. Reminder set for Day 4 to check in \u2705', time: '09:12' }
+      ]
+    }
+  ];
+
+  var currentScene = 0;
+
+  // ---- Bubble factory ----
+  function createBubble(msg) {
+    var el = document.createElement('div');
+    if (msg.type === 'typing') {
+      el.className = 'hp-typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    if (msg.type === 'img-attach') {
+      el.className = 'hp-attach-img';
+      el.innerHTML =
+        '<div class="wa-attach-img">' +
+          '<div class="wa-attach-img-bg">' +
+            '<div class="wa-attach-img-lines"></div>' +
+            '<div class="wa-attach-img-icon">' +
+              '<svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 1 12 8.8a3.2 3.2 0 0 1 0 6.4zm0-8.4a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 12 6.8zM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="wa-attach-caption">' + (msg.filename || 'Image.jpg') + '</div>' +
+        '<div class="wa-attach-time">' + msg.time + ' <span class="wa-attach-ticks">\u2713\u2713</span></div>';
+      return el;
+    }
+    if (msg.type === 'doc-attach') {
+      el.className = 'hp-attach-doc';
+      el.innerHTML =
+        '<div class="wa-attach-doc">' +
+          '<div class="wa-attach-doc-icon">' +
+            '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>' +
+          '</div>' +
+          '<div class="wa-attach-doc-meta">' +
+            '<div class="wa-attach-doc-name">' + (msg.filename || 'Document.pdf') + '</div>' +
+            '<div class="wa-attach-doc-size">' + (msg.filesize || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="wa-attach-time">' + msg.time + ' <span class="wa-attach-ticks">\u2713\u2713</span></div>';
+      return el;
+    }
+    el.className = 'hp-bubble ' + (msg.type === 'user' ? 'hp-user' : 'hp-bot');
+    var textDiv = document.createElement('div');
+    textDiv.style.whiteSpace = 'pre-wrap';
+    textDiv.textContent = msg.text;
+    el.appendChild(textDiv);
+    var timeRow = document.createElement('div');
+    timeRow.className = 'hp-time';
+    timeRow.textContent = msg.time;
+    if (msg.ticks) {
+      var ticks = document.createElement('span');
+      ticks.className = 'hp-ticks';
+      ticks.textContent = '\u2713\u2713';
+      timeRow.appendChild(ticks);
+    }
+    el.appendChild(timeRow);
+    return el;
+  }
+
+  // ---- Run message sequence ----
+  function runMessages(msgs, idx, onDone) {
+    if (idx >= msgs.length) { if (onDone) onDone(); return; }
+    var msg = msgs[idx];
+    if (msg.type === 'typing') {
+      var typingEl = createBubble(msg);
+      chat.appendChild(typingEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { typingEl.classList.add('hp-vis'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      setTimeout(function() {
+        if (chat.contains(typingEl)) chat.removeChild(typingEl);
+        runMessages(msgs, idx + 1, onDone);
+      }, msg.duration);
+    } else {
+      var bubbleEl = createBubble(msg);
+      chat.appendChild(bubbleEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { bubbleEl.classList.add('hp-vis'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      var delay = (idx + 1 < msgs.length && msgs[idx + 1].type === 'typing') ? 500 : 700;
+      setTimeout(function() { runMessages(msgs, idx + 1, onDone); }, delay);
+    }
+  }
+
+  // ---- Show / hide insight badge ----
+  function showInsight(text) {
+    if (!insight) return;
+    insight.textContent = text;
+    insight.classList.remove('hp-vis');
+    void insight.offsetWidth;
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() { insight.classList.add('hp-vis'); });
+    });
+  }
+  function hideInsight() {
+    if (!insight) return;
+    insight.classList.remove('hp-vis');
+    insight.textContent = '';
+  }
+
+  // ---- Update scene dots ----
+  function setDot(idx) {
+    dots.forEach(function(d, i) {
+      if (d) d.classList.toggle('active', i === idx);
+    });
+  }
+
+  // ---- Play a scene ----
+  function playScene(sceneIdx) {
+    var scene = scenes[sceneIdx];
+    setDot(sceneIdx);
+    chat.innerHTML = '';
+    hideInsight();
+    setTimeout(function() {
+      runMessages(scene.messages, 0, function() {
+        // Show insight badge after 1.5s
+        setTimeout(function() {
+          showInsight(scene.insight);
+          // After 2s pause, transition to next scene
+          setTimeout(function() {
+            var next = (sceneIdx + 1) % scenes.length;
+            chat.style.opacity = '0';
+            chat.style.transition = 'opacity 0.35s ease';
+            setTimeout(function() {
+              currentScene = next;
+              chat.innerHTML = '';
+              hideInsight();
+              chat.style.opacity = '1';
+              playScene(next);
+            }, 350);
+          }, 2000);
+        }, 1500);
+      });
+    }, 500);
+  }
+
+  // Autoplay immediately on page load (no scroll trigger needed for hero)
+  playScene(0);
+})();
+
+// ===== GRAPH INTELLIGENCE DEMO =====
+(function() {
+  var messages = [
+    { type: 'user', text: 'What\u2019s happening with Izzy this week?', time: '09:41', ticks: true },
+    { type: 'typing', duration: 1400 },
+    {
+      type: 'bot',
+      text: 'Here\u2019s Izzy\u2019s week \ud83d\udc67\n\n\ud83d\udcda Tuesday \u2014 swimming at St Joseph\u2019s (don\u2019t forget the kit bag)\n\ud83e\uddb7 Thursday 4pm \u2014 dentist with Dr Patel at Smile Dental, Chiswick\n\ud83d\udccb Friday \u2014 school trip permission slip due (you haven\u2019t replied yet)\n\nWant me to add a reminder for the permission slip?',
+      time: '09:41'
+    },
+    { type: 'user', text: 'Yes please, and remind me about the kit bag Monday night', time: '09:42', ticks: true },
+    { type: 'typing', duration: 1100 },
+    {
+      type: 'bot',
+      text: 'Done \u2705\n\u2014 Reminder set: Monday 8pm \u2014 Izzy\u2019s swimming kit for Tuesday\n\u2014 Reminder set: Thursday 3:30pm \u2014 Izzy dentist at 4pm, Smile Dental Chiswick\n\nAnything else?',
+      time: '09:42'
+    }
+  ];
+
+  var chat = document.getElementById('gdChat');
+  var phone = document.getElementById('gdPhone');
+  var started = false;
+
+  function createBubble(msg) {
+    var el = document.createElement('div');
+    if (msg.type === 'typing') {
+      el.className = 'gd-typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    el.className = 'gd-bubble ' + (msg.type === 'user' ? 'gd-user' : 'gd-bot');
+    // Preserve newlines
+    var textNode = document.createElement('div');
+    textNode.style.whiteSpace = 'pre-wrap';
+    textNode.textContent = msg.text;
+    el.appendChild(textNode);
+    // Timestamp row
+    var timeRow = document.createElement('div');
+    timeRow.className = 'gd-time';
+    timeRow.textContent = msg.time;
+    if (msg.ticks) {
+      var ticks = document.createElement('span');
+      ticks.className = 'gd-ticks';
+      ticks.textContent = '\u2713\u2713';
+      timeRow.appendChild(ticks);
+    }
+    el.appendChild(timeRow);
+    return el;
+  }
+
+  function runSequence(items, idx) {
+    if (idx >= items.length) return;
+    var msg = items[idx];
+    if (msg.type === 'typing') {
+      var typingEl = createBubble(msg);
+      chat.appendChild(typingEl);
+      // Trigger show
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { typingEl.classList.add('gd-visible'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      setTimeout(function() {
+        chat.removeChild(typingEl);
+        runSequence(items, idx + 1);
+      }, msg.duration);
+    } else {
+      var bubbleEl = createBubble(msg);
+      chat.appendChild(bubbleEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { bubbleEl.classList.add('gd-visible'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      // Delay before next message
+      var nextDelay = (idx + 1 < items.length && items[idx + 1].type === 'typing') ? 600 : 800;
+      setTimeout(function() { runSequence(items, idx + 1); }, nextDelay);
+    }
+  }
+
+  function startDemo() {
+    if (started) return;
+    started = true;
+    // Clear any existing bubbles
+    chat.innerHTML = '';
+    setTimeout(function() { runSequence(messages, 0); }, 400);
+  }
+
+  // Scroll-triggered: start when phone enters viewport
+  if (phone) {
+    var gdObserver = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          startDemo();
+          gdObserver.disconnect();
+        }
+      });
+    }, { threshold: 0.35 });
+    gdObserver.observe(phone);
+  }
+})();
+
+// ===== FAQ ACCORDION =====
+function toggleFaq(btn) {
+  const item = btn.parentElement;
+  const answer = item.querySelector('.faq-answer');
+  const isOpen = item.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-item').forEach(i => {
+    i.classList.remove('open');
+    i.querySelector('.faq-answer').style.maxHeight = '0';
+  });
+  // Open clicked if it was closed
+  if (!isOpen) {
+    item.classList.add('open');
+    answer.style.maxHeight = answer.scrollHeight + 'px';
+  }
+}
+
+// ===== PRICING TOGGLE =====
+let isAnnual = false;
+function togglePricing() {
+  isAnnual = !isAnnual;
+  const toggle = document.getElementById('pricingToggle');
+  const monthlyLabel = document.getElementById('toggleMonthly');
+  const annualLabel = document.getElementById('toggleAnnual');
+  toggle.classList.toggle('active', isAnnual);
+  monthlyLabel.classList.toggle('active', !isAnnual);
+  annualLabel.classList.toggle('active', isAnnual);
+  if (isAnnual) {
+    document.getElementById('founderPrice').textContent = '£7.49';
+    document.getElementById('founderPeriod').textContent = '/month';
+    document.getElementById('founderOriginal').textContent = '£14.92/mo';
+    document.getElementById('founderNote').textContent = 'Billed annually at £89.90/year — founding price forever';
+    document.getElementById('standardPrice').textContent = '£14.92';
+    document.getElementById('standardPeriod').textContent = '/month';
+    document.getElementById('standardNote').textContent = 'Billed annually at £179/year — save £60';
+  } else {
+    document.getElementById('founderPrice').textContent = '£9.99';
+    document.getElementById('founderPeriod').textContent = '/month';
+    document.getElementById('founderOriginal').textContent = '£19.99';
+    document.getElementById('founderNote').textContent = 'Lock in this price forever — first 100 families only';
+    document.getElementById('standardPrice').textContent = '£19.99';
+    document.getElementById('standardPeriod').textContent = '/month';
+    document.getElementById('standardNote').textContent = '14-day free trial, cancel anytime';
+  }
+}
+
+// ===== FOUNDING SLOTS COUNTER =====
+async function fetchFoundingSlots() {
+  try {
+    const res = await fetch('https://api.familybrain.co.uk/founding-slots', { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) throw new Error('non-200');
+    const data = await res.json();
+    const count = data.slots_remaining ?? data.remaining ?? data.count;
+    if (typeof count === 'number') {
+      const text = `🌟 ${count} founding member spot${count === 1 ? '' : 's'} remaining`;
+      const el1 = document.getElementById('modal-slots-counter');
+      if (el1) el1.textContent = text;
+      // Also update the pricing section counter if it exists
+      const el2 = document.getElementById('pricing-slots-counter');
+      if (el2) el2.textContent = `🔥 ${count} spots remaining`;
+    }
+  } catch (e) {
+    // Silently fall back to default text
+    const el = document.getElementById('modal-slots-counter');
+    if (el) el.textContent = '🌟 Limited spots remaining';
+  }
+}
+fetchFoundingSlots();
+
+// ===== SUCCESS BANNER =====
+(function checkSignupSuccess() {
+  if (new URLSearchParams(window.location.search).get('signup') === 'success') {
+    document.getElementById('successBanner').classList.add('visible');
+    // Push nav down to avoid overlap
+    document.getElementById('nav').style.top = '52px';
+  }
+})();
+
+// ===== MODAL =====
+function openModal(e) {
+  if (e) e.preventDefault();
+  document.getElementById('signupModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('signupModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.getElementById('signupModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ===== PLAN SELECTOR =====
+let selectedPlan = 'founding';
+function selectPlan(labelEl, planValue) {
+  document.querySelectorAll('.plan-option').forEach(el => el.classList.remove('selected'));
+  labelEl.classList.add('selected');
+  selectedPlan = planValue;
+  // Sync radio
+  const radio = labelEl.querySelector('input[type="radio"]');
+  if (radio) radio.checked = true;
+}
+
+// ===== ADD MEMBER FIELDS =====
+let memberCount = 0;
+const MAX_MEMBERS = 3;
+function addMemberField() {
+  if (memberCount >= MAX_MEMBERS) return;
+  memberCount++;
+  const field = document.getElementById('member-' + memberCount);
+  if (field) field.classList.add('visible');
+  if (memberCount >= MAX_MEMBERS) {
+    document.getElementById('addMemberBtn').style.display = 'none';
+  }
+}
+
+// ===== PHONE VALIDATION =====
+function isValidPhone(val) {
+  const stripped = val.replace(/\s/g, '');
+  return /^\+[0-9]{9,}$/.test(stripped);
+}
+function setFieldError(inputEl, errorEl, show) {
+  if (show) {
+    inputEl.classList.add('input-error');
+    errorEl.classList.add('visible');
+  } else {
+    inputEl.classList.remove('input-error');
+    errorEl.classList.remove('visible');
+  }
+}
+
+// ===== FORM SUBMIT =====
+async function handleSubmit(e) {
+  e.preventDefault();
+  let valid = true;
+
+  // Validate name
+  const nameInput = document.getElementById('fb-name');
+  const nameErr = document.getElementById('err-name');
+  if (!nameInput.value.trim()) {
+    setFieldError(nameInput, nameErr, true);
+    valid = false;
+  } else {
+    setFieldError(nameInput, nameErr, false);
+  }
+
+  // Validate primary phone
+  const phoneInput = document.getElementById('fb-phone');
+  const phoneErr = document.getElementById('err-phone');
+  if (!isValidPhone(phoneInput.value)) {
+    setFieldError(phoneInput, phoneErr, true);
+    valid = false;
+  } else {
+    setFieldError(phoneInput, phoneErr, false);
+  }
+
+  // Validate optional member phones (only if visible and non-empty)
+  const memberPhones = [];
+  for (let i = 1; i <= MAX_MEMBERS; i++) {
+    const field = document.getElementById('member-' + i);
+    if (!field || !field.classList.contains('visible')) continue;
+    const input = field.querySelector('input[type="tel"]');
+    const errEl = document.getElementById('err-member-' + i);
+    const val = input.value.trim();
+    if (val === '') continue; // optional — skip empty
+    if (!isValidPhone(val)) {
+      setFieldError(input, errEl, true);
+      valid = false;
+    } else {
+      setFieldError(input, errEl, false);
+      memberPhones.push(val.replace(/\s/g, ''));
+    }
+  }
+
+  if (!valid) return;
+
+  // Build payload
+  const payload = {
+    primary_name: nameInput.value.trim(),
+    primary_phone: phoneInput.value.trim().replace(/\s/g, ''),
+    member_phones: memberPhones,
+    plan: selectedPlan
+  };
+
+  // Loading state
+  const btn = document.getElementById('submitBtn');
+  const errorBox = document.getElementById('formError');
+  btn.textContent = 'Setting up your FamilyBrain...';
+  btn.disabled = true;
+  errorBox.classList.remove('visible');
+
+  try {
+    const res = await fetch('https://api.familybrain.co.uk/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('API error ' + res.status);
+    const data = await res.json();
+    if (data.checkout_url) {
+      window.location.href = data.checkout_url;
+    } else {
+      throw new Error('No checkout_url in response');
+    }
+  } catch (err) {
+    btn.textContent = 'Start my free 14-day trial →';
+    btn.disabled = false;
+    errorBox.classList.add('visible');
+  }
+}
+</script>
 </body>
 </html>
