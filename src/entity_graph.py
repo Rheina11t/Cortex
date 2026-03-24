@@ -535,40 +535,311 @@ def get_entity_context(query: str, family_id: str) -> str:
 # 4. get_entity_graph_summary
 # ---------------------------------------------------------------------------
 
-def get_entity_graph_summary(family_id: str) -> str:
-    """Return a human-readable summary of all entities and relationships.
+# Human-friendly labels for relation types
+_RELATION_LABELS: dict[str, str] = {
+    "parent_of":     "parent of",
+    "sibling_of":    "sibling of",
+    "attends":       "attends",
+    "works_at":      "works at",
+    "lives_at":      "lives at",
+    "member_of":     "member of",
+    "owns":          "owns",
+    "part_of":       "part of",
+    "scheduled_for": "scheduled for",
+    "relates_to":    "connected to",
+}
 
-    Used by the /graph command to give the user an overview of their
-    family's knowledge graph.
+# Relation types that indicate a person is connected to another entity
+_PERSON_CONNECTIONS = frozenset({
+    "parent_of", "sibling_of", "attends", "works_at", "lives_at",
+    "member_of", "owns", "scheduled_for", "relates_to",
+})
+
+
+def get_entity_graph_summary(family_id: str) -> str:
+    """Return a warm, human-readable summary of the family's knowledge graph.
+
+    Output is grouped by person first, then organisations, then places.
+    Only entities with at least one relation or linked memory are shown.
+    Designed to fit comfortably within WhatsApp's ~4096-char message limit.
+
+    Used by the /graph command.
     """
     db = _get_db()
 
     # --- Fetch all entities ---
     entities_res = db.table("family_entities").select(
         "id, name, entity_type, aliases, metadata"
-    ).eq("family_id", family_id).order("entity_type").order("name").execute()
+    ).eq("family_id", family_id).order("name").execute()
     entities = entities_res.data or []
 
     if not entities:
-        return "No entities in your family graph yet. As you chat with me, I'll automatically build a knowledge graph of your family's people, places, events, and more."
+        return (
+            "\U0001f9e0 I haven't built your family graph yet.\n\n"
+            "As you chat with me — sending messages, photos, or documents — "
+            "I'll automatically learn about the people, places, and events in your family's life. "
+            "Try sending me something to remember!"
+        )
 
-    entity_map = {e["id"]: e for e in entities}
+    entity_map: dict[str, dict] = {e["id"]: e for e in entities}
 
     # --- Fetch all relations ---
     relations_res = db.table("family_entity_relations").select(
-        "from_entity_id, to_entity_id, relation_type, confidence, source"
+        "from_entity_id, to_entity_id, relation_type, confidence"
     ).eq("family_id", family_id).execute()
     relations = relations_res.data or []
 
-    # --- Build summary ---
+    # --- Fetch memory link counts per entity ---
+    links_res = db.table("memory_entity_links").select(
+        "entity_id"
+    ).eq("family_id", family_id).execute()
+    memory_counts: dict[str, int] = {}
+    for lnk in (links_res.data or []):
+        eid = lnk["entity_id"]
+        memory_counts[eid] = memory_counts.get(eid, 0) + 1
+
+    # --- Build adjacency: entity_id -> list of (relation_type, other_entity_id, direction) ---
+    adjacency: dict[str, list[tuple[str, str, str]]] = {}
+    for rel in relations:
+        fid = rel["from_entity_id"]
+        tid = rel["to_entity_id"]
+        rtype = rel["relation_type"]
+        adjacency.setdefault(fid, []).append((rtype, tid, "out"))
+        adjacency.setdefault(tid, []).append((rtype, fid, "in"))
+
+    # --- Determine which entities to show (has relation OR has linked memories) ---
+    visible_ids: set[str] = set()
+    for eid in entity_map:
+        if adjacency.get(eid) or memory_counts.get(eid, 0) > 0:
+            visible_ids.add(eid)
+
+    # Always show all people regardless
+    for eid, ent in entity_map.items():
+        if ent["entity_type"] == "person":
+            visible_ids.add(eid)
+
+    if not visible_ids:
+        visible_ids = set(entity_map.keys())  # fallback: show everything
+
+    # --- Helper: render a person's section ---
+    def _person_section(ent: dict) -> list[str]:
+        eid = ent["id"]
+        name = ent["name"]
+        meta = ent.get("metadata") or {}
+        role = meta.get("role", "")
+
+        # Header line with role hint
+        if role == "parent":
+            header = f"\U0001f464 *{name}* (you)"
+        elif role == "child":
+            # Pick gender emoji from metadata if available, else generic child
+            gender = meta.get("gender", "").lower()
+            if gender == "female":
+                header = f"\U0001f467 *{name}*"
+            elif gender == "male":
+                header = f"\U0001f466 *{name}*"
+            else:
+                header = f"\U0001f9d2 *{name}*"
+        else:
+            header = f"\U0001f464 *{name}*"
+
+        section = [header]
+
+        # Connections: outgoing relations (e.g. Dan parent_of Izzy)
+        connections: list[str] = []
+        schools: list[str] = []
+        activities: list[str] = []
+        upcoming: list[str] = []
+
+        for rtype, other_id, direction in adjacency.get(eid, []):
+            other = entity_map.get(other_id)
+            if not other:
+                continue
+            other_name = other["name"]
+            other_type = other["entity_type"]
+            label = _RELATION_LABELS.get(rtype, rtype.replace("_", " "))
+
+            if direction == "out":
+                if rtype == "parent_of" and other_type == "person":
+                    # Determine child relationship label
+                    child_meta = other.get("metadata") or {}
+                    child_role = child_meta.get("role", "child")
+                    connections.append(f"{other_name} (child)")
+                elif rtype == "sibling_of":
+                    connections.append(f"{other_name} (sibling)")
+                elif rtype == "attends" and other_type == "organisation":
+                    schools.append(other_name)
+                elif rtype in ("member_of", "attends") and other_type == "event":
+                    activities.append(other_name)
+                elif rtype == "scheduled_for":
+                    upcoming.append(other_name)
+                elif other_type == "person":
+                    connections.append(f"{other_name} ({label})")
+                elif other_type in ("organisation", "place"):
+                    connections.append(f"{other_name} ({label})")
+            else:  # incoming
+                if rtype == "parent_of" and other_type == "person":
+                    connections.append(f"{other_name} (parent)")
+                elif rtype == "sibling_of":
+                    connections.append(f"{other_name} (sibling)")
+
+        if connections:
+            section.append(f"Connected to: {', '.join(connections)}")
+        if schools:
+            section.append(f"School: {', '.join(schools)}")
+        if activities:
+            section.append(f"Activities: {', '.join(activities)}")
+        if upcoming:
+            section.append(f"Upcoming: {', '.join(upcoming)}")
+
+        # Memory count hint
+        n_mem = memory_counts.get(eid, 0)
+        if n_mem > 0:
+            noun = "memory" if n_mem == 1 else "memories"
+            section.append(f"I know about: {n_mem} stored {noun}")
+
+        return section
+
+    # --- Helper: render an organisation or place section ---
+    def _org_section(ent: dict) -> list[str]:
+        eid = ent["id"]
+        name = ent["name"]
+        etype = ent["entity_type"]
+        emoji = "\U0001f3eb" if etype == "organisation" else "\U0001f4cd"
+        meta = ent.get("metadata") or {}
+
+        section = [f"{emoji} *{name}*"]
+
+        # Who is connected to this org/place (incoming attends/member_of)
+        members: list[str] = []
+        for rtype, other_id, direction in adjacency.get(eid, []):
+            other = entity_map.get(other_id)
+            if not other:
+                continue
+            if direction == "in" and rtype in ("attends", "member_of", "works_at"):
+                members.append(other["name"])
+
+        if members:
+            section.append(f"Attended by: {', '.join(members)}")
+
+        # Contact info from metadata
+        contact = meta.get("contact") or meta.get("email") or meta.get("phone")
+        if contact:
+            section.append(f"Contact: {contact}")
+
+        n_mem = memory_counts.get(eid, 0)
+        if n_mem > 0:
+            noun = "memory" if n_mem == 1 else "memories"
+            section.append(f"Linked memories: {n_mem} {noun}")
+
+        return section
+
+    # --- Assemble the full message ---
     lines: list[str] = []
-    lines.append("*Your Family Knowledge Graph*\n")
+    lines.append("\U0001f9e0 Here's what I know about your family\n")
 
-    # Group entities by type
-    by_type: dict[str, list[dict]] = {}
-    for ent in entities:
-        by_type.setdefault(ent["entity_type"], []).append(ent)
+    # 1. People first
+    people = [
+        e for e in entities
+        if e["entity_type"] == "person" and e["id"] in visible_ids
+    ]
+    for person in sorted(people, key=lambda e: e["name"]):
+        section = _person_section(person)
+        lines.extend(section)
+        lines.append("")  # blank line between people
 
+    # 2. Organisations (schools, companies)
+    orgs = [
+        e for e in entities
+        if e["entity_type"] == "organisation" and e["id"] in visible_ids
+    ]
+    if orgs:
+        for org in sorted(orgs, key=lambda e: e["name"]):
+            section = _org_section(org)
+            lines.extend(section)
+            lines.append("")
+
+    # 3. Places
+    places = [
+        e for e in entities
+        if e["entity_type"] == "place" and e["id"] in visible_ids
+    ]
+    if places:
+        for place in sorted(places, key=lambda e: e["name"]):
+            section = _org_section(place)
+            lines.extend(section)
+            lines.append("")
+
+    # Footer hint
+    lines.append("_Reply /graph [name] for more detail about a specific person._")
+
+    # Trim trailing blank lines before footer
+    result = "\n".join(lines)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 5. get_entity_detail  (used by /graph [name])
+# ---------------------------------------------------------------------------
+
+def get_entity_detail(name_query: str, family_id: str) -> str:
+    """Return a detailed profile for a single named entity.
+
+    Searches by name (case-insensitive) and returns all known relations,
+    linked memory count, aliases, and metadata for that entity.
+
+    Used by the /graph [name] variant of the command.
+    """
+    db = _get_db()
+
+    # --- Find the entity ---
+    res = db.table("family_entities").select(
+        "id, name, entity_type, aliases, metadata"
+    ).eq("family_id", family_id).ilike("name", f"%{name_query.strip()}%").limit(1).execute()
+
+    if not res.data:
+        return (
+            f"I don't have anyone called \u201c{name_query}\u201d in your family graph yet. "
+            "They'll appear automatically as you mention them in messages."
+        )
+
+    ent = res.data[0]
+    eid = ent["id"]
+    name = ent["name"]
+    etype = ent["entity_type"]
+    meta = ent.get("metadata") or {}
+
+    # --- Fetch all relations for this entity ---
+    out_res = db.table("family_entity_relations").select(
+        "to_entity_id, relation_type, confidence, source"
+    ).eq("from_entity_id", eid).eq("family_id", family_id).execute()
+
+    in_res = db.table("family_entity_relations").select(
+        "from_entity_id, relation_type, confidence, source"
+    ).eq("to_entity_id", eid).eq("family_id", family_id).execute()
+
+    # --- Fetch linked memory count ---
+    links_res = db.table("memory_entity_links").select(
+        "memory_id"
+    ).eq("entity_id", eid).eq("family_id", family_id).execute()
+    n_mem = len(links_res.data or [])
+
+    # --- Collect related entity IDs ---
+    related_ids: set[str] = set()
+    for r in (out_res.data or []):
+        related_ids.add(r["to_entity_id"])
+    for r in (in_res.data or []):
+        related_ids.add(r["from_entity_id"])
+
+    related_map: dict[str, dict] = {}
+    if related_ids:
+        rel_ents_res = db.table("family_entities").select(
+            "id, name, entity_type"
+        ).in_("id", list(related_ids)).execute()
+        for re in (rel_ents_res.data or []):
+            related_map[re["id"]] = re
+
+    # --- Build the detail card ---
     type_emoji = {
         "person": "\U0001f464",
         "place": "\U0001f4cd",
@@ -577,38 +848,44 @@ def get_entity_graph_summary(family_id: str) -> str:
         "organisation": "\U0001f3eb",
         "date_range": "\U0001f4c6",
     }
+    emoji = type_emoji.get(etype, "\u2022")
+    lines: list[str] = []
+    lines.append(f"{emoji} *{name}*")
 
-    for etype, ents in sorted(by_type.items()):
-        emoji = type_emoji.get(etype, "\u2022")
-        type_label = etype.replace("_", " ").title()
-        lines.append(f"\n{emoji} *{type_label}s* ({len(ents)})")
-        for e in ents:
-            alias_str = ""
-            if e.get("aliases"):
-                alias_str = f" (aka {', '.join(e['aliases'])})"
-            lines.append(f"  - {e['name']}{alias_str}")
+    if ent.get("aliases"):
+        lines.append(f"Also known as: {', '.join(ent['aliases'])}")
 
-    # Relations section
-    if relations:
-        lines.append(f"\n\U0001f517 *Relationships* ({len(relations)})")
-        for rel in relations:
-            from_ent = entity_map.get(rel["from_entity_id"], {})
-            to_ent = entity_map.get(rel["to_entity_id"], {})
-            from_name = from_ent.get("name", "?")
-            to_name = to_ent.get("name", "?")
-            rel_type = rel["relation_type"].replace("_", " ")
-            conf = rel.get("confidence", 1.0)
-            source = rel.get("source", "")
-            extras = []
-            if conf < 1.0:
-                extras.append(f"{conf:.0%} confidence")
-            if source == "llm_inferred":
-                extras.append("inferred")
-            extra_str = f" ({', '.join(extras)})" if extras else ""
-            lines.append(f"  - {from_name} *{rel_type}* {to_name}{extra_str}")
+    role = meta.get("role")
+    if role:
+        lines.append(f"Role: {role}")
+
+    # Outgoing relations
+    for r in (out_res.data or []):
+        other = related_map.get(r["to_entity_id"])
+        if other:
+            label = _RELATION_LABELS.get(r["relation_type"], r["relation_type"].replace("_", " "))
+            conf_str = f" ({r['confidence']:.0%} confidence)" if r.get("confidence", 1.0) < 1.0 else ""
+            lines.append(f"\u2192 {label} {other['name']} ({other['entity_type']}){conf_str}")
+
+    # Incoming relations
+    for r in (in_res.data or []):
+        other = related_map.get(r["from_entity_id"])
+        if other:
+            label = _RELATION_LABELS.get(r["relation_type"], r["relation_type"].replace("_", " "))
+            conf_str = f" ({r['confidence']:.0%} confidence)" if r.get("confidence", 1.0) < 1.0 else ""
+            lines.append(f"\u2190 {other['name']} ({other['entity_type']}) {label} them{conf_str}")
+
+    # Memory count
+    if n_mem > 0:
+        noun = "memory" if n_mem == 1 else "memories"
+        lines.append(f"\U0001f9e0 {n_mem} stored {noun} mention {name}")
     else:
-        lines.append("\nNo relationships mapped yet. I'll infer connections as more memories are stored.")
+        lines.append(f"No memories linked to {name} yet.")
 
-    lines.append(f"\n_{len(entities)} entities, {len(relations)} relationships_")
+    # Extra metadata fields (contact, email, phone, etc.)
+    for key in ("contact", "email", "phone", "address"):
+        val = meta.get(key)
+        if val:
+            lines.append(f"{key.capitalize()}: {val}")
 
     return "\n".join(lines)

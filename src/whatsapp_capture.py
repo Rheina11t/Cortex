@@ -1905,23 +1905,29 @@ def ical_feed(family_token: str) -> Response:
 # ---------------------------------------------------------------------------
 @app.route("/calendar/subscribe/<family_token>", methods=["GET"])
 def apple_calendar_subscribe(family_token: str) -> Response:
-    """Redirect page for Apple Calendar subscription.
-    WhatsApp does not render webcal:// as a tappable link, so we serve
-    a normal https:// page that immediately redirects to webcal://.
-    iOS Safari intercepts the webcal:// redirect and opens Apple Calendar
-    with a one-tap Subscribe prompt.
+    """Fallback redirect page for Apple Calendar subscription.
+
+    This page exists as a safety net for cases where the webcal:// link
+    cannot be tapped directly (e.g. some email clients or web previews).
+    It immediately redirects to webcal:// via both meta-refresh and JS,
+    which iOS Safari / macOS Safari intercepts and opens in the Calendar
+    app with a one-tap Subscribe prompt.
+
+    NOTE: The primary flow now sends the webcal:// link directly in
+    WhatsApp messages, so this page is only reached if the user navigates
+    to the https:// subscribe URL manually.
     """
     base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
     feed_url = f"{base_url}/calendar/feed/{family_token}.ics"
     webcal_url = feed_url.replace("https://", "webcal://", 1).replace("http://", "webcal://", 1)
-    
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Add to Apple Calendar</title>
-  <meta http-equiv="refresh" content="1;url={webcal_url}">
+  <meta http-equiv="refresh" content="0;url={webcal_url}">
   <style>
     body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif;
            display: flex; align-items: center; justify-content: center;
@@ -1938,13 +1944,14 @@ def apple_calendar_subscribe(family_token: str) -> Response:
 <body>
   <div class="card">
     <h1>Add to Apple Calendar</h1>
-    <p>Opening your family calendar subscription...<br>
+    <p>Opening your family calendar in the Calendar app...<br>
        Tap the button below if it does not open automatically.</p>
-    <a href="{webcal_url}" class="btn">Subscribe to Calendar</a>
-    <p class="note">Read-only - Updates automatically - No login needed</p>
+    <a href="{webcal_url}" class="btn">\U0001f4c5 Subscribe to Calendar</a>
+    <p class="note">Read-only &middot; Updates automatically &middot; No login needed</p>
   </div>
   <script>
-    setTimeout(function() {{ window.location.href = "{webcal_url}"; }}, 500);
+    // Immediate redirect — iOS/macOS Safari intercepts webcal:// and opens Calendar app
+    window.location.href = "{webcal_url}";
   </script>
 </body>
 </html>"""
@@ -3380,13 +3387,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                 + "Sign in with Google. Events sync both ways. Link expires in 1 hour.",
             ]
             if webcal_url:
-                import re as _re
-                subscribe_url = webcal_url.replace("webcal://", "https://", 1)
-                subscribe_url = _re.sub(r"/calendar/feed/(.+)\.ics$", r"/calendar/subscribe/\1", subscribe_url)
                 msgs.append(
-                    "Option 2 - Apple Calendar (iPhone, one-tap):\n"
-                    + subscribe_url + "\n"
-                    + "Tap the link on your iPhone. Opens a page with a Subscribe button - no login needed."
+                    "Option 2 - Apple Calendar (iPhone/Mac, one-tap):\n"
+                    + webcal_url + "\n"
+                    + "Tap this link on your iPhone or Mac. iOS/macOS will open the Calendar app directly with a Subscribe prompt \u2014 no login needed."
                 )
             msgs.append(
                 "For families with children: by connecting your calendar you confirm parental consent "
@@ -3480,9 +3484,25 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         return _make_response(help_text, from_number=from_number)
 
     # --- Graph Command ---
-    if text_lower in ("/graph", "graph", "knowledge graph", "show graph", "entity graph"):
+    # Matches: /graph, /graph Dan, /graph Izzy, etc.
+    _is_graph_cmd = (
+        text_lower in ("/graph", "graph", "knowledge graph", "show graph", "entity graph")
+        or text_lower.startswith("/graph ")
+    )
+    if _is_graph_cmd:
         try:
-            summary = entity_graph.get_entity_graph_summary(_family_id)
+            # Check for /graph [name] — detail mode for a specific entity
+            _name_arg = ""
+            if text_lower.startswith("/graph "):
+                _name_arg = text[len("/graph "):].strip()
+
+            if _name_arg:
+                # Detail view for a specific person/entity
+                summary = entity_graph.get_entity_detail(_name_arg, _family_id)
+            else:
+                # Full family graph overview
+                summary = entity_graph.get_entity_graph_summary(_family_id)
+
             # WhatsApp has a ~4096 char limit per message
             if len(summary) > 3800:
                 summary = summary[:3800] + "\n\n_(truncated \u2014 graph is growing!)_"
@@ -3613,7 +3633,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                                 "",
                                 "💾 Save this number as 'FamilyBrain' so you can find me easily.",
                                 "",
-                                "📅 Want to sync your family calendar? Reply /connect to set it up — works with Google Calendar and Apple Calendar.",
+                                "\U0001f4c5 Want to sync your family calendar? Reply /connect to set it up \u2014 works with Google Calendar and Apple Calendar.",
                                 "",
                                 "📌 *A quick note on privacy:* By using FamilyBrain, you confirm you are 18 or over, and have parental consent to share any family events involving children. Your data is stored securely and never shared outside your family.",
                             ]
