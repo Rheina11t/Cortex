@@ -1056,6 +1056,242 @@ p { color: #2C2C2C; }
   .wt-phone { max-width: 100%; }
 }
 
+/* ========== CALENDAR SHOWCASE ========== */
+.cal-section { background: #fff; }
+.cal-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.cal-copy { max-width: 480px; }
+.cal-copy .section-label { margin-bottom: 14px; }
+.cal-copy h2 { margin-bottom: 16px; }
+.cal-copy .cal-sub {
+  font-size: 1.05rem;
+  color: #7A7A7A;
+  line-height: 1.75;
+  margin-bottom: 32px;
+}
+.cal-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+.cal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: #F0F8F5;
+  border: 1px solid #C8E0D8;
+  color: #3a7264;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 9px 16px;
+  border-radius: 24px;
+  width: fit-content;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.cal-pill:hover { background: #D8EEE8; transform: translateX(3px); }
+.cal-scene-dots { display: flex; gap: 8px; margin-top: 28px; }
+.cal-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #C8E0D8;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.cal-dot.active { background: #4A8C7A; transform: scale(1.3); }
+.cal-scene-label {
+  font-size: 0.8rem;
+  color: #9A9A9A;
+  margin-top: 10px;
+  font-style: italic;
+  min-height: 1.4em;
+}
+/* Phone — reuses wt-* classes for shell/header/chat/bubbles */
+.cal-phone-wrap { position: relative; }
+.cal-phone {
+  background: #1C1C1E;
+  border-radius: 44px;
+  box-shadow:
+    0 40px 80px rgba(0,0,0,0.22),
+    0 0 0 1px rgba(255,255,255,0.06),
+    inset 0 0 0 2px rgba(255,255,255,0.04);
+  overflow: hidden;
+  max-width: 320px;
+  margin: 0 auto;
+  position: relative;
+}
+.cal-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 110px; height: 26px;
+  background: #1C1C1E;
+  border-radius: 0 0 16px 16px;
+  z-index: 10;
+}
+.cal-statusbar {
+  background: #075E54;
+  padding: 30px 18px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.7);
+}
+.cal-statusbar-time { font-weight: 600; color: #fff; font-size: 0.75rem; }
+.cal-statusbar-icons { display: flex; gap: 5px; align-items: center; }
+.cal-wa-header {
+  background: #075E54;
+  padding: 8px 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.cal-wa-back { color: rgba(255,255,255,0.85); font-size: 1.3rem; line-height: 1; margin-right: 2px; }
+.cal-wa-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a7264 0%, #5bb89a 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cal-wa-avatar svg { width: 18px; height: 18px; }
+.cal-wa-info { flex: 1; }
+.cal-wa-name { font-weight: 600; font-size: 0.85rem; color: #fff; }
+.cal-wa-status { font-size: 0.67rem; color: rgba(255,255,255,0.7); }
+.cal-wa-icons { display: flex; gap: 12px; color: rgba(255,255,255,0.8); }
+.cal-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 10px;
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  position: relative;
+}
+.cal-bubble {
+  max-width: 86%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  word-break: break-word;
+}
+.cal-bubble.cal-vis { opacity: 1; transform: translateY(0) scale(1); }
+.cal-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: #1a1a1a;
+}
+.cal-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.cal-time {
+  font-size: 0.6rem;
+  color: #9E9E9E;
+  text-align: right;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.cal-ticks { color: #53BDEB; font-size: 0.68rem; }
+.cal-typing {
+  background: #fff;
+  align-self: flex-start;
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 9px 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.cal-typing.cal-vis { opacity: 1; transform: translateY(0); }
+.cal-typing span {
+  width: 6px; height: 6px;
+  background: #B0B0B0;
+  border-radius: 50%;
+  animation: calDot 1.2s infinite ease-in-out;
+}
+.cal-typing span:nth-child(2) { animation-delay: 0.2s; }
+.cal-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes calDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+.cal-input-bar {
+  background: #F0F0F0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.cal-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #999;
+}
+.cal-send {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cal-send svg { width: 13px; height: 13px; fill: #fff; }
+/* Insight badge */
+.cal-insight {
+  background: linear-gradient(135deg, #F0F8F5 0%, #E8F5EF 100%);
+  border: 1px solid #A8D4C0;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 0.76rem;
+  color: #3a7264;
+  font-style: italic;
+  margin: 0 10px 10px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  line-height: 1.5;
+}
+.cal-insight.cal-vis { opacity: 1; transform: translateY(0); }
+@keyframes calPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74,140,122,0); }
+  50% { box-shadow: 0 0 0 5px rgba(74,140,122,0.12); }
+}
+.cal-insight.cal-vis { animation: calPulse 2s ease 0.5s 2; }
+
+@media (max-width: 1024px) {
+  .cal-inner { grid-template-columns: 1fr; gap: 48px; }
+  .cal-copy { max-width: 100%; text-align: center; }
+  .cal-pills { align-items: center; }
+  .cal-scene-dots { justify-content: center; }
+  .cal-phone { max-width: 300px; }
+}
+@media (max-width: 480px) {
+  .cal-phone { max-width: 100%; }
+}
+
 /* ========== GRAPH INTELLIGENCE DEMO ========== */
 .graph-demo { background: #fff; overflow: hidden; }
 .graph-demo-inner {
@@ -1353,6 +1589,74 @@ p { color: #2C2C2C; }
           <div class="hero-video-overlay" id="heroOverlay">Forwarding Izzy's school letter to FamilyBrain...</div>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CALENDAR SHOWCASE ==================== -->
+<section class="cal-section section" id="calendar">
+  <div class="container">
+    <div class="cal-inner">
+
+      <!-- Copy column -->
+      <div class="cal-copy fade-in">
+        <p class="section-label">Calendar Intelligence</p>
+        <h2>Your family's calendar, handled.</h2>
+        <p class="cal-sub">FamilyBrain doesn't just remember things &mdash; it actively manages your schedule, spots conflicts, and keeps everyone briefed. Just tell it what's happening.</p>
+        <div class="cal-pills">
+          <div class="cal-pill">📅 Syncs with Google &amp; Apple Calendar</div>
+          <div class="cal-pill">⚡ Spots conflicts automatically</div>
+          <div class="cal-pill">🌅 Morning briefings, every day</div>
+        </div>
+        <div class="cal-scene-dots">
+          <div class="cal-dot active" id="calDot0"></div>
+          <div class="cal-dot" id="calDot1"></div>
+        </div>
+        <div class="cal-scene-label" id="calSceneLabel">Scene 1 of 2 &mdash; Adding an event &amp; resolving a conflict</div>
+      </div>
+
+      <!-- Phone column -->
+      <div class="fade-in fade-in-delay-2">
+        <div class="cal-phone" id="calPhone">
+          <div class="cal-notch"></div>
+          <!-- Status bar -->
+          <div class="cal-statusbar">
+            <span class="cal-statusbar-time">08:41</span>
+            <div class="cal-statusbar-icons">
+              <svg width="13" height="9" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+              <svg width="11" height="9" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+              <svg width="20" height="9" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+            </div>
+          </div>
+          <!-- WA Header -->
+          <div class="cal-wa-header">
+            <span class="cal-wa-back">&#8249;</span>
+            <div class="cal-wa-avatar">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+              </svg>
+            </div>
+            <div class="cal-wa-info">
+              <div class="cal-wa-name">FamilyBrain</div>
+              <div class="cal-wa-status">online</div>
+            </div>
+            <div class="cal-wa-icons">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </div>
+          </div>
+          <!-- Chat -->
+          <div class="cal-chat" id="calChat"></div>
+          <!-- Insight badge -->
+          <div class="cal-insight" id="calInsight"></div>
+          <!-- Input bar -->
+          <div class="cal-input-bar">
+            <div class="cal-input-field">Message</div>
+            <div class="cal-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
@@ -2253,6 +2557,163 @@ function switchTab(tabName, btn) {
     b.style.animationDelay = (0.3 + i * 0.5) + 's';
   });
 }
+
+// ===== CALENDAR SHOWCASE =====
+(function() {
+  var phone = document.getElementById('calPhone');
+  var chat = document.getElementById('calChat');
+  var insight = document.getElementById('calInsight');
+  var sceneLabel = document.getElementById('calSceneLabel');
+  var dot0 = document.getElementById('calDot0');
+  var dot1 = document.getElementById('calDot1');
+  if (!phone || !chat) return;
+
+  var scenes = [
+    {
+      label: 'Scene 1 of 2 \u2014 Adding an event & resolving a conflict',
+      insight: '\ud83d\udca1 FamilyBrain spotted a conflict and resolved it \u2014 without you having to check.',
+      messages: [
+        { type: 'user', text: 'Izzy has a school trip to the Science Museum on Wednesday 14th May', time: '08:41', ticks: true },
+        { type: 'typing', duration: 1800 },
+        { type: 'bot', text: 'Added to the family calendar \u2705\n\n\ud83d\udcc5 Wednesday 14th May \u2014 Izzy: Science Museum trip\n\nOne thing to flag \u2014 you have a dentist appointment at 4pm that day. Want me to move it, or keep both?', time: '08:41' },
+        { type: 'user', text: 'Move the dentist to Thursday', time: '08:42', ticks: true },
+        { type: 'typing', duration: 1200 },
+        { type: 'bot', text: 'Done \u2705 Dentist rescheduled to Thursday 15th May at 4pm. I\u2019ve updated the calendar.', time: '08:42' }
+      ]
+    },
+    {
+      label: 'Scene 2 of 2 \u2014 Morning briefing',
+      insight: '\ud83d\udca1 FamilyBrain proactively briefs your family every morning \u2014 no prompting needed.',
+      messages: [
+        { type: 'bot', text: 'Good morning Dan \ud83d\udc4b Here\u2019s your family\u2019s day:\n\n\ud83d\udcc5 Today \u2014 Tuesday 13th May\n\u2022 \ud83c\udfca Izzy: swimming 4pm (don\u2019t forget the kit bag)\n\u2022 \ud83e\uddb7 Tomorrow: dentist moved to Thursday \u2014 all clear today\n\u2022 \ud83d\udccb Reminder: school trip permission slip due Friday\n\nAnything you need me to add or change?', time: '08:14' },
+        { type: 'user', text: 'Add football for Edi, 5pm Thursday', time: '08:15', ticks: true },
+        { type: 'typing', duration: 1000 },
+        { type: 'bot', text: 'Done \u2705 Edi: football Thursday 5pm added to the calendar.', time: '08:15' }
+      ]
+    }
+  ];
+
+  var started = false;
+  var currentScene = 0;
+
+  function createBubble(msg) {
+    var el = document.createElement('div');
+    if (msg.type === 'typing') {
+      el.className = 'cal-typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    el.className = 'cal-bubble ' + (msg.type === 'user' ? 'cal-user' : 'cal-bot');
+    var textDiv = document.createElement('div');
+    textDiv.style.whiteSpace = 'pre-wrap';
+    textDiv.textContent = msg.text;
+    el.appendChild(textDiv);
+    var timeRow = document.createElement('div');
+    timeRow.className = 'cal-time';
+    timeRow.textContent = msg.time;
+    if (msg.ticks) {
+      var ticks = document.createElement('span');
+      ticks.className = 'cal-ticks';
+      ticks.textContent = '\u2713\u2713';
+      timeRow.appendChild(ticks);
+    }
+    el.appendChild(timeRow);
+    return el;
+  }
+
+  function runMessages(msgs, idx, onDone) {
+    if (idx >= msgs.length) { if (onDone) onDone(); return; }
+    var msg = msgs[idx];
+    if (msg.type === 'typing') {
+      var typingEl = createBubble(msg);
+      chat.appendChild(typingEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { typingEl.classList.add('cal-vis'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      setTimeout(function() {
+        if (chat.contains(typingEl)) chat.removeChild(typingEl);
+        runMessages(msgs, idx + 1, onDone);
+      }, msg.duration);
+    } else {
+      var bubbleEl = createBubble(msg);
+      chat.appendChild(bubbleEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { bubbleEl.classList.add('cal-vis'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      var delay = (idx + 1 < msgs.length && msgs[idx + 1].type === 'typing') ? 500 : 700;
+      setTimeout(function() { runMessages(msgs, idx + 1, onDone); }, delay);
+    }
+  }
+
+  function showInsight(text) {
+    if (!insight) return;
+    insight.textContent = text;
+    insight.classList.remove('cal-vis');
+    // force reflow
+    void insight.offsetWidth;
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() { insight.classList.add('cal-vis'); });
+    });
+  }
+
+  function hideInsight() {
+    if (!insight) return;
+    insight.classList.remove('cal-vis');
+    insight.textContent = '';
+  }
+
+  function playScene(sceneIdx) {
+    var scene = scenes[sceneIdx];
+    // Update dots and label
+    if (dot0) dot0.classList.toggle('active', sceneIdx === 0);
+    if (dot1) dot1.classList.toggle('active', sceneIdx === 1);
+    if (sceneLabel) sceneLabel.textContent = scene.label;
+    // Clear chat and insight
+    chat.innerHTML = '';
+    hideInsight();
+    // Play messages
+    setTimeout(function() {
+      runMessages(scene.messages, 0, function() {
+        // Show insight badge after 2s pause
+        setTimeout(function() {
+          showInsight(scene.insight);
+          // After 3 more seconds, advance to next scene
+          setTimeout(function() {
+            var next = (sceneIdx + 1) % scenes.length;
+            // Fade out
+            chat.style.opacity = '0';
+            chat.style.transition = 'opacity 0.35s ease';
+            setTimeout(function() {
+              currentScene = next;
+              chat.innerHTML = '';
+              hideInsight();
+              chat.style.opacity = '1';
+              playScene(next);
+            }, 350);
+          }, 3000);
+        }, 2000);
+      });
+    }, 400);
+  }
+
+  function startCal() {
+    if (started) return;
+    started = true;
+    playScene(0);
+  }
+
+  var calObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        startCal();
+        calObserver.disconnect();
+      }
+    });
+  }, { threshold: 0.3 });
+  calObserver.observe(phone);
+})();
 
 // ===== HERO VIDEO OVERLAY =====
 (function() {
