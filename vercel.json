@@ -1,3 +1,7 @@
 {
-  "outputDirectory": "public"
+  "rewrites": [
+    { "source": "/privacy", "destination": "/public/privacy/index.html" },
+    { "source": "/privacy/(.*)", "destination": "/public/privacy/$1" },
+    { "source": "/", "destination": "/version-b.html" }
+  ]
 }
