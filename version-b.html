@@ -148,46 +148,264 @@ p { color: #2C2C2C; }
 .hero-link { color: #4A8C7A; font-weight: 500; font-size: 0.95rem; transition: color 0.2s; }
 .hero-link:hover { color: #3a7264; }
 
-/* ========== HERO VIDEO ========== */
-.hero-video-wrap {
+/* ========== HERO PHONE WALKTHROUGH ========== */
+.hero-phone-wrap {
   position: relative;
-  border-radius: 28px;
-  overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.14), 0 1px 3px rgba(0,0,0,0.06);
-  max-width: 420px;
-  margin: 0 auto;
-  aspect-ratio: 9/16;
-  background: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
-.hero-video-wrap video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.hero-video-overlay {
+/* Aurora glow behind the phone */
+.hero-aurora {
   position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #fff;
-  font-size: 0.82rem;
-  font-weight: 500;
-  padding: 8px 16px;
-  border-radius: 20px;
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity 0.6s ease;
+  inset: -40px;
+  border-radius: 60px;
+  background: radial-gradient(ellipse 70% 60% at 50% 50%,
+    rgba(74,140,122,0.22) 0%,
+    rgba(32,90,120,0.14) 45%,
+    transparent 75%);
+  filter: blur(28px);
+  animation: heroAurora 8s ease-in-out infinite alternate;
   pointer-events: none;
-  letter-spacing: 0.01em;
-  border: 1px solid rgba(255,255,255,0.15);
-  max-width: 90%;
-  text-align: center;
+  z-index: 0;
 }
-.hero-video-overlay.visible { opacity: 1; }
+@keyframes heroAurora {
+  0%   { transform: scale(1) rotate(-2deg); opacity: 0.8; }
+  33%  { transform: scale(1.06) rotate(1deg); opacity: 1; }
+  66%  { transform: scale(0.96) rotate(-1deg); opacity: 0.85; }
+  100% { transform: scale(1.04) rotate(2deg); opacity: 0.95; }
+}
+/* iPhone shell */
+.hero-phone {
+  position: relative;
+  z-index: 1;
+  background: #1C1C1E;
+  border-radius: 48px;
+  box-shadow:
+    0 48px 96px rgba(0,0,0,0.28),
+    0 0 0 1px rgba(255,255,255,0.07),
+    inset 0 0 0 2px rgba(255,255,255,0.05);
+  overflow: hidden;
+  width: 300px;
+  max-width: 100%;
+}
+.hero-phone-notch {
+  position: absolute;
+  top: 0; left: 50%; transform: translateX(-50%);
+  width: 110px; height: 26px;
+  background: #1C1C1E;
+  border-radius: 0 0 16px 16px;
+  z-index: 10;
+}
+.hero-phone-statusbar {
+  background: #075E54;
+  padding: 30px 18px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.7);
+}
+.hero-phone-statusbar-time { font-weight: 600; color: #fff; font-size: 0.75rem; }
+.hero-phone-statusbar-icons { display: flex; gap: 5px; align-items: center; }
+.hero-phone-wa-header {
+  background: #075E54;
+  padding: 8px 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.hero-phone-wa-back { color: rgba(255,255,255,0.85); font-size: 1.3rem; line-height: 1; margin-right: 2px; }
+.hero-phone-wa-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a7264 0%, #5bb89a 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hero-phone-wa-avatar svg { width: 18px; height: 18px; }
+.hero-phone-wa-info { flex: 1; }
+.hero-phone-wa-name { font-weight: 600; font-size: 0.85rem; color: #fff; }
+.hero-phone-wa-status { font-size: 0.67rem; color: rgba(255,255,255,0.7); }
+.hero-phone-wa-icons { display: flex; gap: 12px; color: rgba(255,255,255,0.8); }
+/* Chat area */
+.hero-phone-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 10px;
+  min-height: 380px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  position: relative;
+}
+/* Insight badge inside hero phone */
+.hero-phone-insight {
+  background: linear-gradient(135deg, #F0F8F5 0%, #E8F5EF 100%);
+  border: 1px solid #A8D4C0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 0.73rem;
+  color: #3a7264;
+  font-style: italic;
+  margin: 0 10px 8px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.hero-phone-insight.hp-vis { opacity: 1; transform: translateY(0); }
+@keyframes hpPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74,140,122,0); }
+  50% { box-shadow: 0 0 0 5px rgba(74,140,122,0.12); }
+}
+.hero-phone-insight.hp-vis { animation: hpPulse 2s ease 0.5s 2; }
+/* Input bar */
+.hero-phone-input-bar {
+  background: #F0F0F0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.hero-phone-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #999;
+}
+.hero-phone-send {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hero-phone-send svg { width: 13px; height: 13px; fill: #fff; }
+/* Bubbles */
+.hp-bubble {
+  max-width: 86%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  word-break: break-word;
+  flex-shrink: 0;
+}
+.hp-bubble.hp-vis { opacity: 1; transform: translateY(0) scale(1); }
+.hp-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: #1a1a1a;
+}
+.hp-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.hp-time {
+  font-size: 0.6rem;
+  color: #9E9E9E;
+  text-align: right;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.hp-ticks { color: #53BDEB; font-size: 0.68rem; }
+/* Typing indicator */
+.hp-typing {
+  background: #fff;
+  align-self: flex-start;
+  border-radius: 10px;
+  border-bottom-left-radius: 3px;
+  padding: 9px 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  flex-shrink: 0;
+}
+.hp-typing.hp-vis { opacity: 1; transform: translateY(0); }
+.hp-typing span {
+  width: 6px; height: 6px;
+  background: #B0B0B0;
+  border-radius: 50%;
+  animation: hpDot 1.2s infinite ease-in-out;
+}
+.hp-typing span:nth-child(2) { animation-delay: 0.2s; }
+.hp-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes hpDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+/* Attachment bubbles in hero phone */
+.hp-attach-img {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 4px 4px 6px;
+  max-width: 200px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  flex-shrink: 0;
+}
+.hp-attach-img.hp-vis { opacity: 1; transform: translateY(0) scale(1); }
+.hp-attach-doc {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 5px 5px 6px;
+  max-width: 220px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  flex-shrink: 0;
+}
+.hp-attach-doc.hp-vis { opacity: 1; transform: translateY(0) scale(1); }
+/* Scene dots below the phone */
+.hero-phone-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+.hp-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(74,140,122,0.3);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.hp-dot.active { background: #4A8C7A; transform: scale(1.3); }
+@media (max-width: 1024px) {
+  .hero-phone { width: 260px; }
+  .hero-phone-chat { min-height: 320px; max-height: 320px; }
+}
+@media (max-width: 768px) {
+  .hero-phone-wrap { margin-top: 32px; }
+  .hero-phone { width: 100%; max-width: 300px; }
+}
 
 /* ========== WHATSAPP MOCKUP ========== */
 .wa-phone {
@@ -1718,11 +1936,52 @@ p { color: #2C2C2C; }
         </div>
       </div>
       <div class="fade-in fade-in-delay-2">
-        <div class="hero-video-wrap">
-          <video id="heroVideo" autoplay muted loop playsinline preload="auto">
-            <source src="familybrain_hero_premium.mp4" type="video/mp4">
-          </video>
-          <div class="hero-video-overlay" id="heroOverlay">Forwarding Izzy's school letter to FamilyBrain...</div>
+        <div class="hero-phone-wrap">
+          <div class="hero-aurora"></div>
+          <div class="hero-phone" id="hpPhone">
+            <div class="hero-phone-notch"></div>
+            <!-- Status bar -->
+            <div class="hero-phone-statusbar">
+              <span class="hero-phone-statusbar-time">08:41</span>
+              <div class="hero-phone-statusbar-icons">
+                <svg width="13" height="9" viewBox="0 0 14 10" fill="rgba(255,255,255,0.8)"><rect x="0" y="3" width="2" height="7" rx="1"/><rect x="3" y="2" width="2" height="8" rx="1"/><rect x="6" y="1" width="2" height="9" rx="1"/><rect x="9" y="0" width="2" height="10" rx="1"/></svg>
+                <svg width="11" height="9" viewBox="0 0 12 10" fill="rgba(255,255,255,0.8)"><path d="M6 2C3.8 2 1.8 2.9.4 4.4L2 6c1-.9 2.4-1.5 4-1.5s3 .6 4 1.5l1.6-1.6C10.2 2.9 8.2 2 6 2zm0-2C3.2 0 .7 1.1-.8 2.9L.8 4.5C2 3.1 3.9 2.2 6 2.2s4 .9 5.2 2.3l1.6-1.6C11.3 1.1 8.8 0 6 0zm0 4c-1.1 0-2.1.4-2.8 1.1L6 8l2.8-2.9C8.1 4.4 7.1 4 6 4z"/></svg>
+                <svg width="20" height="9" viewBox="0 0 22 10" fill="none"><rect x="0" y="1" width="18" height="8" rx="2" stroke="rgba(255,255,255,0.8)" stroke-width="1.2"/><rect x="1.5" y="2.5" width="13" height="5" rx="1" fill="rgba(255,255,255,0.8)"/><path d="M19.5 3.5v3c.8-.4 1.3-1 1.3-1.5s-.5-1.1-1.3-1.5z" fill="rgba(255,255,255,0.8)"/></svg>
+              </div>
+            </div>
+            <!-- WA Header -->
+            <div class="hero-phone-wa-header">
+              <span class="hero-phone-wa-back">&#8249;</span>
+              <div class="hero-phone-wa-avatar">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M9.5 2C7.6 2 6 3.6 6 5.5c0 .3 0 .6.1.9C4.3 7 3 8.6 3 10.5c0 1.2.5 2.3 1.3 3.1C3.5 14.3 3 15.4 3 16.5 3 18.4 4.6 20 6.5 20c.4 0 .8-.1 1.2-.2.6.8 1.5 1.2 2.5 1.2h3.6c1 0 1.9-.4 2.5-1.2.4.1.8.2 1.2.2 1.9 0 3.5-1.6 3.5-3.5 0-1.1-.5-2.2-1.3-2.9.8-.8 1.3-1.9 1.3-3.1 0-1.9-1.3-3.5-3.1-4.1.1-.3.1-.6.1-.9C17.5 3.6 15.9 2 14 2c-.9 0-1.7.3-2.3.9-.3-.3-.7-.5-1.1-.7-.3-.1-.7-.2-1.1-.2z" fill="rgba(255,255,255,0.9)"/>
+                </svg>
+              </div>
+              <div class="hero-phone-wa-info">
+                <div class="hero-phone-wa-name">FamilyBrain</div>
+                <div class="hero-phone-wa-status">online</div>
+              </div>
+              <div class="hero-phone-wa-icons">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+              </div>
+            </div>
+            <!-- Chat -->
+            <div class="hero-phone-chat" id="hpChat"></div>
+            <!-- Insight badge -->
+            <div class="hero-phone-insight" id="hpInsight"></div>
+            <!-- Input bar -->
+            <div class="hero-phone-input-bar">
+              <div class="hero-phone-input-field">Message</div>
+              <div class="hero-phone-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+            </div>
+          </div>
+          <!-- Scene dots -->
+          <div class="hero-phone-dots">
+            <div class="hp-dot active" id="hpDot0"></div>
+            <div class="hp-dot" id="hpDot1"></div>
+            <div class="hp-dot" id="hpDot2"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -2873,28 +3132,185 @@ function switchTab(tabName, btn) {
   calObserver.observe(phone);
 })();
 
-// ===== HERO VIDEO OVERLAY =====
+// ===== HERO PHONE WALKTHROUGH =====
 (function() {
-  var overlay = document.getElementById('heroOverlay');
-  if (!overlay) return;
-  // Phase 1: show first message after 2s
-  setTimeout(function() {
-    overlay.textContent = 'Forwarding Izzy\u2019s school letter to FamilyBrain...';
-    overlay.classList.add('visible');
-    // Phase 2: switch to confirmation after 2 more seconds
-    setTimeout(function() {
-      overlay.style.transition = 'opacity 0.4s ease';
-      overlay.style.opacity = '0';
+  var chat = document.getElementById('hpChat');
+  var insight = document.getElementById('hpInsight');
+  var dots = [document.getElementById('hpDot0'), document.getElementById('hpDot1'), document.getElementById('hpDot2')];
+  if (!chat) return;
+
+  // ---- Scene definitions ----
+  var scenes = [
+    {
+      insight: '\ud83d\udca1 Spotted a conflict. Resolved it. You didn\u2019t have to think about it.',
+      messages: [
+        { type: 'doc-attach', filename: 'St_Josephs_Trip_14May.pdf', filesize: '312 KB \u00b7 PDF', time: '09:40' },
+        { type: 'user', text: 'Just forwarded the school trip letter', time: '09:40', ticks: true },
+        { type: 'typing', duration: 1400 },
+        { type: 'bot', text: '\ud83d\udccb Got it! School trip to the Science Museum \u2014 Wednesday 14th May.\nAdded to the family calendar \u2705\n\u26a0\ufe0f Heads up: you have a dentist appointment at 4pm that day. Want me to move it?', time: '09:41' },
+        { type: 'user', text: 'Yes, move it to Thursday', time: '09:41', ticks: true },
+        { type: 'typing', duration: 1000 },
+        { type: 'bot', text: 'Done \u2705 Dentist rescheduled to Thursday 15th May. Calendar updated.', time: '09:42' }
+      ]
+    },
+    {
+      insight: '\ud83d\udca1 Proactive briefings every morning. No prompting needed.',
+      messages: [
+        { type: 'bot', text: 'Good morning Dan \ud83d\udc4b\n\ud83d\udcc5 Today \u2014 Tuesday 13th May\n\u2022 \ud83c\udfca Izzy: swimming 4pm \u2014 don\u2019t forget the kit bag\n\u2022 \ud83d\udccb School trip permission slip due Friday\n\u2022 \u2705 Dentist moved to Thursday \u2014 today\u2019s clear\n\nAnything to add?', time: '08:14' },
+        { type: 'user', text: 'Add Edi football Thursday 5pm', time: '08:15', ticks: true },
+        { type: 'typing', duration: 900 },
+        { type: 'bot', text: 'Done \u2705 Edi: football Thursday 5pm added.', time: '08:15' }
+      ]
+    },
+    {
+      insight: '\ud83d\udca1 FamilyBrain remembers the details so you don\u2019t have to.',
+      messages: [
+        { type: 'img-attach', filename: 'Prescription.jpg', time: '09:12' },
+        { type: 'typing', duration: 1200 },
+        { type: 'bot', text: '\ud83d\udccb Saved \u2014 Dr Patel\u2019s prescription for Izzy, 12th May.\nMedication: Amoxicillin 250mg, 7-day course.\nAdded to Izzy\u2019s medical notes. Reminder set for Day 4 to check in \u2705', time: '09:12' }
+      ]
+    }
+  ];
+
+  var currentScene = 0;
+
+  // ---- Bubble factory ----
+  function createBubble(msg) {
+    var el = document.createElement('div');
+    if (msg.type === 'typing') {
+      el.className = 'hp-typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    if (msg.type === 'img-attach') {
+      el.className = 'hp-attach-img';
+      el.innerHTML =
+        '<div class="wa-attach-img">' +
+          '<div class="wa-attach-img-bg">' +
+            '<div class="wa-attach-img-lines"></div>' +
+            '<div class="wa-attach-img-icon">' +
+              '<svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 1 12 8.8a3.2 3.2 0 0 1 0 6.4zm0-8.4a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 12 6.8zM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="wa-attach-caption">' + (msg.filename || 'Image.jpg') + '</div>' +
+        '<div class="wa-attach-time">' + msg.time + ' <span class="wa-attach-ticks">\u2713\u2713</span></div>';
+      return el;
+    }
+    if (msg.type === 'doc-attach') {
+      el.className = 'hp-attach-doc';
+      el.innerHTML =
+        '<div class="wa-attach-doc">' +
+          '<div class="wa-attach-doc-icon">' +
+            '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>' +
+          '</div>' +
+          '<div class="wa-attach-doc-meta">' +
+            '<div class="wa-attach-doc-name">' + (msg.filename || 'Document.pdf') + '</div>' +
+            '<div class="wa-attach-doc-size">' + (msg.filesize || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="wa-attach-time">' + msg.time + ' <span class="wa-attach-ticks">\u2713\u2713</span></div>';
+      return el;
+    }
+    el.className = 'hp-bubble ' + (msg.type === 'user' ? 'hp-user' : 'hp-bot');
+    var textDiv = document.createElement('div');
+    textDiv.style.whiteSpace = 'pre-wrap';
+    textDiv.textContent = msg.text;
+    el.appendChild(textDiv);
+    var timeRow = document.createElement('div');
+    timeRow.className = 'hp-time';
+    timeRow.textContent = msg.time;
+    if (msg.ticks) {
+      var ticks = document.createElement('span');
+      ticks.className = 'hp-ticks';
+      ticks.textContent = '\u2713\u2713';
+      timeRow.appendChild(ticks);
+    }
+    el.appendChild(timeRow);
+    return el;
+  }
+
+  // ---- Run message sequence ----
+  function runMessages(msgs, idx, onDone) {
+    if (idx >= msgs.length) { if (onDone) onDone(); return; }
+    var msg = msgs[idx];
+    if (msg.type === 'typing') {
+      var typingEl = createBubble(msg);
+      chat.appendChild(typingEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { typingEl.classList.add('hp-vis'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
       setTimeout(function() {
-        overlay.textContent = '\u2713 Done. FamilyBrain has it.';
-        overlay.style.opacity = '1';
-        // Fade out after 3s
+        if (chat.contains(typingEl)) chat.removeChild(typingEl);
+        runMessages(msgs, idx + 1, onDone);
+      }, msg.duration);
+    } else {
+      var bubbleEl = createBubble(msg);
+      chat.appendChild(bubbleEl);
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() { bubbleEl.classList.add('hp-vis'); });
+      });
+      chat.scrollTop = chat.scrollHeight;
+      var delay = (idx + 1 < msgs.length && msgs[idx + 1].type === 'typing') ? 500 : 700;
+      setTimeout(function() { runMessages(msgs, idx + 1, onDone); }, delay);
+    }
+  }
+
+  // ---- Show / hide insight badge ----
+  function showInsight(text) {
+    if (!insight) return;
+    insight.textContent = text;
+    insight.classList.remove('hp-vis');
+    void insight.offsetWidth;
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() { insight.classList.add('hp-vis'); });
+    });
+  }
+  function hideInsight() {
+    if (!insight) return;
+    insight.classList.remove('hp-vis');
+    insight.textContent = '';
+  }
+
+  // ---- Update scene dots ----
+  function setDot(idx) {
+    dots.forEach(function(d, i) {
+      if (d) d.classList.toggle('active', i === idx);
+    });
+  }
+
+  // ---- Play a scene ----
+  function playScene(sceneIdx) {
+    var scene = scenes[sceneIdx];
+    setDot(sceneIdx);
+    chat.innerHTML = '';
+    hideInsight();
+    setTimeout(function() {
+      runMessages(scene.messages, 0, function() {
+        // Show insight badge after 1.5s
         setTimeout(function() {
-          overlay.style.opacity = '0';
-        }, 3000);
-      }, 400);
-    }, 2000);
-  }, 2000);
+          showInsight(scene.insight);
+          // After 2s pause, transition to next scene
+          setTimeout(function() {
+            var next = (sceneIdx + 1) % scenes.length;
+            chat.style.opacity = '0';
+            chat.style.transition = 'opacity 0.35s ease';
+            setTimeout(function() {
+              currentScene = next;
+              chat.innerHTML = '';
+              hideInsight();
+              chat.style.opacity = '1';
+              playScene(next);
+            }, 350);
+          }, 2000);
+        }, 1500);
+      });
+    }, 500);
+  }
+
+  // Autoplay immediately on page load (no scroll trigger needed for hero)
+  playScene(0);
 })();
 
 // ===== SCREEN RECORDING WALKTHROUGH =====
