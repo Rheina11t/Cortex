@@ -80,31 +80,19 @@ def _notify_family(family_id: str, sender: str, subject: str, summary: str, acti
     if not family_phones:
         return
 
-    # Twilio client for WhatsApp notifications
-    twilio_client = None
-    try:
-        from twilio.rest import Client as TwilioClient
-        if settings.twilio_account_sid and settings.twilio_auth_token:
-            twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
-    except Exception as exc:
-        logger.warning("Could not initialise Twilio client: %s", exc)
-        return
+    from . import meta_whatsapp
 
-    if not twilio_client:
-        return
-
-    notification_body = f"📧 New email from {sender}: {subject}\n\n{summary}"
+    notification_body = f"\U0001f4e7 New email from {sender}: {subject}\n\n{summary}"
     
     if event_name and event_date:
-        notification_body += f"\n\n✅ '{event_name}' detected for {event_date}."
+        notification_body += f"\n\n\u2705 '{event_name}' detected for {event_date}."
     elif action_required:
         deadline_str = f" Deadline: {deadline}." if deadline else ""
-        notification_body += f"\n\n⚠️ Action needed.{deadline_str}"
+        notification_body += f"\n\n\u26a0\ufe0f Action needed.{deadline_str}"
 
     for phone in family_phones:
         try:
-            twilio_client.messages.create(
-                from_=settings.twilio_whatsapp_from,
+            meta_whatsapp.send_whatsapp_message(
                 to=f"whatsapp:{phone}",
                 body=notification_body,
             )

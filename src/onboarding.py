@@ -40,7 +40,11 @@ from typing import Any, Optional
 import stripe
 from flask import Flask, Response, jsonify, redirect, request
 from supabase import create_client
-from twilio.rest import Client as TwilioClient
+# Twilio import is now handled by meta_whatsapp transport layer
+try:
+    from . import meta_whatsapp as _meta_wa
+except ImportError:
+    import meta_whatsapp as _meta_wa  # fallback for standalone execution
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -77,13 +81,11 @@ def _get_supabase():
 
 
 # ---------------------------------------------------------------------------
-# Twilio client
+# WhatsApp messaging (transport-agnostic via meta_whatsapp)
 # ---------------------------------------------------------------------------
-def _get_twilio() -> Optional[TwilioClient]:
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-        logger.warning("Twilio credentials not configured — WhatsApp messages will be skipped")
-        return None
-    return TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+def _send_wa(to: str, body: str) -> None:
+    """Send a WhatsApp message via the transport-agnostic layer."""
+    _meta_wa.send_whatsapp_message(to=to, body=body)
 
 
 # ---------------------------------------------------------------------------
@@ -130,10 +132,7 @@ def _send_welcome_whatsapp(
     plan: str,
 ) -> None:
     """Send a welcome WhatsApp message to the primary number and all family members."""
-    twilio = _get_twilio()
-    if not twilio or not TWILIO_WHATSAPP_FROM:
-        logger.warning("Skipping welcome WhatsApp — Twilio not configured")
-        return
+    # Transport-agnostic WhatsApp sending
 
     first_name = primary_name.split()[0] if primary_name else "there"
     plan_display = {
@@ -168,11 +167,7 @@ def _send_welcome_whatsapp(
     # Send to primary number
     to_number = primary_phone if primary_phone.startswith("whatsapp:") else f"whatsapp:{primary_phone}"
     try:
-        twilio.messages.create(
-            from_=TWILIO_WHATSAPP_FROM,
-            to=to_number,
-            body=welcome_msg,
-        )
+        _send_wa(to_number, welcome_msg)
         logger.info("Welcome WhatsApp sent to %s", primary_phone)
     except Exception as exc:
         logger.error("Failed to send welcome WhatsApp to %s: %s", primary_phone, exc)
@@ -190,11 +185,7 @@ def _send_welcome_whatsapp(
                 continue
             to = phone if phone.startswith("whatsapp:") else f"whatsapp:{phone}"
             try:
-                twilio.messages.create(
-                    from_=TWILIO_WHATSAPP_FROM,
-                    to=to,
-                    body=member_msg,
-                )
+                _send_wa(to, member_msg)
                 logger.info("Member welcome sent to %s", phone)
             except Exception as exc:
                 logger.error("Failed to send member welcome to %s: %s", phone, exc)

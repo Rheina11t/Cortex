@@ -47,13 +47,21 @@ except ImportError:
     _rrulestr = None  # type: ignore
     _DATEUTIL_AVAILABLE = False
 
-from twilio.request_validator import RequestValidator
-from twilio.twiml.messaging_response import MessagingResponse
+# Twilio imports are conditional — only needed when USE_META_API is not enabled
+try:
+    from twilio.request_validator import RequestValidator
+    from twilio.twiml.messaging_response import MessagingResponse
+    _TWILIO_AVAILABLE = True
+except ImportError:
+    RequestValidator = None  # type: ignore
+    MessagingResponse = None  # type: ignore
+    _TWILIO_AVAILABLE = False
 
 from .config import get_settings, logger as root_logger
 from . import brain
 from . import entity_graph
 from . import stripe_billing
+from . import meta_whatsapp
 import threading
 
 logger = logging.getLogger("open_brain.whatsapp")
@@ -62,8 +70,15 @@ logger = logging.getLogger("open_brain.whatsapp")
 # Initialise settings and core brain module
 # ---------------------------------------------------------------------------
 settings = get_settings()
-settings.validate_twilio()
+settings.validate_twilio()  # validates Meta or Twilio depending on USE_META_API
 brain.init(settings)
+
+# Feature flag: when True, use Meta Cloud API; when False, use Twilio
+_USE_META_API = meta_whatsapp.is_meta_api_enabled()
+if _USE_META_API:
+    logger.info("WhatsApp transport: Meta Cloud API (direct)")
+else:
+    logger.info("WhatsApp transport: Twilio")
 
 # ---------------------------------------------------------------------------
 # Conversation history
@@ -889,9 +904,16 @@ def _validate_twilio_request(f: Callable) -> Callable:
 
     Uses the TWILIO_AUTH_TOKEN to verify the X-Twilio-Signature header.
     Returns HTTP 403 if the signature is invalid.
+
+    When USE_META_API is enabled, this decorator is a no-op because Meta
+    webhook validation is handled separately in the route handler.
     """
     @wraps(f)
     def decorated(*args: Any, **kwargs: Any) -> Any:
+        # When using Meta Cloud API, skip Twilio signature validation
+        if _USE_META_API:
+            return f(*args, **kwargs)
+
         auth_token = settings.twilio_auth_token
         if not auth_token:
             # If no auth token is configured, skip validation (dev/test mode)
@@ -934,6 +956,55 @@ app = Flask(__name__)
 # Register Stripe billing routes (/join, /subscribe, /stripe/*)
 # ---------------------------------------------------------------------------
 app.register_blueprint(stripe_billing.billing_bp)
+
+
+# ---------------------------------------------------------------------------
+# Transport-agnostic response helpers
+# ---------------------------------------------------------------------------
+
+def _make_response(*messages: str, from_number: str = "") -> Response:
+    """Build a webhook response containing one or more reply messages.
+
+    In **Twilio mode** this returns TwiML XML with ``<Message>`` elements.
+    In **Meta mode** the replies are sent proactively via the Cloud API and
+    we return a plain JSON 200 acknowledgement (Meta does not support inline
+    reply bodies in the webhook response).
+    """
+    if _USE_META_API:
+        for msg in messages:
+            if msg:
+                try:
+                    meta_whatsapp.send_text_message(from_number, msg)
+                except Exception as exc:
+                    logger.error("Meta reply failed to %s: %s", from_number, exc)
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
+    else:
+        twiml = MessagingResponse()
+        for msg in messages:
+            if msg:
+                twiml.message(msg)
+        return Response(str(twiml), mimetype="application/xml")
+
+
+def _send_proactive_message(to: str, body: str, **kwargs) -> None:
+    """Send a proactive WhatsApp message (outside a webhook response).
+
+    This is used by background jobs (briefings, calendar sync, alerts,
+    deletion notifications, etc.) that need to send messages without an
+    active webhook request/response cycle.
+
+    Delegates to ``meta_whatsapp.send_whatsapp_message`` which checks the
+    feature flag internally.
+    """
+    meta_whatsapp.send_whatsapp_message(to=to, body=body, **kwargs)
+
+
+def _empty_response() -> Response:
+    """Return an empty webhook acknowledgement (no reply message)."""
+    if _USE_META_API:
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
+    else:
+        return Response(str(MessagingResponse()), mimetype="application/xml")
 
 
 @app.route("/whatsapp/health", methods=["GET"])
@@ -2029,26 +2100,17 @@ def gcal_callback() -> Response:
         
         # Send confirmation WhatsApp message and school email onboarding prompt
         try:
-            from twilio.rest import Client as TwilioClient
-            _s = get_settings()
-            if _s.twilio_account_sid and _s.twilio_auth_token:
-                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-                twilio_client.messages.create(
-                    from_=_s.twilio_whatsapp_from,
-                    to=f"whatsapp:{phone}",
-                    body="✅ Google Calendar connected successfully! I will now sync your events.",
-                )
-                
-                # Send follow-up prompt for school email watching
-                twilio_client.messages.create(
-                    from_=_s.twilio_whatsapp_from,
-                    to=f"whatsapp:{phone}",
-                    body="One more thing — want me to watch for school emails too? I'll automatically pick up letters, trip reminders, and payment deadlines. I only look at emails from your child's school — never personal, work, or financial emails.\n\nReply YES to connect school emails, or SKIP to set up manually later.",
-                )
-                
-                # Set pending state for school email onboarding
-                _pending_school_email_onboarding[f"whatsapp:{phone}"] = family_id
-                
+            _send_proactive_message(
+                to=f"whatsapp:{phone}",
+                body="\u2705 Google Calendar connected successfully! I will now sync your events.",
+            )
+            # Send follow-up prompt for school email watching
+            _send_proactive_message(
+                to=f"whatsapp:{phone}",
+                body="One more thing \u2014 want me to watch for school emails too? I'll automatically pick up letters, trip reminders, and payment deadlines. I only look at emails from your child's school \u2014 never personal, work, or financial emails.\n\nReply YES to connect school emails, or SKIP to set up manually later.",
+            )
+            # Set pending state for school email onboarding
+            _pending_school_email_onboarding[f"whatsapp:{phone}"] = family_id
         except Exception as exc:
             logger.warning("Failed to send confirmation WhatsApp message: %s", exc)
             
@@ -2065,19 +2127,138 @@ def gcal_callback() -> Response:
         return Response("<h1>Error</h1><p>Failed to complete Google login.</p>", status=500)
 
 
+# ---------------------------------------------------------------------------
+# Meta webhook verification (GET) — required for Meta Cloud API setup
+# ---------------------------------------------------------------------------
+@app.route("/whatsapp", methods=["GET"])
+@app.route("/webhook/whatsapp", methods=["GET"])
+def handle_whatsapp_verify() -> Response:
+    """Handle Meta's webhook verification GET request.
+
+    Meta sends:
+        GET /webhook/whatsapp?hub.mode=subscribe&hub.verify_token=<token>&hub.challenge=<challenge>
+    We must return the hub.challenge value with HTTP 200 if the token matches.
+    This endpoint is only active when USE_META_API is enabled.
+    """
+    if not _USE_META_API:
+        return Response("Not Found", status=404)
+
+    hub_mode = request.args.get("hub.mode", "")
+    hub_verify_token = request.args.get("hub.verify_token", "")
+    hub_challenge = request.args.get("hub.challenge", "")
+
+    body, status = meta_whatsapp.verify_webhook(hub_mode, hub_verify_token, hub_challenge)
+    return Response(body, status=status, mimetype="text/plain")
+
+
+# ---------------------------------------------------------------------------
+# Main webhook handler (POST) — handles both Twilio and Meta payloads
+# ---------------------------------------------------------------------------
 @app.route("/whatsapp", methods=["POST"])
-@app.route("/webhook/whatsapp", methods=["POST"])  # alias — matches Twilio console config
+@app.route("/webhook/whatsapp", methods=["POST"])  # alias — matches both Twilio and Meta config
 @_validate_twilio_request
 def handle_whatsapp() -> Response:
-    """Main Twilio webhook handler for incoming WhatsApp messages.
-    Registered on both /whatsapp (legacy) and /webhook/whatsapp (current Twilio config).
+    """Main webhook handler for incoming WhatsApp messages.
 
-    Twilio sends a POST with form-encoded fields including:
-      - From: the sender's WhatsApp number (e.g. "whatsapp:+447700900000")
-      - Body: the text body of the message
-      - NumMedia: number of media attachments
-      - MediaUrl0, MediaContentType0: URL and MIME type of the first attachment
+    Supports two transports controlled by the USE_META_API feature flag:
+
+    **Twilio mode** (default):
+        Twilio sends a POST with form-encoded fields including:
+          - From: the sender's WhatsApp number (e.g. "whatsapp:+447700900000")
+          - Body: the text body of the message
+          - NumMedia: number of media attachments
+          - MediaUrl0, MediaContentType0: URL and MIME type of the first attachment
+
+    **Meta Cloud API mode** (USE_META_API=true):
+        Meta sends a POST with a JSON body. The message is nested at:
+          entry[0].changes[0].value.messages[0]
+        Media is referenced by media ID (not URL) and must be downloaded separately.
     """
+    if _USE_META_API:
+        return _handle_meta_webhook()
+    return _handle_twilio_webhook()
+
+
+def _handle_meta_webhook() -> Response:
+    """Process an incoming Meta Cloud API webhook POST."""
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        payload = {}
+
+    # Parse the incoming message
+    parsed = meta_whatsapp.parse_incoming_message(payload)
+    if parsed is None:
+        # Not a user message (status update, delivery receipt, etc.) — acknowledge
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
+
+    from_number = parsed["from_number"]
+    message_body = parsed["body"].strip()
+    num_media = parsed["num_media"]
+    media_id = parsed["media_id"]
+    media_mime_type = parsed["media_mime_type"]
+    meta_message_id = parsed["message_id"]
+
+    logger.info(
+        "Incoming Meta WhatsApp message from=%s, body_len=%d, num_media=%d",
+        from_number, len(message_body), num_media,
+    )
+
+    # Mark as read (sends blue ticks) — fire and forget
+    try:
+        threading.Thread(
+            target=meta_whatsapp.mark_as_read,
+            args=(meta_message_id,),
+            daemon=True,
+        ).start()
+    except Exception:
+        pass
+
+    # --- Authorisation check ---
+    family_name = _get_family_name(from_number)
+    if family_name is None:
+        logger.warning("Rejected message from unauthorised number: %s", from_number)
+        meta_whatsapp.send_text_message(
+            from_number,
+            "Sorry, this is a private Family Brain bot. "
+            "Your number is not authorised. "
+            "Please ask the bot owner to add your WhatsApp number.",
+        )
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
+
+    # --- Subscription status check ---
+    _family_id_for_sub_check = _get_family_id_for_phone(from_number)
+    if not stripe_billing.is_subscription_active(_family_id_for_sub_check):
+        logger.info(
+            "Blocked message from inactive subscriber: family=%s phone=%s",
+            _family_id_for_sub_check, from_number,
+        )
+        meta_whatsapp.send_text_message(
+            from_number,
+            "Your FamilyBrain subscription is inactive. "
+            "To reactivate, visit familybrain.co.uk/subscribe",
+        )
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
+
+    # --- Route to appropriate handler ---
+    if num_media > 0 and media_id:
+        return _handle_media_message(
+            media_url=media_id,  # For Meta, this is the media ID (not a URL)
+            mime_type=media_mime_type,
+            caption=message_body,
+            family_name=family_name,
+            from_number=from_number,
+        )
+
+    return _handle_text_message(
+        text=message_body,
+        family_name=family_name,
+        from_number=from_number,
+    )
+
+
+def _handle_twilio_webhook() -> Response:
+    """Process an incoming Twilio webhook POST (legacy path)."""
     from_number: str = request.values.get("From", "").strip()
     message_body: str = request.values.get("Body", "").strip()
     num_media: int = int(request.values.get("NumMedia", "0"))
@@ -2091,29 +2272,25 @@ def handle_whatsapp() -> Response:
     family_name = _get_family_name(from_number)
     if family_name is None:
         logger.warning("Rejected message from unauthorised number: %s", from_number)
-        twiml = MessagingResponse()
-        twiml.message(
+        return _make_response(
             "Sorry, this is a private Family Brain bot. "
             "Your number is not authorised. "
-            "Please ask the bot owner to add your WhatsApp number."
+            "Please ask the bot owner to add your WhatsApp number.",
+            from_number=from_number,
         )
-        return Response(str(twiml), mimetype="application/xml")
 
     # --- Subscription status check ---
-    # Grandfathered family-dan is always exempt.
-    # For all other families, if subscription is inactive, block and prompt to reactivate.
     _family_id_for_sub_check = _get_family_id_for_phone(from_number)
     if not stripe_billing.is_subscription_active(_family_id_for_sub_check):
         logger.info(
             "Blocked message from inactive subscriber: family=%s phone=%s",
             _family_id_for_sub_check, from_number,
         )
-        twiml = MessagingResponse()
-        twiml.message(
+        return _make_response(
             "Your FamilyBrain subscription is inactive. "
-            "To reactivate, visit familybrain.co.uk/subscribe"
+            "To reactivate, visit familybrain.co.uk/subscribe",
+            from_number=from_number,
         )
-        return Response(str(twiml), mimetype="application/xml")
 
     # --- Route to appropriate handler ---
     if num_media > 0:
@@ -2250,10 +2427,10 @@ Answer:'''
 
 def _answer_query(text: str, from_number: str, conversation_history: list[dict] | None = None) -> Response:
     """Handle a message that has been identified as a query."""
-    twiml = MessagingResponse()
     logger.info("Handling message as a query: %s", text)
     family_name = _get_family_name(from_number) or "Unknown"
     family_id = _get_family_id_for_phone(from_number)
+    reply_text = ""
 
     try:
         # Step 1: Expand query with synonyms and perform semantic search
@@ -2553,15 +2730,14 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             else:
                 reply_text = "I don't have anything stored about that yet. Send me the information and I'll remember it for next time."
 
-        twiml.message(reply_text)
         logger.info("Answered query with %d sources", len(results))
         log_action(family_id, 'query_answered', subject=text[:50], detail={'sources': len(results)}, phone_number=from_number)
 
     except Exception as exc:
         logger.error("Failed to answer query: %s\n%s", exc, traceback.format_exc())
-        twiml.message(f"⚠️ Failed to answer query: {exc}")
+        reply_text = f"⚠️ Failed to answer query: {exc}"
 
-    return Response(str(twiml), mimetype="application/xml")
+    return _make_response(reply_text, from_number=from_number)
 
 
 # ---------------------------------------------------------------------------
@@ -2581,7 +2757,6 @@ _pending_school_email_onboarding: dict[str, str] = {}
 
 def _handle_memory_management(text: str, family_name: str, from_number: str) -> Response | None:
     """Handle memory management commands. Returns a Response if handled, else None."""
-    twiml = MessagingResponse()
     family_id = _get_family_id_for_phone(from_number)
     text_lower = text.lower().strip()
 
@@ -2605,22 +2780,21 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
                             current_meta["emergency_category"] = cat_num
                             db.table("memories").update({"metadata": current_meta}).eq("id", memory_id).execute()
                             cat_name = _EMERGENCY_CATEGORY_NAMES.get(cat_num, cat_num)
-                            twiml.message(f"✅ Categorised under '{cat_name}' in your emergency file.")
+                            reply_msg = f"✅ Categorised under '{cat_name}' in your emergency file."
                             logger.info("Emergency category %s set on memory %s by %s", cat_num, memory_id, from_number)
                         else:
-                            twiml.message("✅ Got it! (Memory not found to update, but noted.)")
+                            reply_msg = "✅ Got it! (Memory not found to update, but noted.)"
                     except Exception as exc:
                         logger.warning("Failed to update emergency_category: %s", exc)
-                        twiml.message("✅ Got it! (Couldn't save category, but no worries.)")
+                        reply_msg = "✅ Got it! (Couldn't save category, but no worries.)"
                 else:
-                    twiml.message("✅ Got it!")
+                    reply_msg = "✅ Got it!"
             else:
-                twiml.message("✅ Got it!")
-            return Response(str(twiml), mimetype="application/xml")
+                reply_msg = "✅ Got it!"
+            return _make_response(reply_msg, from_number=from_number)
         elif text_lower.strip() in ("skip", "no", "cancel", "later"):
             del _pending_category_prompt[from_number]
-            twiml.message("OK, skipped. You can always send /sos to generate your emergency file.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("OK, skipped. You can always send /sos to generate your emergency file.", from_number=from_number)
         # If it's not a number or skip, fall through to normal handling
         # (don't consume the message)
         del _pending_category_prompt[from_number]
@@ -2633,12 +2807,10 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             db = brain._supabase
             if db:
                 db.table("memories").delete().eq("id", pending["memory_id"]).execute()
-            twiml.message(f"✅ Memory deleted.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("✅ Memory deleted.", from_number=from_number)
         elif text_lower in ("no", "n", "cancel", "keep"):
             del _pending_deletes[from_number]
-            twiml.message("OK, kept. Nothing was deleted.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("OK, kept. Nothing was deleted.", from_number=from_number)
 
     # --- Confirm pending edit ---
     if from_number in _pending_edits:
@@ -2652,14 +2824,13 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
                 try:
                     new_embedding = brain.generate_embedding(new_content)
                     db.table("memories").update({"content": new_content, "embedding": new_embedding}).eq("id", memory_id).execute()
-                    twiml.message(f"✅ Memory updated.")
+                    edit_reply = "✅ Memory updated."
                 except Exception as exc:
-                    twiml.message(f"⚠️ Update failed: {exc}")
-            return Response(str(twiml), mimetype="application/xml")
+                    edit_reply = f"⚠️ Update failed: {exc}"
+            return _make_response(edit_reply, from_number=from_number)
         elif text_lower in ("no", "n", "cancel"):
             del _pending_edits[from_number]
-            twiml.message("OK, cancelled. Nothing was changed.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("OK, cancelled. Nothing was changed.", from_number=from_number)
 
     # --- Handle pending school email onboarding ---
     if from_number in _pending_school_email_onboarding:
@@ -2669,8 +2840,7 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             db = brain._supabase
             if db:
                 db.table("families").update({"school_email_watch": True}).eq("family_id", family_id).execute()
-            twiml.message("✅ School email watching connected! I'll keep an eye out for letters, trips, and deadlines.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("✅ School email watching connected! I'll keep an eye out for letters, trips, and deadlines.", from_number=from_number)
         elif text_lower in ("skip", "no", "n", "later"):
             del _pending_school_email_onboarding[from_number]
             
@@ -2685,8 +2855,7 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
                 except Exception:
                     pass
                     
-            twiml.message(f"No problem! You can forward school emails to {fallback_email} any time and I'll handle them automatically.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response(f"No problem! You can forward school emails to {fallback_email} any time and I'll handle them automatically.", from_number=from_number)
 
     # --- Confirm pending recurring event ---
     if from_number in _pending_recurring_events:
@@ -2719,19 +2888,17 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             if event_id:
                 log_action(family_id, 'event_created', subject=f"{event_name} {freq_str}", detail={'event_id': event_id, 'recurrence_rule': rule, 'family_member': event_data.get('family_member', family_name)}, phone_number=from_number)
                 
-            twiml.message(reply)
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response(reply, from_number=from_number)
         elif text_lower in ("no", "n", "cancel", "stop"):
             del _pending_recurring_events[from_number]
-            twiml.message("No problem — I've cancelled that. Send me the corrected details whenever you're ready.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("No problem — I've cancelled that. Send me the corrected details whenever you're ready.", from_number=from_number)
 
     # --- List recent memories ---
     list_patterns = ("show my memories", "list my memories", "what have you stored", "show recent", "list recent", "what do you know about me", "show me what you've stored")
     if any(text_lower.startswith(p) or p in text_lower for p in list_patterns):
         memories = brain.list_recent_memories(limit=8, family_id=family_id)
         if not memories:
-            twiml.message("You don't have any stored memories yet.")
+            return _make_response("You don't have any stored memories yet.", from_number=from_number)
         else:
             lines = ["Here are your 8 most recent memories:\n"]
             for i, m in enumerate(memories, 1):
@@ -2739,8 +2906,7 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
                 lines.append(f"{i}. {snippet}...")
             lines.append("\nTo delete one, say \"delete memory 3\" (or whichever number).")
             lines.append("To correct one, say \"correct memory 3: [new text]\"")
-            twiml.message("\n".join(lines))
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response("\n".join(lines), from_number=from_number)
 
     # --- Delete by number (after list) ---
     import re as _re2
@@ -2751,10 +2917,9 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
         if 0 <= idx < len(memories):
             mem = memories[idx]
             _pending_deletes[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120]}
-            twiml.message(f"Are you sure you want to delete this memory?\n\n\"{_pending_deletes[from_number]['preview']}\"\n\nReply YES to confirm or NO to cancel.")
+            return _make_response(f"Are you sure you want to delete this memory?\n\n\"{_pending_deletes[from_number]['preview']}\"\n\nReply YES to confirm or NO to cancel.", from_number=from_number)
         else:
-            twiml.message(f"I couldn't find memory number {idx+1}. Say \"show my memories\" to see the list.")
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response(f"I couldn't find memory number {idx+1}. Say \"show my memories\" to see the list.", from_number=from_number)
 
     # --- Delete by description ---
     delete_desc_match = _re2.match(r'delete\s+(?:the\s+)?(?:memory\s+)?(?:about\s+)?(.+)', text_lower)
@@ -2765,10 +2930,9 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             if results:
                 mem = results[0]
                 _pending_deletes[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120]}
-                twiml.message(f"Did you mean this memory?\n\n\"{_pending_deletes[from_number]['preview']}\"\n\nReply YES to delete or NO to cancel.")
+                return _make_response(f"Did you mean this memory?\n\n\"{_pending_deletes[from_number]['preview']}\"\n\nReply YES to delete or NO to cancel.", from_number=from_number)
             else:
-                twiml.message(f"I couldn't find a memory matching \"{query}\". Say \"show my memories\" to see the full list.")
-            return Response(str(twiml), mimetype="application/xml")
+                return _make_response(f"I couldn't find a memory matching \"{query}\". Say \"show my memories\" to see the full list.", from_number=from_number)
 
     # --- Correct/update by number ---
     correct_match = _re2.match(r'(?:correct|update|edit|change)\s+(?:memory\s+)?(\d+)\s*[:\-]?\s*(.+)', text_lower)
@@ -2779,12 +2943,12 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
         if 0 <= idx < len(memories):
             mem = memories[idx]
             _pending_edits[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120], "new_content": new_content}
-            twiml.message(
-                f"Update this memory:\n\nOLD: \"{_pending_edits[from_number]['preview']}\"\n\nNEW: \"{new_content}\"\n\nReply YES to confirm or NO to cancel."
+            return _make_response(
+                f"Update this memory:\n\nOLD: \"{_pending_edits[from_number]['preview']}\"\n\nNEW: \"{new_content}\"\n\nReply YES to confirm or NO to cancel.",
+                from_number=from_number,
             )
         else:
-            twiml.message(f"I couldn't find memory number {idx+1}. Say \"show my memories\" to see the list.")
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response(f"I couldn't find memory number {idx+1}. Say \"show my memories\" to see the list.", from_number=from_number)
 
     # --- Correct/update by description ---
     correct_desc_match = _re2.match(r'(?:correct|update|edit|change|fix)\s+(?:the\s+)?(?:memory\s+)?(?:about\s+)?(.+?)\s*[:\-]\s*(.+)', text_lower)
@@ -2796,19 +2960,18 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
             if results:
                 mem = results[0]
                 _pending_edits[from_number] = {"memory_id": mem["id"], "preview": mem.get("content", "")[:120], "new_content": new_content}
-                twiml.message(
-                    f"Update this memory?\n\nOLD: \"{_pending_edits[from_number]['preview']}\"\n\nNEW: \"{new_content}\"\n\nReply YES to confirm or NO to cancel."
+                return _make_response(
+                    f"Update this memory?\n\nOLD: \"{_pending_edits[from_number]['preview']}\"\n\nNEW: \"{new_content}\"\n\nReply YES to confirm or NO to cancel.",
+                    from_number=from_number,
                 )
             else:
-                twiml.message(f"I couldn't find a memory matching \"{query}\". Say \"show my memories\" to see the full list.")
-            return Response(str(twiml), mimetype="application/xml")
+                return _make_response(f"I couldn't find a memory matching \"{query}\". Say \"show my memories\" to see the full list.", from_number=from_number)
 
     # --- Forget everything (nuclear option) ---
     if text_lower in ("forget everything", "delete all memories", "clear all memories", "wipe everything"):
         count = len(brain.list_recent_memories(limit=1000, family_id=family_id))
         _pending_deletes[from_number] = {"memory_id": "__ALL__", "preview": f"ALL {count} memories"}
-        twiml.message(f"⚠️ Are you sure you want to delete ALL {count} memories? This cannot be undone.\n\nReply YES to confirm or NO to cancel.")
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response(f"⚠️ Are you sure you want to delete ALL {count} memories? This cannot be undone.\n\nReply YES to confirm or NO to cancel.", from_number=from_number)
 
     return None  # Not a memory management command
 
@@ -2825,19 +2988,18 @@ def _handle_delete_my_data_command(from_number: str, family_id: str) -> Response
     ``_handle_data_deletion_confirmation()`` when the user replies DELETE.
     """
     _pending_data_deletion[from_number] = family_id
-    twiml = MessagingResponse()
-    twiml.message(
-        "Are you sure you want to delete your personal FamilyBrain data? "
-        "This will remove all memories, documents, and calendar events "
-        "submitted by you.\n\n"
-        "Reply DELETE to confirm.\n\n"
-        "(To delete the entire family's data, use /delete-all-family-data)"
-    )
     logger.info(
         "Personal data deletion confirmation requested by %s (family_id=%s)",
         from_number, family_id,
     )
-    return Response(str(twiml), mimetype="application/xml")
+    return _make_response(
+        "Are you sure you want to delete your personal FamilyBrain data? "
+        "This will remove all memories, documents, and calendar events "
+        "submitted by you.\n\n"
+        "Reply DELETE to confirm.\n\n"
+        "(To delete the entire family's data, use /delete-all-family-data)",
+        from_number=from_number,
+    )
 
 
 def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
@@ -3017,17 +3179,14 @@ def _handle_full_family_wipe_command(from_number: str, family_name: str, family_
     Creates a pending delete_requests record and notifies all adult members
     to confirm.
     """
-    twiml = MessagingResponse()
     db = brain._supabase
     if not db:
-        twiml.message("Database connection error. Please try again later.")
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response("Database connection error. Please try again later.", from_number=from_number)
 
     # Check if there's already a pending request
     existing = db.table("delete_requests").select("id").eq("family_id", family_id).eq("status", "pending").execute()
     if existing.data:
-        twiml.message("There is already a pending full deletion request for your family. Please check your messages and reply YES to confirm.")
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response("There is already a pending full deletion request for your family. Please check your messages and reply YES to confirm.", from_number=from_number)
 
     # Create the request
     try:
@@ -3039,8 +3198,7 @@ def _handle_full_family_wipe_command(from_number: str, family_name: str, family_
         }).execute()
     except Exception as exc:
         logger.error("Failed to create delete_request: %s", exc)
-        twiml.message("Failed to initiate deletion request. Please try again.")
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response("Failed to initiate deletion request. Please try again.", from_number=from_number)
 
     # Fetch all family members
     members_res = db.table("whatsapp_members").select("phone").eq("family_id", family_id).execute()
@@ -3050,30 +3208,19 @@ def _handle_full_family_wipe_command(from_number: str, family_name: str, family_
         phones = [from_number.replace("whatsapp:", "")]
 
     # Send notification to all members
-    try:
-        from twilio.rest import Client as TwilioClient
-        _s = get_settings()
-        twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-        msg_body = (
-            f"⚠️ *Data Deletion Request*\n\n"
-            f"{requester_name} has requested a full deletion of all FamilyBrain family data.\n\n"
-            f"Reply *YES* to confirm, or ignore to cancel. All members must confirm within 48 hours, or if 80% confirm the deletion will proceed after 48 hours."
-        )   
-        for phone in phones:
-            try:
-                twilio_client.messages.create(
-                    from_=_s.twilio_whatsapp_from,
-                    to=f"whatsapp:{phone}",
-                    body=msg_body,
-                )
-            except Exception as exc:
-                logger.warning("Failed to send deletion request to %s: %s", phone, exc)
-                
-    except Exception as exc:
-        logger.error("Failed to send deletion notifications: %s", exc)
+    msg_body = (
+        f"\u26a0\ufe0f *Data Deletion Request*\n\n"
+        f"{requester_name} has requested a full deletion of all FamilyBrain family data.\n\n"
+        f"Reply *YES* to confirm, or ignore to cancel. All members must confirm within 48 hours, or if 80% confirm the deletion will proceed after 48 hours."
+    )
+    for phone in phones:
+        try:
+            _send_proactive_message(to=f"whatsapp:{phone}", body=msg_body)
+        except Exception as exc:
+            logger.warning("Failed to send deletion request to %s: %s", phone, exc)
 
-    # We don't need to return a message to the requester here because they will receive the Twilio broadcast above
-    return Response(str(twiml), mimetype="application/xml")
+    # We don't need to return a message to the requester here because they will receive the broadcast above
+    return _empty_response()
 
 
 def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id: str) -> Response | None:
@@ -3098,9 +3245,7 @@ def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id
     phone_clean = from_number.replace("whatsapp:", "")
     
     if phone_clean in confirmations:
-        twiml = MessagingResponse()
-        twiml.message("You have already confirmed the deletion request.")
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response("You have already confirmed the deletion request.", from_number=from_number)
 
     # Add confirmation
     confirmations.append(phone_clean)
@@ -3114,8 +3259,6 @@ def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id
 
     missing = [p for p in all_phones if p not in confirmations]
     
-    twiml = MessagingResponse()
-    
     # Quorum logic: 100% required if <= 2 members, otherwise 80% after 48h (handled in expiry job)
     # Here we only execute if 100% have confirmed
     if not missing:
@@ -3126,38 +3269,24 @@ def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id
         deletion_results = _execute_family_data_deletion(family_id)
         
         # Notify everyone
-        try:
-            from twilio.rest import Client as TwilioClient
-            _s = get_settings()
-            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-            
-            msg_body = "All members have confirmed. The full family data deletion has been completed successfully."
-            if deletion_results["errors"]:
-                msg_body = "All members confirmed. Deletion completed with some errors. Please contact privacy@familybrain.co.uk."
-                
-            for phone in all_phones:
-                try:
-                    twilio_client.messages.create(
-                        from_=_s.twilio_whatsapp_from,
-                        to=f"whatsapp:{phone}",
-                        body=msg_body,
-                    )
-                except Exception as exc:
-                    logger.warning("Failed to send wipe confirmation to %s: %s", phone, exc)
-        except Exception as exc:
-            logger.error("Failed to send wipe confirmations: %s", exc)
-            
+        msg_body = "All members have confirmed. The full family data deletion has been completed successfully."
+        if deletion_results["errors"]:
+            msg_body = "All members confirmed. Deletion completed with some errors. Please contact privacy@familybrain.co.uk."
+        for phone in all_phones:
+            try:
+                _send_proactive_message(to=f"whatsapp:{phone}", body=msg_body)
+            except Exception as exc:
+                logger.warning("Failed to send wipe confirmation to %s: %s", phone, exc)
+
         # Clear memory state for the current user
         _conversation_history.pop(from_number, None)
         _pending_deletes.pop(from_number, None)
         
-        # Return empty response since we sent via Twilio client
-        return Response(str(MessagingResponse()), mimetype="application/xml")
+        return _empty_response()
     else:
         # Still waiting for others
         db.table("delete_requests").update({"confirmations": confirmations}).eq("id", req_id).execute()
-        twiml.message(f"Confirmation received. Still waiting for {len(missing)} other member(s) to confirm.")
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response(f"Confirmation received. Still waiting for {len(missing)} other member(s) to confirm.", from_number=from_number)
 
 
 def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response | None:
@@ -3170,7 +3299,6 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
 
     family_id = _pending_data_deletion[from_number]
     text_stripped = text.strip()
-    twiml = MessagingResponse()
 
     if text_stripped == "DELETE":
         # User confirmed — execute deletion
@@ -3184,7 +3312,7 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
         if deletion_results["errors"]:
             # Partial failure
             error_summary = "; ".join(deletion_results["errors"])
-            twiml.message(
+            deletion_reply = (
                 "\u26a0\ufe0f Your personal data deletion completed with some errors. "
                 "Most of your data has been removed, but please contact "
                 "privacy@familybrain.co.uk to confirm full deletion.\n\n"
@@ -3195,7 +3323,7 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
                 from_number, error_summary,
             )
         else:
-            twiml.message(
+            deletion_reply = (
                 "Done. All your personal FamilyBrain data has been deleted. "
                 "You can start fresh by sending any message."
             )
@@ -3215,16 +3343,15 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
         _doc_count.pop(from_number, None)
         _phone_cache.pop(from_number.replace("whatsapp:", "").strip(), None)
 
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response(deletion_reply, from_number=from_number)
 
     else:
         # User replied something other than DELETE — cancel
         del _pending_data_deletion[from_number]
-        twiml.message("No problem \u2014 your data has been kept.")
         logger.info(
             "Data deletion CANCELLED by %s (replied: %r)", from_number, text_stripped
         )
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response("No problem \u2014 your data has been kept.", from_number=from_number)
 
 
 # ---------------------------------------------------------------------------
@@ -3234,11 +3361,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     """Process a plain text WhatsApp message, routing to query or capture."""
     _family_id = _get_family_id_for_phone(from_number)
     if not text:
-        twiml = MessagingResponse()
-        twiml.message(
-            "Hi! Send me a question, a thought, a photo, or a PDF and I'll either answer it or store it in the Family Brain."
+        return _make_response(
+            "Hi! Send me a question, a thought, a photo, or a PDF and I'll either answer it or store it in the Family Brain.",
+            from_number=from_number,
         )
-        return Response(str(twiml), mimetype="application/xml")
 
     logger.info("Processing text message from %s (%s): %d chars", family_name, from_number, len(text))
     
@@ -3246,30 +3372,29 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     text_lower = text.lower().strip()
     if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar", "/connect", "/connect google", "connect google calendar") or text_lower.startswith("/connect cal") or text_lower.startswith("/setup cal"):
         gcal_url, webcal_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
-        twiml = MessagingResponse()
         if gcal_url:
             # Send as separate messages so each link is unambiguous in WhatsApp
-            twiml.message(
+            msgs = [
                 "Option 1 - Google Calendar (Android & iPhone, two-way sync):\n"
                 + gcal_url + "\n"
-                + "Sign in with Google. Events sync both ways. Link expires in 1 hour."
-            )
+                + "Sign in with Google. Events sync both ways. Link expires in 1 hour.",
+            ]
             if webcal_url:
                 import re as _re
                 subscribe_url = webcal_url.replace("webcal://", "https://", 1)
                 subscribe_url = _re.sub(r"/calendar/feed/(.+)\.ics$", r"/calendar/subscribe/\1", subscribe_url)
-                twiml.message(
+                msgs.append(
                     "Option 2 - Apple Calendar (iPhone, one-tap):\n"
                     + subscribe_url + "\n"
                     + "Tap the link on your iPhone. Opens a page with a Subscribe button - no login needed."
                 )
-            twiml.message(
+            msgs.append(
                 "For families with children: by connecting your calendar you confirm parental consent "
                 "to share events involving under-18s with FamilyBrain. Stored securely, never shared outside your family."
             )
+            return _make_response(*msgs, from_number=from_number)
         else:
-            twiml.message("Sorry, could not generate your calendar link right now. Please try again.")
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response("Sorry, could not generate your calendar link right now. Please try again.", from_number=from_number)
 
     # --- GDPR Data Deletion Command ---
     if text_lower in ("/delete-my-data", "/deletemydata", "/gdpr-delete", "/delete my data"):
@@ -3284,11 +3409,9 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
 
     # --- Invite Command ---
     if text_lower in ("/invite", "invite", "refer", "/refer"):
-        twiml = MessagingResponse()
         db = brain._supabase
         if not db:
-            twiml.message("Sorry, I can't generate an invite link right now.")
-            return Response(str(twiml), mimetype="application/xml")
+            return _make_response("Sorry, I can't generate an invite link right now.", from_number=from_number)
             
         # Look up existing ref code or generate one
         ref_res = db.table("referrals").select("ref_code").eq("family_id", _family_id).is_("referred_family_id", "null").execute()
@@ -3326,57 +3449,50 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "Just message the bot and it walks you through setup 👋"
         )
         
-        twiml.message(invite_msg)
-        
+        msgs = [invite_msg]
         if ref_count > 0:
-            twiml.message(f"You've invited {ref_count} famil{'ies' if ref_count != 1 else 'y'} so far 🎉")
-            
-        return Response(str(twiml), mimetype="application/xml")
+            msgs.append(f"You've invited {ref_count} famil{'ies' if ref_count != 1 else 'y'} so far \U0001f389")
+        return _make_response(*msgs, from_number=from_number)
 
     # --- Help Command ---
     if text_lower in ("/help", "/commands", "help", "commands"):
-        twiml = MessagingResponse()
         # Build the family's inbound email address
         try:
             from .email_inbound import get_family_email_address as _get_family_email
             _family_email = _get_family_email(_family_id)
-            _email_line = f"\n\n📧 *Forward emails to FamilyBrain*:\nSend school letters, documents or any email to *{_family_email}* — I'll process it and notify the family."
+            _email_line = f"\n\n\U0001f4e7 *Forward emails to FamilyBrain*:\nSend school letters, documents or any email to *{_family_email}* \u2014 I'll process it and notify the family."
         except Exception:
             _email_line = ""
         help_text = (
-            "🤖 *FamilyBrain Commands*\n\n"
+            "\U0001f916 *FamilyBrain Commands*\n\n"
             "Here are the commands you can use anytime:\n\n"
-            "*/sos* — Generate your family emergency file (PDF)\n"
-            "*/history* — See what I've done for your family this week\n"
-            "*/connect* — Connect your Google or Apple Calendar\n"
-            "*/invite* — Get a link to invite friends to FamilyBrain\n"
-            "*/graph* — View your family's knowledge graph (people, places, relationships)\n"
-            "*/delete-my-data* — Delete all data submitted by your number\n"
-            "*/delete-all-family-data* — Request a full wipe of all family data (requires confirmation from all members)\n"
-            "*/help* — Show this list of commands"
+            "*/sos* \u2014 Generate your family emergency file (PDF)\n"
+            "*/history* \u2014 See what I've done for your family this week\n"
+            "*/connect* \u2014 Connect your Google or Apple Calendar\n"
+            "*/invite* \u2014 Get a link to invite friends to FamilyBrain\n"
+            "*/graph* \u2014 View your family's knowledge graph (people, places, relationships)\n"
+            "*/delete-my-data* \u2014 Delete all data submitted by your number\n"
+            "*/delete-all-family-data* \u2014 Request a full wipe of all family data (requires confirmation from all members)\n"
+            "*/help* \u2014 Show this list of commands"
             + _email_line + "\n\n"
             "You don't need commands for most things! Just send me photos, documents, voice notes, or ask me questions normally."
         )
-        twiml.message(help_text)
-        return Response(str(twiml), mimetype="application/xml")
+        return _make_response(help_text, from_number=from_number)
 
     # --- Graph Command ---
     if text_lower in ("/graph", "graph", "knowledge graph", "show graph", "entity graph"):
-        twiml = MessagingResponse()
         try:
             summary = entity_graph.get_entity_graph_summary(_family_id)
             # WhatsApp has a ~4096 char limit per message
             if len(summary) > 3800:
-                summary = summary[:3800] + "\n\n_(truncated — graph is growing!)_"
-            twiml.message(summary)
+                summary = summary[:3800] + "\n\n_(truncated \u2014 graph is growing!)_"
+            return _make_response(summary, from_number=from_number)
         except Exception as exc:
             logger.error("Failed to generate graph summary: %s", exc)
-            twiml.message("\u26a0\ufe0f Sorry, I couldn't retrieve your knowledge graph right now.")
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response("\u26a0\ufe0f Sorry, I couldn't retrieve your knowledge graph right now.", from_number=from_number)
 
     # --- History Command ---
     if text_lower in ("/history", "history", "what have you done", "show history", "what did you do this week"):
-        twiml = MessagingResponse()
         try:
             cutoff_7d = datetime.now(pytz.UTC) - timedelta(days=7)
             db = brain._supabase
@@ -3397,47 +3513,45 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
 
             lines = ["Here's what I've done for your family this week:\n"]
             if counts.get("event_created"):
-                lines.append(f"📅 {counts['event_created']} event{'s' if counts['event_created'] != 1 else ''} created")
+                lines.append(f"\U0001f4c5 {counts['event_created']} event{'s' if counts['event_created'] != 1 else ''} created")
             if counts.get("document_stored"):
-                lines.append(f"📄 {counts['document_stored']} document{'s' if counts['document_stored'] != 1 else ''} stored")
+                lines.append(f"\U0001f4c4 {counts['document_stored']} document{'s' if counts['document_stored'] != 1 else ''} stored")
             if counts.get("school_email_processed"):
-                lines.append(f"📚 {counts['school_email_processed']} school email{'s' if counts['school_email_processed'] != 1 else ''} processed")
+                lines.append(f"\U0001f4da {counts['school_email_processed']} school email{'s' if counts['school_email_processed'] != 1 else ''} processed")
             if counts.get("query_answered"):
-                lines.append(f"💬 {counts['query_answered']} question{'s' if counts['query_answered'] != 1 else ''} answered")
+                lines.append(f"\U0001f4ac {counts['query_answered']} question{'s' if counts['query_answered'] != 1 else ''} answered")
             if counts.get("alert_sent"):
-                lines.append(f"⏰ {counts['alert_sent']} reminder{'s' if counts['alert_sent'] != 1 else ''} sent")
+                lines.append(f"\u23f0 {counts['alert_sent']} reminder{'s' if counts['alert_sent'] != 1 else ''} sent")
             if counts.get("briefing_sent"):
-                lines.append(f"🌅 {counts['briefing_sent']} briefing{'s' if counts['briefing_sent'] != 1 else ''} sent")
+                lines.append(f"\U0001f305 {counts['briefing_sent']} briefing{'s' if counts['briefing_sent'] != 1 else ''} sent")
             if counts.get("memory_stored"):
-                lines.append(f"🧠 {counts['memory_stored']} memor{'ies' if counts['memory_stored'] != 1 else 'y'} stored")
+                lines.append(f"\U0001f9e0 {counts['memory_stored']} memor{'ies' if counts['memory_stored'] != 1 else 'y'} stored")
 
             if len(lines) == 1:
                 lines.append("Nothing logged yet this week. Start chatting to build your family's memory!")
 
-            twiml.message("\n".join(lines))
+            return _make_response("\n".join(lines), from_number=from_number)
         except Exception as exc:
             logger.error("Failed to generate history: %s", exc)
-            twiml.message("⚠️ Sorry, I couldn't retrieve your history right now.")
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response("\u26a0\ufe0f Sorry, I couldn't retrieve your history right now.", from_number=from_number)
 
     # --- Kitchen Calendar Link Command ---
     if text_lower in ("/calendar", "calendar", "show calendar", "family calendar"):
-        twiml = MessagingResponse()
         try:
             token = _get_or_create_calendar_token(_family_id)
             if token:
                 base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
                 calendar_url = f"{base_url}/calendar/{token}"
-                twiml.message(
+                return _make_response(
                     f"Here's your family calendar: {calendar_url}\n"
-                    "Bookmark this link \u2014 it always shows your latest events."
+                    "Bookmark this link \u2014 it always shows your latest events.",
+                    from_number=from_number,
                 )
             else:
-                twiml.message("\u26a0\ufe0f Sorry, I couldn't generate your calendar link right now. Please try again.")
+                return _make_response("\u26a0\ufe0f Sorry, I couldn't generate your calendar link right now. Please try again.", from_number=from_number)
         except Exception as exc:
             logger.error("Failed to generate calendar link: %s", exc)
-            twiml.message("\u26a0\ufe0f Sorry, something went wrong generating your calendar link.")
-        return Response(str(twiml), mimetype="application/xml")
+            return _make_response("\u26a0\ufe0f Sorry, something went wrong generating your calendar link.", from_number=from_number)
         
     # --- Auto-prompt for new users ---
     # If this is their first message (no conversation history) and they don't have a calendar connected
@@ -3469,19 +3583,14 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                         # Find a phone number for the referring family to notify them
                         referrer_phones_res = db.table("whatsapp_members").select("phone").eq("family_id", referrer_family_id).execute()
                         if referrer_phones_res.data:
-                            from twilio.rest import Client as TwilioClient
-                            _s = get_settings()
-                            if _s.twilio_account_sid and _s.twilio_auth_token:
-                                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-                                for row in referrer_phones_res.data:
-                                    try:
-                                        twilio_client.messages.create(
-                                            from_=_s.twilio_whatsapp_from,
-                                            to=f"whatsapp:{row['phone']}",
-                                            body=f"🎉 Someone just joined FamilyBrain using your invite link! You've now referred {ref_count} famil{'ies' if ref_count != 1 else 'y'}.",
-                                        )
-                                    except Exception as exc:
-                                        logger.warning("Failed to notify referrer %s: %s", row['phone'], exc)
+                            for row in referrer_phones_res.data:
+                                try:
+                                    _send_proactive_message(
+                                        to=f"whatsapp:{row['phone']}",
+                                        body=f"\U0001f389 Someone just joined FamilyBrain using your invite link! You've now referred {ref_count} famil{'ies' if ref_count != 1 else 'y'}.",
+                                    )
+                                except Exception as exc:
+                                    logger.warning("Failed to notify referrer %s: %s", row['phone'], exc)
 
                 # Check if family has a token
                 fam_res = db.table("families").select("google_refresh_token").eq("family_id", _family_id).execute()
@@ -3511,15 +3620,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                             welcome_body = "\n".join(welcome_lines)
 
                             # We don't return here — normal processing of their first message continues
-                            from twilio.rest import Client as TwilioClient
-                            _s = get_settings()
-                            if _s.twilio_account_sid and _s.twilio_auth_token:
-                                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-                                twilio_client.messages.create(
-                                    from_=_s.twilio_whatsapp_from,
-                                    to=from_number,
-                                    body=welcome_body,
-                                )
+                            try:
+                                _send_proactive_message(to=from_number, body=welcome_body)
+                            except Exception as _welcome_exc:
+                                logger.warning("Failed to send welcome message: %s", _welcome_exc)
         except Exception as exc:
             logger.warning("Failed to auto-prompt for calendar connection: %s", exc)
 
@@ -3549,7 +3653,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         return _answer_query(text, from_number, conversation_history=history)
 
     # --- Default to capture flow ---
-    twiml = MessagingResponse()
+    _capture_reply = None
     try:
         # Step 1: Extract metadata via LLM
         extracted = brain.extract_metadata(text)
@@ -3649,8 +3753,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
                     f"{end_str}\n\n"
                     f"Reply YES to confirm, or tell me if anything needs changing."
                 )
-                twiml.message(reply)
-                return Response(str(twiml), mimetype="application/xml")
+                return _make_response(reply, from_number=from_number)
             else:
                 # Store in family_events and push to Google Calendar
                 event_id, conflict_warning = _check_conflicts_and_store_event(event_data, family_name, family_id=_family_id)
@@ -3680,41 +3783,35 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         _last_stored_memory[from_number] = memory_id
         _doc_count[from_number] = _doc_count.get(from_number, 0) + 1
 
-        # Step 6: Build TwiML confirmation reply (clean, no raw IDs)
+        # Step 6: Build confirmation reply (clean, no raw IDs)
         tags_str = ", ".join(tags) if tags else "none"
-        reply = (
+        _capture_reply = (
             f"\u2705 Got it, {family_name}! Stored under {category}."
             f"{event_info}"
         )
-        twiml.message(reply)
         logger.info("Text memory captured by %s (id=%s)", family_name, memory_id)
 
         # Step 7: If category unclear, prompt user to clarify
         if not emergency_cat:
             _pending_category_prompt[from_number] = True
             try:
-                from twilio.rest import Client as _TwilioClient
-                _s = get_settings()
-                if _s.twilio_account_sid and _s.twilio_auth_token:
-                    _tc = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-                    _tc.messages.create(
-                        from_=_s.twilio_whatsapp_from,
-                        to=from_number,
-                        body=(
-                            "\u2705 Saved! Which category is this for your emergency file?\n"
-                            "Reply with a number:\n"
-                            "1\ufe0f\u20e3 Legal Docs\n"
-                            "2\ufe0f\u20e3 Bank/Finance\n"
-                            "3\ufe0f\u20e3 Insurance\n"
-                            "4\ufe0f\u20e3 Pensions\n"
-                            "5\ufe0f\u20e3 Bills/Debts\n"
-                            "6\ufe0f\u20e3 Assets/Car\n"
-                            "7\ufe0f\u20e3 Contacts\n"
-                            "8\ufe0f\u20e3 Funeral Wishes\n"
-                            "9\ufe0f\u20e3 Digital Legacy\n"
-                            "\U0001f51f Family/Medical"
-                        ),
-                    )
+                _send_proactive_message(
+                    to=from_number,
+                    body=(
+                        "\u2705 Saved! Which category is this for your emergency file?\n"
+                        "Reply with a number:\n"
+                        "1\ufe0f\u20e3 Legal Docs\n"
+                        "2\ufe0f\u20e3 Bank/Finance\n"
+                        "3\ufe0f\u20e3 Insurance\n"
+                        "4\ufe0f\u20e3 Pensions\n"
+                        "5\ufe0f\u20e3 Bills/Debts\n"
+                        "6\ufe0f\u20e3 Assets/Car\n"
+                        "7\ufe0f\u20e3 Contacts\n"
+                        "8\ufe0f\u20e3 Funeral Wishes\n"
+                        "9\ufe0f\u20e3 Digital Legacy\n"
+                        "\U0001f51f Family/Medical"
+                    ),
+                )
             except Exception as exc:
                 logger.warning("Failed to send category prompt: %s", exc)
 
@@ -3724,9 +3821,9 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
 
     except Exception as exc:
         logger.error("Failed to capture text memory: %s\n%s", exc, traceback.format_exc())
-        twiml.message(f"⚠️ Failed to capture memory: {exc}")
+        _capture_reply = f"\u26a0\ufe0f Failed to capture memory: {exc}"
 
-    return Response(str(twiml), mimetype="application/xml")
+    return _make_response(_capture_reply or "", from_number=from_number)
 
 
 # ---------------------------------------------------------------------------
@@ -3740,22 +3837,34 @@ def _handle_media_message(
     from_number: str,
 ) -> Response:
     """Process a WhatsApp message that contains an image or PDF attachment.
-    Downloads the media from Twilio (authenticated), runs OCR or PDF
-    extraction, then stores the result via the same brain pipeline used
-    by the Telegram capture layer.
+    Downloads the media from Twilio (authenticated) or Meta Cloud API (by media ID),
+    runs OCR or PDF extraction, then stores the result via the same brain pipeline
+    used by the Telegram capture layer.
+
+    When USE_META_API is enabled, ``media_url`` is actually a Meta media ID
+    (not a URL).  The function detects this and uses the Meta download path.
     """
     _family_id = _get_family_id_for_phone(from_number)
-    twiml = MessagingResponse()
+    _media_reply = None
     logger.info(
         "Processing media from %s (%s): mime=%s", family_name, from_number, mime_type
     )
 
     try:
-        # --- Download media from Twilio ---
-        auth = (settings.twilio_account_sid, settings.twilio_auth_token)
-        media_resp = http_requests.get(media_url, auth=auth, timeout=60)
-        media_resp.raise_for_status()
-        media_bytes: bytes = media_resp.content
+        # --- Download media ---
+        if _USE_META_API:
+            # media_url is actually a Meta media ID
+            logger.info("Downloading media from Meta Cloud API (media_id=%s)", media_url)
+            media_bytes, meta_mime = meta_whatsapp.download_media(media_url)
+            # Use the MIME type from Meta's response if we didn't get one from the webhook
+            if not mime_type:
+                mime_type = meta_mime
+        else:
+            # Twilio: download from URL with basic auth
+            auth = (settings.twilio_account_sid, settings.twilio_auth_token)
+            media_resp = http_requests.get(media_url, auth=auth, timeout=60)
+            media_resp.raise_for_status()
+            media_bytes: bytes = media_resp.content
 
         # --- Extract text based on MIME type ---
         extracted_text = ""
@@ -3808,23 +3917,22 @@ def _handle_media_message(
                 
             except Exception as exc:
                 logger.error("Audio transcription failed: %s", exc)
-                twiml.message(f"⚠️ Failed to transcribe voice note: {exc}")
-                return Response(str(twiml), mimetype="application/xml")
+                return _make_response(f"\u26a0\ufe0f Failed to transcribe voice note: {exc}", from_number=from_number)
 
         else:
             logger.warning("Unsupported media type: %s", mime_type)
-            twiml.message(
-                f"⚠️ I don't know how to process this file type ({mime_type}). "
-                "Please send a photo, PDF, or voice note."
+            return _make_response(
+                f"\u26a0\ufe0f I don't know how to process this file type ({mime_type}). "
+                "Please send a photo, PDF, or voice note.",
+                from_number=from_number,
             )
-            return Response(str(twiml), mimetype="application/xml")
 
         if not extracted_text:
-            twiml.message(
-                "⚠️ Could not extract any text from the media. "
-                "Try sending a clearer image or type the content as a message."
+            return _make_response(
+                "\u26a0\ufe0f Could not extract any text from the media. "
+                "Try sending a clearer image or type the content as a message.",
+                from_number=from_number,
             )
-            return Response(str(twiml), mimetype="application/xml")
 
         # Combine caption (if any) with extracted text
         full_text = f"{caption}\n\n{extracted_text}" if caption else extracted_text
@@ -3912,7 +4020,7 @@ def _handle_media_message(
                 f"{key_summary}"
                 f"{financial_note}"
             )
-        twiml.message(reply)
+        _media_reply = reply
         logger.info(
             "Media memory captured by %s (type=%s, id=%s)", family_name, doc_type, memory_id
         )
@@ -3932,28 +4040,23 @@ def _handle_media_message(
         if not emergency_cat and source_type != "whatsapp-voice":
             _pending_category_prompt[from_number] = True
             try:
-                from twilio.rest import Client as _TwilioClient
-                _s = get_settings()
-                if _s.twilio_account_sid and _s.twilio_auth_token:
-                    _tc = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-                    _tc.messages.create(
-                        from_=_s.twilio_whatsapp_from,
-                        to=from_number,
-                        body=(
-                            "\u2705 Saved! Which category is this for your emergency file?\n"
-                            "Reply with a number:\n"
-                            "1\ufe0f\u20e3 Legal Docs\n"
-                            "2\ufe0f\u20e3 Bank/Finance\n"
-                            "3\ufe0f\u20e3 Insurance\n"
-                            "4\ufe0f\u20e3 Pensions\n"
-                            "5\ufe0f\u20e3 Bills/Debts\n"
-                            "6\ufe0f\u20e3 Assets/Car\n"
-                            "7\ufe0f\u20e3 Contacts\n"
-                            "8\ufe0f\u20e3 Funeral Wishes\n"
-                            "9\ufe0f\u20e3 Digital Legacy\n"
-                            "\U0001f51f Family/Medical"
-                        ),
-                    )
+                _send_proactive_message(
+                    to=from_number,
+                    body=(
+                        "\u2705 Saved! Which category is this for your emergency file?\n"
+                        "Reply with a number:\n"
+                        "1\ufe0f\u20e3 Legal Docs\n"
+                        "2\ufe0f\u20e3 Bank/Finance\n"
+                        "3\ufe0f\u20e3 Insurance\n"
+                        "4\ufe0f\u20e3 Pensions\n"
+                        "5\ufe0f\u20e3 Bills/Debts\n"
+                        "6\ufe0f\u20e3 Assets/Car\n"
+                        "7\ufe0f\u20e3 Contacts\n"
+                        "8\ufe0f\u20e3 Funeral Wishes\n"
+                        "9\ufe0f\u20e3 Digital Legacy\n"
+                        "\U0001f51f Family/Medical"
+                    ),
+                )
             except Exception as exc:
                 logger.warning("Failed to send category prompt for media: %s", exc)
 
@@ -3963,9 +4066,9 @@ def _handle_media_message(
 
     except Exception as exc:
         logger.error("Failed to process media: %s\n%s", exc, traceback.format_exc())
-        twiml.message(f"\u26a0\ufe0f Failed to process media: {exc}")
+        _media_reply = f"\u26a0\ufe0f Failed to process media: {exc}"
 
-    return Response(str(twiml), mimetype="application/xml")
+    return _make_response(_media_reply or "", from_number=from_number)
 
 
 
@@ -4014,30 +4117,18 @@ def _send_emergency_progress_update(from_number: str, family_id: str) -> None:
             "Send /sos when you're ready to generate your full 'If Anything Happens' PDF."
         )
 
-        from twilio.rest import Client as _TwilioClient
-        _s = get_settings()
-        if _s.twilio_account_sid and _s.twilio_auth_token:
-            _tc = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-            _tc.messages.create(
-                from_=_s.twilio_whatsapp_from,
-                to=from_number,
-                body=msg,
-            )
-            logger.info("Emergency progress update sent to %s (%d/10 covered)", from_number, n_covered)
+        _send_proactive_message(to=from_number, body=msg)
+        logger.info("Emergency progress update sent to %s (%d/10 covered)", from_number, n_covered)
     except Exception as exc:
         logger.warning("Failed to send emergency progress update: %s", exc)
 
 
 def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> Response:
     """Handle /sos, /emergency, /ifanythinghappens — generate and send the emergency PDF."""
-    twiml = MessagingResponse()
-    twiml.message("\u23f3 Generating your family emergency file... This may take a moment.")
+    # Send an immediate "working on it" acknowledgement
+    _send_proactive_message(to=from_number, body="\u23f3 Generating your family emergency file... This may take a moment.")
 
     try:
-        from twilio.rest import Client as _TwilioClient
-        _s = get_settings()
-        twilio_client = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-
         # Step 1: Generate the PDF
         from .emergency_pdf import generate_emergency_pdf, CATEGORIES
         pdf_bytes = generate_emergency_pdf(family_id)
@@ -4065,12 +4156,12 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
                 logger.warning("SOS: failed to count items: %s", exc)
 
         if item_count < 3:
-            twiml.message(
+            return _make_response(
                 "\U0001f4cb Your emergency file is mostly empty. "
                 "Start by sending me key documents \u2014 insurance policies, NHS numbers, "
-                "passport details \u2014 and I'll build it up automatically."
+                "passport details \u2014 and I'll build it up automatically.",
+                from_number=from_number,
             )
-            return Response(str(twiml), mimetype="application/xml")
 
         # Step 2: Save PDF to temp file
         import tempfile
@@ -4119,28 +4210,38 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
             except Exception:
                 pass
 
-        # Step 4: Send via Twilio (with media URL if available)
+        # Step 4: Send the PDF link (or document) to the user
         if signed_url:
             try:
-                twilio_client.messages.create(
-                    from_=_s.twilio_whatsapp_from,
-                    to=from_number,
-                    media_url=[signed_url],
-                    body="Your family emergency file is attached.",
-                )
-                logger.info("Emergency PDF sent via Twilio media to %s", from_number)
+                if _USE_META_API:
+                    # Meta Cloud API: send document URL
+                    meta_whatsapp.send_document_message(
+                        to=from_number.replace("whatsapp:", ""),
+                        document_url=signed_url,
+                        caption="Your family emergency file is attached.",
+                        filename=f"emergency_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    )
+                else:
+                    from twilio.rest import Client as _TwilioClient
+                    _s = get_settings()
+                    _twilio_client = _TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
+                    _twilio_client.messages.create(
+                        from_=_s.twilio_whatsapp_from,
+                        to=from_number,
+                        media_url=[signed_url],
+                        body="Your family emergency file is attached.",
+                    )
+                logger.info("Emergency PDF sent to %s", from_number)
             except Exception as exc:
-                logger.warning("Failed to send PDF via Twilio media (will send text fallback): %s", exc)
+                logger.warning("Failed to send PDF media (will send text fallback): %s", exc)
                 # Fallback: send just the URL as text
-                twilio_client.messages.create(
-                    from_=_s.twilio_whatsapp_from,
+                _send_proactive_message(
                     to=from_number,
                     body=f"Your family emergency file is ready. Download it here (valid 24h): {signed_url}",
                 )
         else:
             # No signed URL — inform the user
-            twilio_client.messages.create(
-                from_=_s.twilio_whatsapp_from,
+            _send_proactive_message(
                 to=from_number,
                 body=(
                     "\u26a0\ufe0f Your emergency file was generated but couldn't be uploaded. "
@@ -4155,11 +4256,7 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
             f"categor{'ies' if cat_count != 1 else 'y'}. "
             "Keep it somewhere safe \u2014 and update it whenever something changes."
         )
-        twilio_client.messages.create(
-            from_=_s.twilio_whatsapp_from,
-            to=from_number,
-            body=followup_msg,
-        )
+        _send_proactive_message(to=from_number, body=followup_msg)
         logger.info(
             "Emergency PDF flow complete for %s: %d items, %d categories",
             family_name, item_count, cat_count,
@@ -4167,12 +4264,13 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
 
     except Exception as exc:
         logger.error("SOS command failed: %s\n%s", exc, traceback.format_exc())
-        twiml.message(
+        return _make_response(
             "\u26a0\ufe0f Sorry, I couldn't generate your emergency file right now. "
-            "Please try again in a moment."
+            "Please try again in a moment.",
+            from_number=from_number,
         )
 
-    return Response(str(twiml), mimetype="application/xml")
+    return _empty_response()
 
 
 # ---------------------------------------------------------------------------
@@ -4287,13 +4385,7 @@ def _send_daily_expiry_alerts() -> None:
                 continue
 
             try:
-                from twilio.rest import Client as TwilioClient
-                twilio_client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
-                twilio_client.messages.create(
-                    from_=settings.twilio_whatsapp_from,
-                    to=f"whatsapp:{primary_phone}",
-                    body=message,
-                )
+                _send_proactive_message(to=f"whatsapp:{primary_phone}", body=message)
                 logger.info("Daily expiry alert sent to %s (%d alerts)", primary_phone, len(unique_alerts))
                 _log_briefing(family_id, "expiry_alert", content_hash)
                 for _d, _label, _snippet in unique_alerts[:5]:
@@ -4393,15 +4485,7 @@ def _poll_google_calendar_and_notify() -> None:
             except Exception as exc:
                 logger.warning("GCal sync: could not fetch family members: %s", exc)
 
-        # Twilio client for WhatsApp notifications
-        twilio_client = None
-        try:
-            from twilio.rest import Client as TwilioClient
-            _s = get_settings()
-            if _s.twilio_account_sid and _s.twilio_auth_token:
-                twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-        except Exception as exc:
-            logger.warning("GCal sync: could not initialise Twilio client: %s", exc)
+        # WhatsApp notification sender is now transport-agnostic via _send_proactive_message
 
         for event in all_new_events:
             event_id = event["id"]
@@ -4462,18 +4546,12 @@ def _poll_google_calendar_and_notify() -> None:
                 logger.warning("GCal sync: failed to store memory for event '%s': %s", summary, exc)
 
             # 2. Send WhatsApp notification to all family members
-            if twilio_client and family_phones:
+            if family_phones:
                 time_display = f" at {time_str}" if time_str else ""
                 location_display = f" ({location})" if location else ""
                 notification_body = (
                     f"\U0001f4c5 New calendar event: {summary}\n"
-                    f"📆 {date_str}{time_display}{location_display}"
-                )
-                _s = get_settings()
-                # Determine the creator's phone from the event organiser field (if present)
-                creator_email = (
-                    event.get("organizer", {}).get("email", "") or
-                    event.get("creator", {}).get("email", "")
+                    f"\U0001f4c6 {date_str}{time_display}{location_display}"
                 )
                 # Check if event is starting within 60 minutes
                 is_urgent = False
@@ -4498,8 +4576,7 @@ def _poll_google_calendar_and_notify() -> None:
                     else:
                         for phone, member_name in family_phones:
                             try:
-                                twilio_client.messages.create(
-                                    from_=_s.twilio_whatsapp_from,
+                                _send_proactive_message(
                                     to=f"whatsapp:{phone}",
                                     body=notification_body,
                                 )
@@ -4515,7 +4592,7 @@ def _poll_google_calendar_and_notify() -> None:
             else:
                 logger.debug(
                     "GCal sync: skipping WhatsApp notification for '%s' "
-                    "(Twilio not configured or no family members)",
+                    "(no family members registered)",
                     summary,
                 )
 
@@ -4635,17 +4712,9 @@ def _send_morning_briefing() -> None:
                 phones = [fam_res.data[0]["primary_phone"]]
                 
         if phones:
-            from twilio.rest import Client as TwilioClient
-            _s = get_settings()
-            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-            
             for phone in phones:
                 try:
-                    twilio_client.messages.create(
-                        from_=_s.twilio_whatsapp_from,
-                        to=f"whatsapp:{phone}",
-                        body=message,
-                    )
+                    _send_proactive_message(to=f"whatsapp:{phone}", body=message)
                 except Exception as exc:
                     logger.warning("Failed to send morning briefing to %s: %s", phone, exc)
                     
@@ -4668,11 +4737,7 @@ def _expire_pending_delete_requests() -> None:
         
         if not expired_res.data:
             return
-            
-        from twilio.rest import Client as TwilioClient
-        _s = get_settings()
-        twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-        
+
         for req in expired_res.data:
             req_id = req["id"]
             requester = req["requested_by"]
@@ -4701,11 +4766,7 @@ def _expire_pending_delete_requests() -> None:
                     
                 for phone in all_phones:
                     try:
-                        twilio_client.messages.create(
-                            from_=_s.twilio_whatsapp_from,
-                            to=f"whatsapp:{phone}",
-                            body=msg_body,
-                        )
+                        _send_proactive_message(to=f"whatsapp:{phone}", body=msg_body)
                     except Exception as exc:
                         logger.warning("Failed to send wipe confirmation to %s: %s", phone, exc)
             else:
@@ -4714,8 +4775,7 @@ def _expire_pending_delete_requests() -> None:
                 
                 # Notify requester
                 try:
-                    twilio_client.messages.create(
-                        from_=_s.twilio_whatsapp_from,
+                    _send_proactive_message(
                         to=requester,
                         body="Your request to delete all family data has expired because the required number of members did not confirm within 48 hours. No data was deleted.",
                     )
@@ -4795,17 +4855,9 @@ def _send_evening_preview() -> None:
                 phones = [fam_res.data[0]["primary_phone"]]
                 
         if phones:
-            from twilio.rest import Client as TwilioClient
-            _s = get_settings()
-            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-            
             for phone in phones:
                 try:
-                    twilio_client.messages.create(
-                        from_=_s.twilio_whatsapp_from,
-                        to=f"whatsapp:{phone}",
-                        body=message,
-                    )
+                    _send_proactive_message(to=f"whatsapp:{phone}", body=message)
                 except Exception as exc:
                     logger.warning("Failed to send evening preview to %s: %s", phone, exc)
                     

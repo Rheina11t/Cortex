@@ -89,13 +89,13 @@ def _get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 
-def _get_twilio():
-    """Return a Twilio client, or None if credentials are not configured."""
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-        logger.warning("Twilio credentials not configured — WhatsApp messages will be skipped")
-        return None
-    from twilio.rest import Client as TwilioClient
-    return TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+def _send_wa(to: str, body: str) -> None:
+    """Send a WhatsApp message via the transport-agnostic layer."""
+    try:
+        from . import meta_whatsapp as _meta_wa
+    except ImportError:
+        import meta_whatsapp as _meta_wa  # fallback for standalone execution
+    _meta_wa.send_whatsapp_message(to=to, body=body)
 
 
 def _generate_family_id(primary_phone: str) -> str:
@@ -637,27 +637,18 @@ def _handle_subscription_deleted(subscription: dict[str, Any]) -> None:
 
 
 def _send_welcome_whatsapp(primary_phone: str) -> None:
-    """Send the post-payment welcome message via Twilio."""
-    twilio = _get_twilio()
-    if not twilio or not TWILIO_WHATSAPP_FROM:
-        logger.warning("Skipping welcome WhatsApp — Twilio not configured")
-        return
-
+    """Send the post-payment welcome message via WhatsApp."""
     to_number = (
         primary_phone
         if primary_phone.startswith("whatsapp:")
         else f"whatsapp:{primary_phone}"
     )
     welcome_msg = (
-        "🎉 Payment confirmed! Welcome to FamilyBrain. "
+        "\U0001f389 Payment confirmed! Welcome to FamilyBrain. "
         "Send me a message on WhatsApp to get started."
     )
     try:
-        twilio.messages.create(
-            from_=TWILIO_WHATSAPP_FROM,
-            to=to_number,
-            body=welcome_msg,
-        )
+        _send_wa(to_number, welcome_msg)
         logger.info("Welcome WhatsApp sent to %s", primary_phone)
     except Exception as exc:
         logger.error("Failed to send welcome WhatsApp to %s: %s", primary_phone, exc)

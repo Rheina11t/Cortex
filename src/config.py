@@ -134,6 +134,22 @@ class Settings:
         default_factory=lambda: os.getenv("TWILIO_WHATSAPP_FROM", "")
     )
 
+    # -- Meta WhatsApp Cloud API (alternative to Twilio) ----------------------
+    # Set USE_META_API=true to switch from Twilio to Meta's direct Cloud API.
+    # See src/meta_whatsapp.py for full setup instructions.
+    use_meta_api: bool = field(
+        default_factory=lambda: os.getenv("USE_META_API", "false").lower() in ("true", "1", "yes")
+    )
+    whatsapp_access_token: str = field(
+        default_factory=lambda: os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+    )
+    whatsapp_phone_number_id: str = field(
+        default_factory=lambda: os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+    )
+    whatsapp_verify_token: str = field(
+        default_factory=lambda: os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+    )
+
     # -- Family Members ----------------------------------------------------
     # Parsed from FAMILY_MEMBER_N_ID / FAMILY_MEMBER_N_NAME env vars.
     # When set, only these users can interact with the bot.
@@ -232,7 +248,15 @@ class Settings:
             )
 
     def validate_twilio(self) -> None:
-        """Raise if required Twilio credentials are missing."""
+        """Raise if required Twilio credentials are missing.
+
+        When USE_META_API is enabled, Twilio credentials are optional (they
+        are only needed as a fallback when the feature flag is toggled off).
+        """
+        if self.use_meta_api:
+            # Validate Meta credentials instead
+            self.validate_meta_whatsapp()
+            return
         missing = []
         if not self.twilio_account_sid:
             missing.append("TWILIO_ACCOUNT_SID")
@@ -244,6 +268,21 @@ class Settings:
             raise EnvironmentError(
                 f"Missing required Twilio environment variable(s): {', '.join(missing)}\n"
                 "Obtain these from https://console.twilio.com/ and set them in your .env file."
+            )
+
+    def validate_meta_whatsapp(self) -> None:
+        """Raise if required Meta WhatsApp Cloud API credentials are missing."""
+        missing = []
+        if not self.whatsapp_access_token:
+            missing.append("WHATSAPP_ACCESS_TOKEN")
+        if not self.whatsapp_phone_number_id:
+            missing.append("WHATSAPP_PHONE_NUMBER_ID")
+        if not self.whatsapp_verify_token:
+            missing.append("WHATSAPP_VERIFY_TOKEN")
+        if missing:
+            raise EnvironmentError(
+                f"Missing required Meta WhatsApp environment variable(s): {', '.join(missing)}\n"
+                "See src/meta_whatsapp.py for setup instructions."
             )
 
     def validate_llm_backend(self) -> None:

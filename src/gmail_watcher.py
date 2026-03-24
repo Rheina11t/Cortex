@@ -229,16 +229,8 @@ def poll_school_emails() -> None:
     except Exception as exc:
         logger.warning("Could not fetch family members for notifications: %s", exc)
 
-    # Twilio client for WhatsApp notifications
-    twilio_client = None
-    try:
-        from twilio.rest import Client as TwilioClient
-        from .config import get_settings
-        _s = get_settings()
-        if _s.twilio_account_sid and _s.twilio_auth_token:
-            twilio_client = TwilioClient(_s.twilio_account_sid, _s.twilio_auth_token)
-    except Exception as exc:
-        logger.warning("Could not initialise Twilio client: %s", exc)
+    # WhatsApp notification sender (transport-agnostic via meta_whatsapp)
+    from . import meta_whatsapp as _meta_wa
 
     # Calculate time window (last 24 hours)
     yesterday = int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp())
@@ -365,19 +357,18 @@ def poll_school_emails() -> None:
                     logger.warning("Failed to log school_email_processed action: %s", _log_exc)
 
                 # 4. Send WhatsApp notification
-                if twilio_client and family_id in family_phones_by_id:
+                if family_id in family_phones_by_id:
                     notification_body = ""
                     if event_name and event_date:
-                        notification_body = f"📚 School email from {sender}: {summary}\n\n✅ '{event_name}' added to your calendar for {event_date}."
+                        notification_body = f"\U0001f4da School email from {sender}: {summary}\n\n\u2705 '{event_name}' added to your calendar for {event_date}."
                     elif action_required:
                         deadline_str = f" Deadline: {deadline}." if deadline else ""
-                        notification_body = f"📚 Action needed from school: {summary}.{deadline_str}"
+                        notification_body = f"\U0001f4da Action needed from school: {summary}.{deadline_str}"
                     
                     if notification_body:
                         for phone, member_name in family_phones_by_id[family_id]:
                             try:
-                                twilio_client.messages.create(
-                                    from_=_s.twilio_whatsapp_from,
+                                _meta_wa.send_whatsapp_message(
                                     to=f"whatsapp:{phone}",
                                     body=notification_body,
                                 )
