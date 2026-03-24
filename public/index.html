@@ -26,7 +26,7 @@ a { text-decoration: none; color: inherit; }
 button { cursor: pointer; border: none; font-family: inherit; }
 
 /* ========== TYPOGRAPHY ========== */
-h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; font-weight: 500; line-height: 1.2; color: #2C2C2C; font-optical-sizing: auto; font-synthesis: none; font-style: normal; }
+h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; font-weight: 500; line-height: 1.2; color: #2C2C2C; font-optical-sizing: auto; font-synthesis: none; font-style: normal; font-variation-settings: 'WONK' 0; }
 h1 { font-size: 3.3rem; letter-spacing: -0.02em; }
 h2 { font-size: 2.35rem; letter-spacing: -0.01em; }
 h3 { font-size: 1.4rem; }
@@ -77,6 +77,15 @@ p { color: #2C2C2C; }
 .btn-outline:hover { background: #E8714A; color: #fff; }
 
 /* ========== ANIMATIONS ========== */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 .fade-in-delay-1 { transition-delay: 0.1s; }
 .fade-in-delay-2 { transition-delay: 0.2s; }
 .fade-in-delay-3 { transition-delay: 0.3s; }
@@ -104,7 +113,7 @@ p { color: #2C2C2C; }
   margin: 0 auto;
   padding: 0 24px;
 }
-.nav-logo { font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; font-weight: 700; color: #4A8C7A; font-style: normal; }
+.nav-logo { font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; font-weight: 700; color: #4A8C7A; font-style: normal; font-variation-settings: 'WONK' 0; }
 .nav-links { display: flex; align-items: center; gap: 36px; }
 .nav-links a { font-size: 0.9rem; font-weight: 500; color: #7A7A7A; transition: color 0.2s; }
 .nav-links a:hover { color: #2C2C2C; }
@@ -828,7 +837,7 @@ p { color: #2C2C2C; }
   white-space: nowrap;
 }
 .pricing-card h3 { font-size: 1.25rem; margin-bottom: 8px; }
-.pricing-price { font-family: 'Fraunces', serif; font-size: 2.8rem; font-weight: 700; color: #2C2C2C; line-height: 1; margin-bottom: 4px; }
+.pricing-price { font-family: 'Fraunces', serif; font-size: 2.8rem; font-weight: 700; color: #2C2C2C; line-height: 1; margin-bottom: 4px; font-style: normal; font-variation-settings: 'WONK' 0; }
 .pricing-price .period { font-size: 1rem; font-weight: 400; color: #7A7A7A; }
 .pricing-price .original { font-size: 1rem; color: #7A7A7A; text-decoration: line-through; margin-left: 8px; font-weight: 400; }
 .pricing-note { font-size: 0.85rem; color: #E8714A; font-weight: 500; margin-bottom: 24px; margin-top: 4px; }
@@ -927,7 +936,7 @@ p { color: #2C2C2C; }
 /* ========== FOOTER ========== */
 .footer { background: #2C2C2C; color: rgba(255,255,255,0.6); padding: 40px 0; text-align: center; font-size: 0.85rem; }
 .footer-inner { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
-.footer-logo { font-family: 'Fraunces', serif; font-weight: 700; font-size: 1.2rem; color: #fff; }
+.footer-logo { font-family: 'Fraunces', serif; font-weight: 700; font-size: 1.2rem; color: #fff; font-style: normal; font-variation-settings: 'WONK' 0; }
 .footer a { transition: color 0.2s; }
 .footer a:hover { color: #fff; }
 
@@ -2729,6 +2738,21 @@ async function handleSubmit(e) {
     errorBox.classList.add('visible');
   }
 }
+
+// Scroll animations — added via JS so elements remain visible if JS fails
+const fadeObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      fadeObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+document.querySelectorAll('.section, .pain-card, .step, .feature-card, .testimonial-card, .pricing-card, .privacy-card, .faq-item').forEach(el => {
+  el.classList.add('fade-in');
+  fadeObserver.observe(el);
+});
 </script>
 </body>
 </html>
