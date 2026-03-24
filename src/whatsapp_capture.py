@@ -248,15 +248,35 @@ def _extract_text_from_image(image_bytes: bytes) -> str:
 
 
 def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """Extract text from a PDF file using pdfplumber."""
+    """Extract text from a PDF file using pdfplumber with per-page OCR fallback."""
     try:
         import pdfplumber
         text_parts: list[str] = []
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for page in pdf.pages:
+            for i, page in enumerate(pdf.pages):
                 page_text = page.extract_text()
-                if page_text:
+                
+                # If text is very short or empty, treat as scanned image and use OCR
+                if not page_text or len(page_text.strip()) < 20:
+                    logger.info("Page %d has <20 chars of text; falling back to OCR", i + 1)
+                    try:
+                        # Convert the pdfplumber page to a PIL Image
+                        pil_image = page.to_image(resolution=300).original
+                        
+                        # Convert PIL Image to bytes to pass to our existing OCR function
+                        img_byte_arr = io.BytesIO()
+                        pil_image.save(img_byte_arr, format='PNG')
+                        img_bytes = img_byte_arr.getvalue()
+                        
+                        ocr_text = _extract_text_from_image(img_bytes)
+                        if ocr_text:
+                            text_parts.append(ocr_text)
+                    except Exception as ocr_exc:
+                        logger.warning("OCR fallback failed for page %d: %s", i + 1, ocr_exc)
+                else:
+                    logger.info("Page %d extracted via pdfplumber text", i + 1)
                     text_parts.append(page_text)
+                    
         return "\n\n".join(text_parts).strip()
     except Exception as exc:
         logger.warning("pdfplumber extraction failed: %s", exc)
