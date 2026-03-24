@@ -2216,14 +2216,6 @@ function closeMobileMenu() {
   document.getElementById('mobileMenu').classList.remove('open');
 }
 
-// ===== FADE-IN ON SCROLL =====
-const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -40px 0px' };
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) entry.target.classList.add('visible');
-  });
-}, observerOptions);
-document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
 // ===== DEMO TABS =====
 function switchTab(tabName, btn) {
@@ -2741,20 +2733,19 @@ async function handleSubmit(e) {
 
 // Scroll animations
 window.addEventListener('DOMContentLoaded', function() {
-  var observer = new IntersectionObserver(function(entries) {
+  var scrollObserver = new IntersectionObserver(function(entries) {
     entries.forEach(function(entry) {
       if (entry.isIntersecting) {
         entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
+        scrollObserver.unobserve(entry.target);
       }
     });
   }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
 
   document.querySelectorAll('.fade-in').forEach(function(el) {
-    observer.observe(el);
+    scrollObserver.observe(el);
   });
 });
-
 </script>
 </body>
 </html>
