@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — FamilyBrain</title>
+  <meta name="description" content="FamilyBrain Privacy Policy — how we collect, use, and protect your family's data under UK GDPR." />
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand-navy:   #1e3a5f;
+      --brand-blue:   #2563eb;
+      --brand-blue-l: #eff6ff;
+      --brand-teal:   #0d9488;
+      --brand-warm:   #f97316;
+      --text-dark:    #1a202c;
+      --text-mid:     #4a5568;
+      --text-light:   #718096;
+      --border:       #e2e8f0;
+      --bg-page:      #f8fafc;
+      --bg-card:      #ffffff;
+      --radius:       12px;
+      --shadow:       0 1px 6px rgba(0,0,0,0.08);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-dark);
+      line-height: 1.75;
+      font-size: 16px;
+    }
+
+    /* ── Top navigation bar ───────────────────────────────────────────── */
+    .topbar {
+      background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-blue) 100%);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+    }
+
+    .topbar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .topbar-logo .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .topbar-logo .logo-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .topbar-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+      border-radius: 20px;
+      padding: 3px 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    /* ── Hero header ──────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(160deg, var(--brand-navy) 0%, #1a4a8a 60%, var(--brand-blue) 100%);
+      color: #fff;
+      padding: 56px 24px 48px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      font-size: 1.05rem;
+      opacity: 0.85;
+      max-width: 560px;
+      margin: 0 auto 20px;
+    }
+
+    .hero-meta {
+      display: inline-flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+      font-size: 0.82rem;
+      opacity: 0.75;
+    }
+
+    .hero-meta span::before { content: "• "; }
+    .hero-meta span:first-child::before { content: ""; }
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc-sidebar { display: none; }
+    }
+
+    /* ── Table of contents sidebar ────────────────────────────────────── */
+    .toc-sidebar {
+      position: sticky;
+      top: 80px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      padding: 20px;
+      font-size: 0.84rem;
+    }
+
+    .toc-sidebar h3 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-light);
+      margin-bottom: 12px;
+    }
+
+    .toc-sidebar ol {
+      list-style: none;
+      counter-reset: toc;
+    }
+
+    .toc-sidebar li {
+      counter-increment: toc;
+      margin-bottom: 6px;
+    }
+
+    .toc-sidebar li::before {
+      content: counter(toc) ". ";
+      color: var(--brand-blue);
+      font-weight: 600;
+      font-size: 0.78rem;
+    }
+
+    .toc-sidebar a {
+      color: var(--text-mid);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .toc-sidebar a:hover { color: var(--brand-blue); }
+
+    /* ── Main content ─────────────────────────────────────────────────── */
+    .content section {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      padding: 32px 36px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 600px) {
+      .content section { padding: 24px 20px; }
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--brand-blue-l);
+    }
+
+    .section-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--brand-blue-l);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .section-header h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--brand-navy);
+    }
+
+    .section-num {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--brand-blue);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    p { margin-bottom: 14px; color: var(--text-mid); }
+    p:last-child { margin-bottom: 0; }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-dark);
+      margin: 20px 0 8px;
+    }
+
+    /* ── Data table ───────────────────────────────────────────────────── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      margin: 16px 0;
+    }
+
+    .data-table th {
+      background: var(--brand-navy);
+      color: #fff;
+      text-align: left;
+      padding: 10px 14px;
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .data-table th:first-child { border-radius: 8px 0 0 0; }
+    .data-table th:last-child  { border-radius: 0 8px 0 0; }
+
+    .data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-mid);
+      vertical-align: top;
+    }
+
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:nth-child(even) td { background: #f8fafc; }
+
+    /* ── Processor cards ──────────────────────────────────────────────── */
+    .processor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .processor-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      background: #fafbfc;
+    }
+
+    .processor-card .proc-name {
+      font-weight: 700;
+      color: var(--brand-navy);
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+
+    .processor-card .proc-role {
+      font-size: 0.8rem;
+      color: var(--brand-blue);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .processor-card p {
+      font-size: 0.82rem;
+      margin: 0;
+      color: var(--text-mid);
+    }
+
+    .processor-card a {
+      font-size: 0.78rem;
+      color: var(--brand-blue);
+      text-decoration: none;
+      display: block;
+      margin-top: 6px;
+    }
+
+    .processor-card a:hover { text-decoration: underline; }
+
+    /* ── Rights grid ──────────────────────────────────────────────────── */
+    .rights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+
+    .right-card {
+      border-left: 3px solid var(--brand-blue);
+      padding: 12px 14px;
+      background: var(--brand-blue-l);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .right-card .right-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--brand-navy);
+      margin-bottom: 4px;
+    }
+
+    .right-card p {
+      font-size: 0.82rem;
+      margin: 0;
+      color: var(--text-mid);
+    }
+
+    /* ── Callout boxes ────────────────────────────────────────────────── */
+    .callout {
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 16px 0;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .callout-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+
+    .callout-blue  { background: #eff6ff; border: 1px solid #bfdbfe; }
+    .callout-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .callout-amber { background: #fffbeb; border: 1px solid #fde68a; }
+
+    .callout p { margin: 0; font-size: 0.9rem; color: var(--text-dark); }
+    .callout strong { color: var(--brand-navy); }
+
+    /* ── Command badge ────────────────────────────────────────────────── */
+    .cmd {
+      display: inline-block;
+      background: var(--brand-navy);
+      color: #fff;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Contact box ──────────────────────────────────────────────────── */
+    .contact-box {
+      background: linear-gradient(135deg, var(--brand-navy), #1a4a8a);
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-top: 8px;
+    }
+
+    .contact-box h3 { color: #fff; margin-top: 0; }
+    .contact-box p  { color: rgba(255,255,255,0.85); margin-bottom: 8px; }
+
+    .contact-box a {
+      color: #93c5fd;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .contact-box a:hover { text-decoration: underline; }
+
+    /* ── Footer ───────────────────────────────────────────────────────── */
+    footer {
+      background: var(--brand-navy);
+      color: rgba(255,255,255,0.6);
+      text-align: center;
+      padding: 24px;
+      font-size: 0.82rem;
+    }
+
+    footer a { color: rgba(255,255,255,0.8); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Retention badge ──────────────────────────────────────────────── */
+    .retention-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .retention-row:last-child { border-bottom: none; }
+
+    .retention-label {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: var(--text-dark);
+      min-width: 180px;
+    }
+
+    .retention-period {
+      font-size: 0.82rem;
+      background: var(--brand-blue-l);
+      color: var(--brand-blue);
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .retention-note {
+      font-size: 0.82rem;
+      color: var(--text-light);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top navigation bar ───────────────────────────────────────────────── -->
+<nav class="topbar" role="navigation" aria-label="Site navigation">
+  <a class="topbar-logo" href="/">
+    <div class="logo-icon">🧠</div>
+    <span class="logo-name">FamilyBrain</span>
+  </a>
+  <span class="topbar-badge">Privacy Policy</span>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+<header class="hero" role="banner">
+  <h1>Privacy Policy</h1>
+  <p>We believe your family's data belongs to your family. Here is exactly what we collect, why, and how you can control it.</p>
+  <div class="hero-meta">
+    <span>Effective date: 22 March 2026</span>
+    <span>Last updated: 22 March 2026</span>
+    <span>UK GDPR compliant</span>
+    <span>Version 1.0</span>
+    <span>Adults (18+) only</span>
+  </div>
+</header>
+
+<!-- ── Main layout ───────────────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Sidebar table of contents -->
+  <aside class="toc-sidebar" aria-label="Table of contents">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#who-we-are">Who We Are</a></li>
+      <li><a href="#data-collected">Data We Collect</a></li>
+      <li><a href="#how-we-use">How We Use Your Data</a></li>
+      <li><a href="#legal-basis">Legal Basis</a></li>
+      <li><a href="#processors">Data Processors</a></li>
+      <li><a href="#retention">Data Retention</a></li>
+      <li><a href="#your-rights">Your Rights</a></li>
+      <li><a href="#deletion">Requesting Deletion</a></li>
+      <li><a href="#children">Children &amp; Adults-Only Policy</a></li>
+      <li><a href="#cookies">Cookies</a></li>
+      <li><a href="#transfers">International Transfers</a></li>
+      <li><a href="#changes">Changes to This Policy</a></li>
+      <li><a href="#contact">Contact &amp; Complaints</a></li>
+    </ol>
+  </aside>
+
+  <!-- Main content -->
+  <main class="content" id="main-content">
+
+    <!-- 1. Who We Are -->
+    <section id="who-we-are">
+      <div class="section-header">
+        <div class="section-icon">🏠</div>
+        <div>
+          <span class="section-num">Section 1</span>
+          <h2>Who We Are</h2>
+        </div>
+      </div>
+      <p>FamilyBrain is a UK-based family assistant product that helps households organise their calendar events, store important documents, capture memories, and manage daily life — all through WhatsApp. FamilyBrain is operated as a private product and is not currently a registered company; the data controller for the purposes of the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018 is the FamilyBrain service operator.</p>
+      <p>For any privacy-related enquiries, please contact us at <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a>.</p>
+
+      <div class="callout" style="background:#fff7ed;border-left:4px solid #f97316;padding:16px 20px;border-radius:8px;display:flex;gap:12px;align-items:flex-start;margin:20px 0;">
+        <span style="font-size:1.4rem;line-height:1;">🔞</span>
+        <div>
+          <p style="font-weight:700;color:#c2410c;margin-bottom:6px;font-size:1rem;">FamilyBrain is for adults aged 18 and over only.</p>
+          <p style="margin:0;color:#7c2d12;font-size:0.93rem;">Children are not users of this service and do not have accounts. By using FamilyBrain you confirm that you are 18 years of age or older. If you are under 18, please do not use this service. See <a href="#children" style="color:#c2410c;font-weight:600;">Section 9</a> for how we handle information about children stored on behalf of adult users.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-blue">
+        <span class="callout-icon">ℹ️</span>
+        <p>This policy applies to all users of the FamilyBrain WhatsApp bot, the FamilyBrain web calendar, and any associated web pages at <strong>familybrain.co.uk</strong>.</p>
+      </div>
+    </section>
+
+    <!-- 2. Data We Collect -->
+    <section id="data-collected">
+      <div class="section-header">
+        <div class="section-icon">📋</div>
+        <div>
+          <span class="section-num">Section 2</span>
+          <h2>Data We Collect</h2>
+        </div>
+      </div>
+      <p>We collect only the data necessary to provide the FamilyBrain service. The table below describes each category of data we process.</p>
+
+      <table class="data-table" aria-label="Categories of personal data collected">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>What it includes</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>WhatsApp messages</strong></td>
+            <td>Text messages, voice notes (transcribed), and any captions you send to the FamilyBrain bot number.</td>
+            <td>You, via Twilio WhatsApp</td>
+          </tr>
+          <tr>
+            <td><strong>Images &amp; photos</strong></td>
+            <td>Photos you send to the bot (e.g. photos of documents, receipts, letters). Text is extracted via OCR and the image is not retained beyond processing.</td>
+            <td>You, via Twilio WhatsApp</td>
+          </tr>
+          <tr>
+            <td><strong>PDF documents</strong></td>
+            <td>PDF files you send to the bot (e.g. insurance documents, school letters). Text content is extracted and stored; the raw PDF is not retained beyond processing.</td>
+            <td>You, via Twilio WhatsApp</td>
+          </tr>
+          <tr>
+            <td><strong>Calendar events</strong></td>
+            <td>Event name, date, time, location, and the family member the event relates to. Captured from messages or synced from Google Calendar if you connect it.</td>
+            <td>You, or Google Calendar (if connected)</td>
+          </tr>
+          <tr>
+            <td><strong>Family member details</strong></td>
+            <td>Names and WhatsApp phone numbers of family members you register with FamilyBrain.</td>
+            <td>You, during onboarding</td>
+          </tr>
+          <tr>
+            <td><strong>Memories &amp; notes</strong></td>
+            <td>Structured summaries of information you share with the bot (e.g. medical details, vehicle information, financial references). Stored as text with AI-generated metadata tags.</td>
+            <td>You, via WhatsApp messages</td>
+          </tr>
+          <tr>
+            <td><strong>Google Calendar tokens</strong></td>
+            <td>OAuth refresh tokens that allow FamilyBrain to read and write to your Google Calendar on your behalf, if you choose to connect it.</td>
+            <td>Google, via OAuth 2.0 consent</td>
+          </tr>
+          <tr>
+            <td><strong>Session data</strong></td>
+            <td>Temporary in-memory conversation history used to maintain context within a single session. This is not persisted to the database.</td>
+            <td>Automatically, during your session</td>
+          </tr>
+          <tr>
+            <td><strong>Usage logs</strong></td>
+            <td>Server-side application logs (e.g. message received, command processed). These contain phone numbers and timestamps but no message content.</td>
+            <td>Automatically, by the server</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-green">
+        <span class="callout-icon">✅</span>
+        <p><strong>We do not collect:</strong> payment card details, government ID numbers (unless you explicitly send them), biometric data, or browsing history. We do not use tracking pixels, advertising cookies, or any third-party analytics on our web pages.</p>
+      </div>
+    </section>
+
+    <!-- 3. How We Use Your Data -->
+    <section id="how-we-use">
+      <div class="section-header">
+        <div class="section-icon">⚙️</div>
+        <div>
+          <span class="section-num">Section 3</span>
+          <h2>How We Use Your Data</h2>
+        </div>
+      </div>
+      <p>We use your data solely to provide and improve the FamilyBrain service. We do not sell your data, share it with advertisers, or use it for any purpose unrelated to the service you have requested.</p>
+
+      <h3>AI Processing (OpenAI)</h3>
+      <p>When you send a message to FamilyBrain, the text content is sent to OpenAI's API to extract structured information (such as event details, document type, and action items), generate a semantic embedding for search, and compose a helpful reply. OpenAI processes this data as a data processor acting on our instructions. Your messages are not used to train OpenAI's models under our API agreement.</p>
+
+      <h3>Calendar Synchronisation (Google Calendar API)</h3>
+      <p>If you choose to connect your Google Calendar, FamilyBrain will read your upcoming events to provide reminders and context, and will write new events when you ask the bot to add something to your calendar. This connection is entirely optional and can be revoked at any time from your Google Account settings at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.</p>
+
+      <h3>Document Storage (Supabase / PostgreSQL)</h3>
+      <p>Extracted text from your messages, documents, and photos is stored in a PostgreSQL database hosted by Supabase. This allows FamilyBrain to answer questions about information you have previously shared. All data is stored in the European Union (Ireland region) and is encrypted at rest and in transit.</p>
+
+      <h3>WhatsApp Messaging (Twilio)</h3>
+      <p>All WhatsApp messages are sent and received via Twilio's WhatsApp Business API. Twilio processes your phone number and message content in order to route messages to and from the FamilyBrain bot. Twilio's data processing is governed by their Data Protection Addendum.</p>
+
+      <h3>Morning Briefings &amp; Alerts</h3>
+      <p>FamilyBrain may send you proactive WhatsApp messages, such as a morning summary of the day's events or an alert about an upcoming document expiry. These are generated from data you have already stored and are sent only to registered family members.</p>
+    </section>
+
+    <!-- 4. Legal Basis -->
+    <section id="legal-basis">
+      <div class="section-header">
+        <div class="section-icon">⚖️</div>
+        <div>
+          <span class="section-num">Section 4</span>
+          <h2>Legal Basis for Processing</h2>
+        </div>
+      </div>
+      <p>Under UK GDPR, we rely on the following legal bases for processing your personal data:</p>
+
+      <table class="data-table" aria-label="Legal bases for processing">
+        <thead>
+          <tr>
+            <th>Processing activity</th>
+            <th>Legal basis</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Storing and retrieving your messages, memories, and documents</td>
+            <td><strong>Contract</strong> — necessary to provide the service you have signed up for (Article 6(1)(b) UK GDPR)</td>
+          </tr>
+          <tr>
+            <td>Sending proactive alerts and briefings</td>
+            <td><strong>Legitimate interests</strong> — to provide the core value of the service (Article 6(1)(f) UK GDPR). You can opt out at any time.</td>
+          </tr>
+          <tr>
+            <td>Google Calendar synchronisation</td>
+            <td><strong>Consent</strong> — you explicitly authorise this connection via Google's OAuth consent screen (Article 6(1)(a) UK GDPR)</td>
+          </tr>
+          <tr>
+            <td>Server logs and security monitoring</td>
+            <td><strong>Legitimate interests</strong> — to maintain the security and integrity of the service (Article 6(1)(f) UK GDPR)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 5. Data Processors -->
+    <section id="processors">
+      <div class="section-header">
+        <div class="section-icon">🔗</div>
+        <div>
+          <span class="section-num">Section 5</span>
+          <h2>Data Processors We Use</h2>
+        </div>
+      </div>
+      <p>We use a small number of carefully selected third-party data processors. Each processor is bound by a Data Processing Agreement (DPA) and processes your data only on our instructions.</p>
+
+      <div class="processor-grid">
+        <div class="processor-card">
+          <div class="proc-name">OpenAI</div>
+          <div class="proc-role">AI Processing</div>
+          <p>Processes message text to extract structured data and generate replies. Data is sent via the OpenAI API and is not used for model training under our API agreement.</p>
+          <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI Privacy Policy ↗</a>
+        </div>
+
+        <div class="processor-card">
+          <div class="proc-name">Twilio</div>
+          <div class="proc-role">WhatsApp Messaging</div>
+          <p>Routes WhatsApp messages between users and the FamilyBrain bot. Processes phone numbers and message content for delivery purposes only.</p>
+          <a href="https://www.twilio.com/en-us/legal/privacy" target="_blank" rel="noopener">Twilio Privacy Policy ↗</a>
+        </div>
+
+        <div class="processor-card">
+          <div class="proc-name">Supabase</div>
+          <div class="proc-role">Database &amp; Storage</div>
+          <p>Hosts the PostgreSQL database where your memories, events, and documents are stored. Data is stored in the EU (Ireland). Supabase is SOC 2 Type II certified.</p>
+          <a href="https://supabase.com/privacy" target="_blank" rel="noopener">Supabase Privacy Policy ↗</a>
+        </div>
+
+        <div class="processor-card">
+          <div class="proc-name">Google Calendar API</div>
+          <div class="proc-role">Calendar Sync (optional)</div>
+          <p>Used only if you choose to connect your Google Calendar. Allows FamilyBrain to read and write calendar events on your behalf. Connection is revocable at any time.</p>
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy ↗</a>
+        </div>
+
+        <div class="processor-card">
+          <div class="proc-name">Railway</div>
+          <div class="proc-role">Application Hosting</div>
+          <p>Hosts the FamilyBrain application server. Application logs may contain phone numbers and timestamps but not message content beyond what is needed for debugging.</p>
+          <a href="https://railway.app/legal/privacy" target="_blank" rel="noopener">Railway Privacy Policy ↗</a>
+        </div>
+      </div>
+
+      <div class="callout callout-amber">
+        <span class="callout-icon">⚠️</span>
+        <p>When you send a message to FamilyBrain, the text content passes through Twilio's infrastructure and OpenAI's API before being stored in Supabase. By using FamilyBrain, you acknowledge this processing chain. <strong>Please do not send highly sensitive information</strong> such as passwords, full bank account details, or National Insurance numbers unless you are comfortable with this processing.</p>
+      </div>
+    </section>
+
+    <!-- 6. Data Retention -->
+    <section id="retention">
+      <div class="section-header">
+        <div class="section-icon">🗓️</div>
+        <div>
+          <span class="section-num">Section 6</span>
+          <h2>Data Retention</h2>
+        </div>
+      </div>
+      <p>We keep your data for as long as your FamilyBrain account is active. We do not automatically delete your data after a fixed period of time — your memories, calendar events, documents, and family information stay in FamilyBrain for as long as you want them there.</p>
+
+      <p><strong>You are in control.</strong> You can delete your personal data at any time using the <span class="cmd">/delete-my-data</span> command, or request a full family data wipe using the <span class="cmd">/delete-all-family-data</span> command. See <a href="#deletion">Section 8</a> for full details of our tiered deletion process.</p>
+
+      <div class="callout callout-green">
+        <span class="callout-icon">✅</span>
+        <p><strong>No automatic deletions.</strong> FamilyBrain does not run scheduled jobs that delete your data based on age or time. Nothing is removed without your explicit instruction. Your data is yours, and it stays until you choose to remove it.</p>
+      </div>
+
+      <p>There are two narrow exceptions to this principle:</p>
+      <ul style="margin: 10px 0 14px 20px; color: var(--text-mid); font-size: 0.92rem;">
+        <li style="margin-bottom: 8px;"><strong>Google Calendar tokens</strong> — if you disconnect your Google Calendar (either from within FamilyBrain or via your Google Account settings), the OAuth access token is deleted immediately and automatically, as it is no longer needed.</li>
+        <li style="margin-bottom: 8px;"><strong>Raw images and PDFs</strong> — when you send a photo or PDF to the bot, the text content is extracted and stored, but the original file is not retained beyond the processing step. Only the extracted text is saved.</li>
+      </ul>
+
+      <p>If you close your account or ask us to delete your data by email, we will complete the deletion within 30 days and confirm once it is done.</p>
+    </section>
+
+    <!-- 7. Your Rights -->
+    <section id="your-rights">
+      <div class="section-header">
+        <div class="section-icon">🛡️</div>
+        <div>
+          <span class="section-num">Section 7</span>
+          <h2>Your Rights Under UK GDPR</h2>
+        </div>
+      </div>
+      <p>As a data subject under the UK GDPR and the Data Protection Act 2018, you have the following rights. You can exercise any of these rights by contacting us at <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a> or by using the in-bot commands described in Section 8.</p>
+
+      <div class="rights-grid">
+        <div class="right-card">
+          <div class="right-title">Right of Access</div>
+          <p>You can request a copy of all personal data we hold about you and your family (Article 15 UK GDPR). We will respond within one calendar month.</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Erasure</div>
+          <p>You can request that we delete all your personal data ("the right to be forgotten") at any time (Article 17 UK GDPR). See Section 8 for how to do this instantly via WhatsApp.</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Rectification</div>
+          <p>If any stored information is inaccurate, you can ask us to correct it (Article 16 UK GDPR). You can also correct individual memories directly via the bot using the <span class="cmd">correct memory N: [new text]</span> command.</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Portability</div>
+          <p>You can request a machine-readable export of your data (Article 20 UK GDPR). Contact us at <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a> and we will provide a JSON export within one month.</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Restrict Processing</div>
+          <p>You can ask us to pause processing your data while a complaint or correction request is being resolved (Article 18 UK GDPR).</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Object</div>
+          <p>You can object to processing based on legitimate interests (Article 21 UK GDPR), such as proactive briefings and alerts. Contact us to opt out of any specific processing activity.</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Withdraw Consent</div>
+          <p>Where processing is based on consent (e.g. Google Calendar sync), you can withdraw consent at any time without affecting the lawfulness of prior processing.</p>
+        </div>
+        <div class="right-card">
+          <div class="right-title">Right to Complain</div>
+          <p>You have the right to lodge a complaint with the UK Information Commissioner's Office (ICO) at <a href="https://ico.org.uk" target="_blank" rel="noopener">ico.org.uk</a> or by calling 0303 123 1113.</p>
+        </div>
+      </div>
+
+      <p>We will respond to all rights requests within one calendar month. In complex cases we may extend this by a further two months, in which case we will notify you within the first month.</p>
+    </section>
+
+    <!-- 8. Requesting Deletion -->
+    <section id="deletion">
+      <div class="section-header">
+        <div class="section-icon">🗑️</div>
+        <div>
+          <span class="section-num">Section 8</span>
+          <h2>Requesting Data Deletion</h2>
+        </div>
+      </div>
+      <p>Because FamilyBrain is a shared household tool, we use a <strong>tiered deletion system</strong> to ensure you can always delete your own data, while preventing one person from accidentally deleting the entire family's shared history without consensus. Deletion is permanent and cannot be undone.</p>
+
+      <h3>Tier 1: Personal Deletion (Instant)</h3>
+      <p>To delete only the data that <strong>you</strong> submitted, send the following command to the bot:</p>
+      <p style="margin: 12px 0;"><span class="cmd">/delete-my-data</span></p>
+      <p>The bot will ask you to confirm by replying <span class="cmd">DELETE</span>. Once confirmed, all memories, documents, and calendar events submitted from your phone number will be permanently deleted immediately. This does not require approval from other family members.</p>
+
+      <h3 style="margin-top: 24px;">Tier 2: Full Family Wipe (Consensus Required)</h3>
+      <p>To delete <strong>all data for the entire family</strong> (including data submitted by other members), send:</p>
+      <p style="margin: 12px 0;"><span class="cmd">/delete-all-family-data</span></p>
+      <p>Because this affects everyone, it requires consensus. When you send this command, the bot will message all registered adult members of your family asking them to confirm. <strong>All members must reply YES within 48 hours.</strong> Once the final member confirms, the entire family's data is permanently deleted, including:</p>
+      <ul style="margin: 10px 0 14px 20px; color: var(--text-mid); font-size: 0.92rem;">
+        <li style="margin-bottom: 6px;">All stored memories, notes, and document extracts</li>
+        <li style="margin-bottom: 6px;">All calendar events</li>
+        <li style="margin-bottom: 6px;">All briefing and notification logs</li>
+        <li style="margin-bottom: 6px;">Any generated emergency PDF files</li>
+      </ul>
+      <p>If 48 hours pass without full consensus, the request expires and no data is deleted.</p>
+
+      <h3 style="margin-top: 24px;">Option 3: Email request</h3>
+      <p>You can also send an email to <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a> with the subject line <strong>"Data Deletion Request"</strong> and include the WhatsApp phone number(s) associated with your family. We will complete the deletion within 30 days and confirm by email.</p>
+
+      <div class="callout callout-amber">
+        <span class="callout-icon">⚠️</span>
+        <p><strong>Note on Google Calendar:</strong> Deleting your FamilyBrain data removes our copy of your calendar events. It does not delete events from your Google Calendar itself. To revoke FamilyBrain's access to your Google Calendar, visit <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a> and remove FamilyBrain from the connected apps list.</p>
+      </div>
+    </section>
+
+    <!-- 9. Children's Data -->
+    <section id="children">
+      <div class="section-header">
+        <div class="section-icon">👨‍👩‍👧‍👦</div>
+        <div>
+          <span class="section-num">Section 9</span>
+          <h2>Children &amp; the Adults-Only Policy</h2>
+        </div>
+      </div>
+
+      <div class="callout" style="background:#fff7ed;border-left:4px solid #f97316;padding:16px 20px;border-radius:8px;display:flex;gap:12px;align-items:flex-start;margin:0 0 20px;">
+        <span style="font-size:1.4rem;line-height:1;">🔞</span>
+        <div>
+          <p style="font-weight:700;color:#c2410c;margin-bottom:6px;font-size:1rem;">This service is for adults (18+) only. Children are not users of FamilyBrain.</p>
+          <p style="margin:0;color:#7c2d12;font-size:0.93rem;">Children do not have accounts, do not interact with the WhatsApp bot, and do not have access to any part of the FamilyBrain service. The UK Children's Code (Age Appropriate Design Code) does not apply to FamilyBrain because the service is not directed at children and takes no steps to attract child users.</p>
+        </div>
+      </div>
+
+      <h3>Children as data subjects</h3>
+      <p>Although children are not users of FamilyBrain, information <em>about</em> children may be stored as part of a family's data. For example, an adult user may store a child's name in a calendar event (such as a school sports day), a school letter, or a medical appointment. In these cases:</p>
+      <ul style="margin:10px 0 16px 20px;color:var(--text-mid);font-size:0.92rem;">
+        <li style="margin-bottom:8px;">The child is a <strong>data subject</strong> but not a user of the service.</li>
+        <li style="margin-bottom:8px;">The adult account holder acts as the <strong>data controller</strong> in relation to their child's information, and FamilyBrain processes that information on the adult's behalf.</li>
+        <li style="margin-bottom:8px;">Children's data stored in this way is subject to the same retention, deletion, and security rules as all other family data (see <a href="#retention">Section 6</a> and <a href="#deletion">Section 8</a>).</li>
+        <li style="margin-bottom:8px;">Children's data is never shared with third parties beyond the data processors listed in <a href="#processors">Section 5</a>, and is never used for advertising, profiling, or any purpose unrelated to providing the family assistant service.</li>
+      </ul>
+
+      <h3>Parental responsibility</h3>
+      <p>By using FamilyBrain and storing information that relates to a child under the age of 18, the adult account holder confirms all of the following:</p>
+      <ul style="margin:10px 0 16px 20px;color:var(--text-mid);font-size:0.92rem;">
+        <li style="margin-bottom:8px;">They have <strong>parental responsibility</strong> for the child, or are otherwise legally authorised to store and process information about that child.</li>
+        <li style="margin-bottom:8px;">They have considered whether it is appropriate to store the child's information in the service, and are satisfied that doing so is in the child's best interests.</li>
+        <li style="margin-bottom:8px;">They understand that the child's information will be processed by the data processors listed in <a href="#processors">Section 5</a> (OpenAI, Twilio, Supabase, Google Calendar API, Railway) as part of the normal operation of the service.</li>
+        <li style="margin-bottom:8px;">They accept responsibility for ensuring that any information stored about a child is accurate and up to date.</li>
+      </ul>
+
+      <h3>No direct collection from children</h3>
+      <p>FamilyBrain does not knowingly collect personal data directly from children. The service requires a WhatsApp account and active engagement with the bot; both of these require the user to be an adult. If we become aware that a child has accessed the service directly, we will take steps to remove their data and close their access.</p>
+
+      <h3>Scope of the UK Children's Code</h3>
+      <p>The UK Age Appropriate Design Code (Children's Code) applies to online services that are likely to be accessed by children. FamilyBrain is an adults-only service. We do not market to children, we do not design features to appeal to children, and we require users to confirm they are 18 or over at onboarding. Accordingly, the Children's Code does not apply to FamilyBrain. Should our service scope change in future, we will reassess this position and update this policy accordingly.</p>
+    </section>
+
+    <!-- 10. Cookies -->
+    <section id="cookies">
+      <div class="section-header">
+        <div class="section-icon">🍪</div>
+        <div>
+          <span class="section-num">Section 10</span>
+          <h2>Cookies</h2>
+        </div>
+      </div>
+      <p>FamilyBrain uses only <strong>essential session cookies</strong> on its web pages (such as the family calendar page). We do not use tracking cookies, advertising cookies, analytics cookies, or any third-party cookies of any kind.</p>
+
+      <table class="data-table" aria-label="Cookies used by FamilyBrain">
+        <thead>
+          <tr>
+            <th>Cookie name</th>
+            <th>Purpose</th>
+            <th>Duration</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>session</code></td>
+            <td>Maintains your session state while browsing the FamilyBrain web pages (e.g. the calendar). Not used for tracking.</td>
+            <td>Session (deleted when you close your browser)</td>
+            <td>Essential</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-green">
+        <span class="callout-icon">✅</span>
+        <p><strong>No tracking. No ads. No analytics.</strong> We do not use Google Analytics, Facebook Pixel, Hotjar, or any other third-party tracking tool. The only cookie we set is a session cookie required for the web pages to function correctly.</p>
+      </div>
+
+      <p>Because we use only strictly necessary cookies, we are not required by law to obtain your consent before setting them. However, we inform you of their use here in the interest of full transparency.</p>
+    </section>
+
+    <!-- 11. International Transfers -->
+    <section id="transfers">
+      <div class="section-header">
+        <div class="section-icon">🌍</div>
+        <div>
+          <span class="section-num">Section 11</span>
+          <h2>International Data Transfers</h2>
+        </div>
+      </div>
+      <p>Some of our data processors are based outside the UK or process data in countries outside the UK. Where this occurs, we ensure that appropriate safeguards are in place as required by UK GDPR Chapter V.</p>
+
+      <table class="data-table" aria-label="International data transfers">
+        <thead>
+          <tr>
+            <th>Processor</th>
+            <th>Location</th>
+            <th>Safeguard</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OpenAI</td>
+            <td>United States</td>
+            <td>UK International Data Transfer Agreement (IDTA) / Standard Contractual Clauses (SCCs)</td>
+          </tr>
+          <tr>
+            <td>Twilio</td>
+            <td>United States (with EU data residency options)</td>
+            <td>UK IDTA / SCCs; Twilio DPA</td>
+          </tr>
+          <tr>
+            <td>Supabase</td>
+            <td>European Union (Ireland — AWS eu-west-1)</td>
+            <td>Adequacy decision (EU–UK adequacy); data does not leave the EU</td>
+          </tr>
+          <tr>
+            <td>Google (Calendar API)</td>
+            <td>United States / EU</td>
+            <td>UK IDTA / SCCs; Google Cloud DPA</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 12. Changes -->
+    <section id="changes">
+      <div class="section-header">
+        <div class="section-icon">📝</div>
+        <div>
+          <span class="section-num">Section 12</span>
+          <h2>Changes to This Policy</h2>
+        </div>
+      </div>
+      <p>We may update this Privacy Policy from time to time to reflect changes in the service, changes in applicable law, or feedback from users. When we make material changes, we will notify registered family members via WhatsApp at least 14 days before the changes take effect.</p>
+      <p>The "Last updated" date at the top of this page will always reflect the most recent revision. We encourage you to review this policy periodically. Continued use of FamilyBrain after the effective date of any changes constitutes your acceptance of the updated policy.</p>
+      <p>Previous versions of this policy are available on request by emailing <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a>.</p>
+    </section>
+
+    <!-- 13. Contact -->
+    <section id="contact">
+      <div class="section-header">
+        <div class="section-icon">📬</div>
+        <div>
+          <span class="section-num">Section 13</span>
+          <h2>Contact &amp; Complaints</h2>
+        </div>
+      </div>
+      <p>If you have any questions about this Privacy Policy, wish to exercise your rights, or have a concern about how we handle your data, please contact us using the details below.</p>
+
+      <div class="contact-box">
+        <h3>Privacy Contact</h3>
+        <p>Email: <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a></p>
+        <p>We aim to respond to all privacy enquiries within 5 working days and to complete all rights requests within one calendar month.</p>
+        <p style="margin-top: 16px; font-size: 0.85rem; opacity: 0.8;">If you are not satisfied with our response, you have the right to lodge a complaint with the UK Information Commissioner's Office (ICO):</p>
+        <p><a href="https://ico.org.uk/make-a-complaint/" target="_blank" rel="noopener">ico.org.uk/make-a-complaint</a> &nbsp;|&nbsp; 0303 123 1113</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer role="contentinfo">
+  <p>
+    &copy; 2026 FamilyBrain &nbsp;·&nbsp;
+    <a href="/privacy">Privacy Policy</a> &nbsp;·&nbsp;
+    <a href="mailto:privacy@familybrain.co.uk">privacy@familybrain.co.uk</a> &nbsp;·&nbsp;
+    UK GDPR compliant &nbsp;·&nbsp;
+    Version 1.0 — 22 March 2026
+  </p>
+</footer>
+
+</body>
+</html>
