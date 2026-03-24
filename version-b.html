@@ -1543,6 +1543,142 @@ p { color: #2C2C2C; }
   .hero-buttons .btn { width: 100%; }
   .knows-grid { grid-template-columns: repeat(2, 1fr); }
 }
+/* ========== WHATSAPP ATTACHMENT BUBBLES ========== */
+/* Image attachment — used in static wa-phone cards and animated scenes */
+.wa-attach-img {
+  width: 200px;
+  height: 140px;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  cursor: default;
+  flex-shrink: 0;
+}
+.wa-attach-img-bg {
+  width: 100%; height: 100%;
+  background: linear-gradient(135deg,
+    #dce8f5 0%,
+    #eaf3fb 30%,
+    #f5f9fe 50%,
+    #e2edf8 70%,
+    #cfe0f2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.wa-attach-img-lines {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 18px, rgba(180,210,240,0.25) 18px, rgba(180,210,240,0.25) 19px),
+    repeating-linear-gradient(90deg, transparent, transparent 28px, rgba(180,210,240,0.18) 28px, rgba(180,210,240,0.18) 29px);
+}
+.wa-attach-img-icon {
+  position: relative;
+  z-index: 1;
+  background: rgba(255,255,255,0.72);
+  border-radius: 50%;
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.wa-attach-img-icon svg { width: 18px; height: 18px; fill: #5a8fc0; }
+.wa-attach-caption {
+  font-size: 0.7rem;
+  color: rgba(0,0,0,0.55);
+  margin-top: 4px;
+  padding: 0 2px;
+}
+/* The outer bubble wrapper for image attachments */
+.wa-bubble-attach-img {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 4px 4px 6px;
+  max-width: 220px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.wa-bubble-attach-img.wt-visible,
+.wa-bubble-attach-img.gd-visible,
+.wa-bubble-attach-img.cal-vis { opacity: 1; transform: translateY(0) scale(1); }
+
+/* Document attachment — PDF style */
+.wa-attach-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.88);
+  border-radius: 8px;
+  padding: 9px 10px;
+  min-width: 190px;
+  max-width: 210px;
+}
+.wa-attach-doc-icon {
+  width: 34px; height: 40px;
+  background: #e53935;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+.wa-attach-doc-icon::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 10px; height: 10px;
+  background: rgba(255,255,255,0.25);
+  border-radius: 0 4px 0 6px;
+}
+.wa-attach-doc-icon svg { width: 16px; height: 16px; fill: #fff; }
+.wa-attach-doc-meta { flex: 1; min-width: 0; }
+.wa-attach-doc-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.wa-attach-doc-size {
+  font-size: 0.65rem;
+  color: #888;
+  margin-top: 2px;
+}
+/* The outer bubble wrapper for document attachments */
+.wa-bubble-attach-doc {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-radius: 10px;
+  border-bottom-right-radius: 3px;
+  padding: 5px 5px 6px;
+  max-width: 240px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.wa-bubble-attach-doc.wt-visible,
+.wa-bubble-attach-doc.gd-visible,
+.wa-bubble-attach-doc.cal-vis { opacity: 1; transform: translateY(0) scale(1); }
+/* Time row inside attachment bubbles */
+.wa-attach-time {
+  font-size: 0.6rem;
+  color: #9E9E9E;
+  text-align: right;
+  padding: 2px 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.wa-attach-ticks { color: #53BDEB; font-size: 0.68rem; }
+
 </style>
 </head>
 <body>
@@ -1737,7 +1873,18 @@ p { color: #2C2C2C; }
             <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
           </div>
           <div class="wa-chat">
-            <div class="wa-bubble wa-bubble-user">📷 [photo of prescription]<div class="wa-time">09:14</div></div>
+            <div class="wa-bubble-attach-img wt-visible">
+              <div class="wa-attach-img">
+                <div class="wa-attach-img-bg">
+                  <div class="wa-attach-img-lines"></div>
+                  <div class="wa-attach-img-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 1 12 8.8a3.2 3.2 0 0 1 0 6.4zm0-8.4a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 12 6.8zM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="wa-attach-caption">Prescription.jpg</div>
+              <div class="wa-attach-time">09:14 <span class="wa-attach-ticks">✓✓</span></div>
+            </div>
             <div class="wa-bubble wa-bubble-bot">Stored! Jake's Amoxicillin prescription from Dr. Patel, expires 14 April. I'll remind you when it's due. 💊<div class="wa-time">09:14</div></div>
           </div>
         </div>
@@ -1753,7 +1900,18 @@ p { color: #2C2C2C; }
             <div class="wa-header-info"><div class="wa-header-name">FamilyBrain</div></div>
           </div>
           <div class="wa-chat">
-            <div class="wa-bubble wa-bubble-user">📧 [forwarded school email]<div class="wa-time">11:02</div></div>
+            <div class="wa-bubble-attach-doc wt-visible">
+              <div class="wa-attach-doc">
+                <div class="wa-attach-doc-icon">
+                  <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                </div>
+                <div class="wa-attach-doc-meta">
+                  <div class="wa-attach-doc-name">St_Josephs_Spring_Newsletter.pdf</div>
+                  <div class="wa-attach-doc-size">284 KB &middot; PDF</div>
+                </div>
+              </div>
+              <div class="wa-attach-time">11:02 <span class="wa-attach-ticks">✓✓</span></div>
+            </div>
             <div class="wa-bubble wa-bubble-bot">Got it. Year 6 trip to Brecon Beacons: 12th May, £45 due by 28th March, packed lunch required. Added to calendar. 🏕️<div class="wa-time">11:02</div></div>
           </div>
         </div>
@@ -2754,6 +2912,7 @@ function switchTab(tabName, btn) {
       label: 'Scene 1 of 2 \u2014 Forwarding a school email',
       showNotif: true,
       messages: [
+        { type: 'doc-attach', filename: 'St_Josephs_Spring_Newsletter.pdf', filesize: '284 KB \u00b7 PDF', time: '09:40' },
         { type: 'user', text: 'just forwarded the school trip email', time: '09:41', ticks: true },
         { type: 'typing', duration: 1600 },
         { type: 'bot', text: 'Got it \u2705 School trip to the Science Museum \u2014 Wednesday 14th May. Permission slip due Friday 9th May. Shall I add it to the family calendar?', time: '09:41' },
@@ -2782,6 +2941,38 @@ function switchTab(tabName, btn) {
     if (msg.type === 'typing') {
       el.className = 'wt-typing';
       el.innerHTML = '<span></span><span></span><span></span>';
+      return el;
+    }
+    // --- Image attachment bubble ---
+    if (msg.type === 'img-attach') {
+      el.className = 'wa-bubble-attach-img';
+      el.innerHTML =
+        '<div class="wa-attach-img">' +
+          '<div class="wa-attach-img-bg">' +
+            '<div class="wa-attach-img-lines"></div>' +
+            '<div class="wa-attach-img-icon">' +
+              '<svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 1 12 8.8a3.2 3.2 0 0 1 0 6.4zm0-8.4a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 12 6.8zM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="wa-attach-caption">' + (msg.filename || 'Image.jpg') + '</div>' +
+        '<div class="wa-attach-time">' + msg.time + ' <span class="wa-attach-ticks">✓✓</span></div>';
+      return el;
+    }
+    // --- Document attachment bubble ---
+    if (msg.type === 'doc-attach') {
+      el.className = 'wa-bubble-attach-doc';
+      el.innerHTML =
+        '<div class="wa-attach-doc">' +
+          '<div class="wa-attach-doc-icon">' +
+            '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>' +
+          '</div>' +
+          '<div class="wa-attach-doc-meta">' +
+            '<div class="wa-attach-doc-name">' + (msg.filename || 'Document.pdf') + '</div>' +
+            '<div class="wa-attach-doc-size">' + (msg.filesize || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="wa-attach-time">' + msg.time + ' <span class="wa-attach-ticks">✓✓</span></div>';
       return el;
     }
     el.className = 'wt-bubble ' + (msg.type === 'user' ? 'wt-user' : 'wt-bot');
