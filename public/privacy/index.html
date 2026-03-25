@@ -435,17 +435,17 @@
           <tr>
             <td><strong>WhatsApp messages</strong></td>
             <td>Text messages, voice notes (transcribed), and any captions you send to the FamilyBrain bot number.</td>
-            <td>You, via Twilio WhatsApp</td>
+            <td>You, via Meta WhatsApp Cloud API</td>
           </tr>
           <tr>
             <td><strong>Images &amp; photos</strong></td>
             <td>Photos you send to the bot (e.g. photos of documents, receipts, letters). Text is extracted via OCR and the image is not retained beyond processing.</td>
-            <td>You, via Twilio WhatsApp</td>
+            <td>You, via Meta WhatsApp Cloud API</td>
           </tr>
           <tr>
             <td><strong>PDF documents</strong></td>
             <td>PDF files you send to the bot (e.g. insurance documents, school letters). Text content is extracted and stored; the raw PDF is not retained beyond processing.</td>
-            <td>You, via Twilio WhatsApp</td>
+            <td>You, via Meta WhatsApp Cloud API</td>
           </tr>
           <tr>
             <td><strong>Calendar events</strong></td>
@@ -506,8 +506,8 @@
       <h3>Document Storage (Supabase / PostgreSQL)</h3>
       <p>Extracted text from your messages, documents, and photos is stored in a PostgreSQL database hosted by Supabase. This allows FamilyBrain to answer questions about information you have previously shared. All data is stored in the European Union (Ireland region) and is encrypted at rest and in transit.</p>
 
-      <h3>WhatsApp Messaging (Twilio)</h3>
-      <p>All WhatsApp messages are sent and received via Twilio's WhatsApp Business API. Twilio processes your phone number and message content in order to route messages to and from the FamilyBrain bot. Twilio's data processing is governed by their Data Protection Addendum.</p>
+      <h3>WhatsApp Messaging (Meta Platforms, Inc.)</h3>
+      <p>All WhatsApp messages are sent and received via the Meta WhatsApp Cloud API. Meta Platforms, Inc. processes your phone number and message content in order to route messages to and from the FamilyBrain bot. Meta's data processing is governed by their Data Processing Addendum.</p>
 
       <h3>Morning Briefings &amp; Alerts</h3>
       <p>FamilyBrain may send you proactive WhatsApp messages, such as a morning summary of the day's events or an alert about an upcoming document expiry. These are generated from data you have already stored and are sent only to registered family members.</p>
@@ -572,10 +572,10 @@
         </div>
 
         <div class="processor-card">
-          <div class="proc-name">Twilio</div>
-          <div class="proc-role">WhatsApp Messaging</div>
-          <p>Routes WhatsApp messages between users and the FamilyBrain bot. Processes phone numbers and message content for delivery purposes only.</p>
-          <a href="https://www.twilio.com/en-us/legal/privacy" target="_blank" rel="noopener">Twilio Privacy Policy ↗</a>
+          <div class="proc-name">Meta Platforms, Inc.</div>
+          <div class="proc-role">WhatsApp Messaging Infrastructure</div>
+          <p>Routes WhatsApp messages between users and the FamilyBrain bot via the WhatsApp Cloud API. Processes phone numbers and message content for delivery purposes only.</p>
+          <a href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener">Meta Data Policy ↗</a>
         </div>
 
         <div class="processor-card">
@@ -602,7 +602,7 @@
 
       <div class="callout callout-amber">
         <span class="callout-icon">⚠️</span>
-        <p>When you send a message to FamilyBrain, the text content passes through Twilio's infrastructure and OpenAI's API before being stored in Supabase. By using FamilyBrain, you acknowledge this processing chain. <strong>Please do not send highly sensitive information</strong> such as passwords, full bank account details, or National Insurance numbers unless you are comfortable with this processing.</p>
+        <p>When you send a message to FamilyBrain, the text content passes through Meta's infrastructure (WhatsApp Cloud API) and OpenAI's API before being stored in Supabase. By using FamilyBrain, you acknowledge this processing chain. <strong>Please do not send highly sensitive information</strong> such as passwords, full bank account details, or National Insurance numbers unless you are comfortable with this processing.</p>
       </div>
     </section>
 
@@ -751,7 +751,7 @@
       <ul style="margin:10px 0 16px 20px;color:var(--text-mid);font-size:0.92rem;">
         <li style="margin-bottom:8px;">They have <strong>parental responsibility</strong> for the child, or are otherwise legally authorised to store and process information about that child.</li>
         <li style="margin-bottom:8px;">They have considered whether it is appropriate to store the child's information in the service, and are satisfied that doing so is in the child's best interests.</li>
-        <li style="margin-bottom:8px;">They understand that the child's information will be processed by the data processors listed in <a href="#processors">Section 5</a> (OpenAI, Twilio, Supabase, Google Calendar API, Railway) as part of the normal operation of the service.</li>
+        <li style="margin-bottom:8px;">They understand that the child's information will be processed by the data processors listed in <a href="#processors">Section 5</a> (OpenAI, Meta Platforms, Inc., Supabase, Google Calendar API, Railway) as part of the normal operation of the service.</li>
         <li style="margin-bottom:8px;">They accept responsibility for ensuring that any information stored about a child is accurate and up to date.</li>
       </ul>
 
@@ -826,9 +826,9 @@
             <td>UK International Data Transfer Agreement (IDTA) / Standard Contractual Clauses (SCCs)</td>
           </tr>
           <tr>
-            <td>Twilio</td>
-            <td>United States (with EU data residency options)</td>
-            <td>UK IDTA / SCCs; Twilio DPA</td>
+            <td>Meta Platforms, Inc.</td>
+            <td>United States (Meta Cloud infrastructure)</td>
+            <td>UK IDTA / SCCs; Meta Data Processing Addendum</td>
           </tr>
           <tr>
             <td>Supabase</td>
