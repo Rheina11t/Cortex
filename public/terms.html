@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — FamilyBrain</title>
+  <meta name="description" content="FamilyBrain Terms of Service — the rules and conditions for using FamilyBrain." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green:      #4A8C7A;
+      --green-dark: #3a7060;
+      --green-light:#e8f4f1;
+      --text-dark:  #2C2C2C;
+      --text-mid:   #5a5a5a;
+      --text-light: #7A7A7A;
+      --border:     #e0e0e0;
+      --bg:         #f9fafb;
+      --white:      #ffffff;
+      --radius:     14px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-dark);
+      line-height: 1.75;
+      font-size: 16px;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-logo {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-weight: 700;
+      font-size: 1.3rem;
+      color: var(--green);
+      text-decoration: none;
+      font-style: normal;
+    }
+    .nav-back {
+      font-size: 0.875rem;
+      color: var(--text-mid);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--green); }
+
+    /* ── Hero banner ── */
+    .page-hero {
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      color: white;
+      padding: 56px 24px 48px;
+      text-align: center;
+    }
+    .page-hero h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-weight: 700;
+      font-size: 2.4rem;
+      margin-bottom: 12px;
+      font-style: normal;
+    }
+    .page-hero p {
+      font-size: 1rem;
+      opacity: 0.85;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    .effective-date {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      margin-top: 16px;
+    }
+
+    /* ── Content ── */
+    .content-wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--green);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 36px;
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    .toc {
+      background: var(--green-light);
+      border-left: 4px solid var(--green);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 20px 24px;
+      margin-bottom: 40px;
+    }
+    .toc h3 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--green-dark);
+      margin-bottom: 10px;
+      font-style: normal;
+    }
+    .toc ol {
+      padding-left: 18px;
+      font-size: 0.875rem;
+      color: var(--text-mid);
+      line-height: 2;
+    }
+    .toc a { color: var(--green); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    .section {
+      margin-bottom: 44px;
+    }
+    .section h2 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-weight: 600;
+      font-size: 1.4rem;
+      color: var(--text-dark);
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--green-light);
+      font-style: normal;
+    }
+    .section h3 {
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-dark);
+      margin: 18px 0 8px;
+    }
+    .section p {
+      color: var(--text-mid);
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+    }
+    .section ul, .section ol {
+      padding-left: 22px;
+      color: var(--text-mid);
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+    }
+    .section li { margin-bottom: 6px; }
+    .section a { color: var(--green); }
+
+    .callout {
+      background: var(--green-light);
+      border-left: 4px solid var(--green);
+      border-radius: 0 10px 10px 0;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: 0.9rem;
+      color: var(--text-mid);
+    }
+    .callout strong { color: var(--green-dark); }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--text-dark);
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+      padding: 24px;
+      font-size: 0.8rem;
+    }
+    footer a { color: rgba(255,255,255,0.6); text-decoration: none; margin: 0 8px; }
+    footer a:hover { color: #fff; }
+
+    @media (max-width: 600px) {
+      .page-hero h1 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="nav-logo">FamilyBrain</a>
+    <a href="/" class="nav-back">← Back to FamilyBrain</a>
+  </nav>
+
+  <div class="page-hero">
+    <h1>Terms of Service</h1>
+    <p>Please read these terms carefully before using FamilyBrain.</p>
+    <span class="effective-date">Effective date: 25 March 2026</span>
+  </div>
+
+  <div class="content-wrap">
+    <a href="/" class="back-link">← Back to FamilyBrain</a>
+
+    <div class="toc">
+      <h3>Contents</h3>
+      <ol>
+        <li><a href="#s1">About FamilyBrain</a></li>
+        <li><a href="#s2">Eligibility</a></li>
+        <li><a href="#s3">Free Trial and Subscription</a></li>
+        <li><a href="#s4">Acceptable Use</a></li>
+        <li><a href="#s5">Your Data</a></li>
+        <li><a href="#s6">Intellectual Property</a></li>
+        <li><a href="#s7">Availability and Limitations</a></li>
+        <li><a href="#s8">Termination</a></li>
+        <li><a href="#s9">Liability</a></li>
+        <li><a href="#s10">Governing Law</a></li>
+        <li><a href="#s11">Changes to These Terms</a></li>
+        <li><a href="#s12">Contact</a></li>
+      </ol>
+    </div>
+
+    <div class="section" id="s1">
+      <h2>1. About FamilyBrain</h2>
+      <p>FamilyBrain ("we", "us", "our") is a family productivity service that operates through WhatsApp messaging. FamilyBrain is operated by FamilyBrain Ltd, a company registered in England and Wales.</p>
+      <p>By messaging the FamilyBrain WhatsApp number or signing up via our website at <a href="https://familybrain.co.uk">familybrain.co.uk</a>, you agree to be bound by these Terms of Service.</p>
+    </div>
+
+    <div class="section" id="s2">
+      <h2>2. Eligibility</h2>
+      <p>You must be at least 18 years old to use FamilyBrain. By using the service, you confirm that you are 18 or over.</p>
+      <p>If you add children's information to FamilyBrain (for example, school events or medical details), you confirm that you are the parent or legal guardian of those children and have the authority to share that information.</p>
+      <p>FamilyBrain is intended for personal, non-commercial family use only.</p>
+    </div>
+
+    <div class="section" id="s3">
+      <h2>3. Free Trial and Subscription</h2>
+      <h3>Free trial</h3>
+      <p>FamilyBrain is currently free to use during our early access period. We will give you at least 30 days' notice before introducing any paid subscription.</p>
+      <h3>Future subscription</h3>
+      <p>When a paid subscription is introduced:</p>
+      <ul>
+        <li>Pricing will be displayed clearly before you are asked to pay.</li>
+        <li>Subscriptions will be billed monthly or annually, as chosen at sign-up.</li>
+        <li>You may cancel at any time. Cancellation takes effect at the end of the current billing period.</li>
+        <li>We do not offer refunds for partial billing periods, except where required by UK consumer law.</li>
+      </ul>
+      <div class="callout">
+        <strong>Your consumer rights:</strong> Nothing in these terms affects your statutory rights under UK consumer law, including the Consumer Rights Act 2015 and the Consumer Contracts Regulations 2013.
+      </div>
+    </div>
+
+    <div class="section" id="s4">
+      <h2>4. Acceptable Use</h2>
+      <p>You agree not to use FamilyBrain to:</p>
+      <ul>
+        <li>Share information about individuals without their knowledge or consent</li>
+        <li>Store or transmit any illegal content</li>
+        <li>Attempt to access, reverse-engineer, or interfere with our systems</li>
+        <li>Use the service for any commercial or business purpose</li>
+        <li>Share access credentials with people outside your family unit</li>
+        <li>Submit false or misleading information</li>
+      </ul>
+      <p>We reserve the right to suspend or terminate accounts that violate these rules.</p>
+    </div>
+
+    <div class="section" id="s5">
+      <h2>5. Your Data</h2>
+      <p>You own the data you submit to FamilyBrain. We process it only to provide the service to you.</p>
+      <p>We do not sell your data to third parties. We do not use your family's information for advertising.</p>
+      <p>For full details of how we collect, store, and process your data, please read our <a href="/privacy">Privacy Policy</a>.</p>
+      <h3>Deleting your data</h3>
+      <p>You can delete your personal data at any time by sending <strong>/delete-my-data</strong> to the FamilyBrain WhatsApp number. To request deletion of all family data, use <strong>/delete-all-family-data</strong> (this requires confirmation from all adult family members).</p>
+    </div>
+
+    <div class="section" id="s6">
+      <h2>6. Intellectual Property</h2>
+      <p>FamilyBrain, its name, logo, and underlying software are the intellectual property of FamilyBrain Ltd. You may not copy, reproduce, or distribute any part of the service without our written permission.</p>
+      <p>Content you submit (messages, documents, photos) remains yours. You grant us a limited licence to process it solely for the purpose of providing the service to you.</p>
+    </div>
+
+    <div class="section" id="s7">
+      <h2>7. Availability and Limitations</h2>
+      <p>We aim to keep FamilyBrain available 24/7, but we cannot guarantee uninterrupted service. Maintenance, updates, or circumstances beyond our control may cause temporary unavailability.</p>
+      <p>FamilyBrain relies on WhatsApp (operated by Meta) and other third-party services. We are not responsible for disruptions caused by those services.</p>
+      <p>We provide FamilyBrain as a helpful tool, but we are not responsible for decisions made based on information stored or retrieved through the service. Always verify important information (such as medical or legal matters) through appropriate professional channels.</p>
+    </div>
+
+    <div class="section" id="s8">
+      <h2>8. Termination</h2>
+      <p>You may stop using FamilyBrain at any time. To delete your account and data, send <strong>/delete-my-data</strong> via WhatsApp or email <a href="mailto:hello@familybrain.co.uk">hello@familybrain.co.uk</a>.</p>
+      <p>We may suspend or terminate your access if you breach these terms, or if we decide to discontinue the service. If we discontinue the service, we will give you at least 30 days' notice and provide a way to export your data.</p>
+    </div>
+
+    <div class="section" id="s9">
+      <h2>9. Liability</h2>
+      <p>To the maximum extent permitted by UK law, FamilyBrain Ltd's total liability to you for any claim arising from your use of the service is limited to the amount you have paid us in the 12 months preceding the claim (or £50, whichever is greater).</p>
+      <p>We are not liable for indirect or consequential losses, loss of data (beyond our obligations under the Privacy Policy), or losses arising from third-party service failures.</p>
+      <p>Nothing in these terms limits our liability for death or personal injury caused by our negligence, fraud, or any other liability that cannot be excluded under UK law.</p>
+    </div>
+
+    <div class="section" id="s10">
+      <h2>10. Governing Law</h2>
+      <p>These terms are governed by the laws of England and Wales. Any disputes will be subject to the exclusive jurisdiction of the courts of England and Wales.</p>
+    </div>
+
+    <div class="section" id="s11">
+      <h2>11. Changes to These Terms</h2>
+      <p>We may update these terms from time to time. We will notify you of material changes via WhatsApp message or email at least 14 days before they take effect. Continued use of FamilyBrain after that date constitutes acceptance of the updated terms.</p>
+    </div>
+
+    <div class="section" id="s12">
+      <h2>12. Contact</h2>
+      <p>If you have questions about these terms, please contact us:</p>
+      <ul>
+        <li>Email: <a href="mailto:hello@familybrain.co.uk">hello@familybrain.co.uk</a></li>
+        <li>Website: <a href="https://familybrain.co.uk">familybrain.co.uk</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <span>© 2026 FamilyBrain Ltd</span>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Service</a>
+    <a href="/">Home</a>
+  </footer>
+
+</body>
+</html>

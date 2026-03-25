@@ -93,6 +93,18 @@ p { color: #2C2C2C; }
 .fade-in-delay-2 { transition-delay: 0.2s; }
 .fade-in-delay-3 { transition-delay: 0.3s; }
 .fade-in-delay-4 { transition-delay: 0.4s; }
+/* ========== SCROLL ANIMATIONS ========== */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@supports (animation-timeline: view()) {
+  .section {
+    animation: slideUp 0.6s ease both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 30%;
+  }
+}
 .fade-in-delay-5 { transition-delay: 0.5s; }
 
 /* ========== STICKY NAV ========== */
@@ -2110,7 +2122,7 @@ p { color: #2C2C2C; }
       <span class="footer-logo">FamilyBrain</span>
       <span>© 2026 FamilyBrain Ltd</span>
       <a href="/privacy">Privacy Policy</a>
-      <a href="#">Terms of Service</a>
+      <a href="/terms">Terms of Service</a>
       <a href="mailto:hello@familybrain.co.uk">hello@familybrain.co.uk</a>
     </div>
   </div>
@@ -2732,6 +2744,19 @@ async function handleSubmit(e) {
     btn.disabled = false;
     errorBox.classList.add('visible');
   }
+}
+
+// Scroll animations — Safari fallback (animation-timeline not supported)
+if (!CSS.supports('animation-timeline', 'view()')) {
+  var obs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting) {
+        e.target.style.animation = 'slideUp 0.6s ease forwards';
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.section').forEach(function(el) { obs.observe(el); });
 }
 </script>
 </body>
