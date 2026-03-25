@@ -801,9 +801,9 @@ p { color: #2C2C2C; }
 .pricing-header { text-align: center; max-width: 560px; margin: 0 auto 20px; }
 .pricing-header h2 { margin-bottom: 12px; }
 .pricing-header p { color: #7A7A7A; font-size: 1.05rem; }
-.pricing-toggle { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 48px; }
-.pricing-toggle span { font-size: 0.9rem; font-weight: 500; color: #7A7A7A; transition: color 0.2s; }
-.pricing-toggle span.active { color: #2C2C2C; font-weight: 600; }
+.pricing-toggle { display: flex; gap: 0; margin-bottom: 48px; border: 1.5px solid #4A8C7A; border-radius: 8px; overflow: hidden; width: fit-content; margin-left: auto; margin-right: auto; }
+.pricing-toggle .toggle-btn { padding: 8px 28px; background: transparent; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; color: #4A8C7A; transition: all 0.2s; font-family: 'Inter', sans-serif; }
+.pricing-toggle .toggle-btn.active { background: #4A8C7A; color: #fff; }
 .toggle-switch {
   width: 52px; height: 28px;
   background: #ccc;
@@ -1956,10 +1956,8 @@ p { color: #2C2C2C; }
       <p>One plan. Everything included. No surprises.</p>
     </div>
     <div class="pricing-toggle">
-      <span id="toggleMonthly" class="active">Monthly</span>
-      <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
-      <span id="toggleAnnual">Annual</span>
-      <span class="save-badge" id="saveBadge">Save 18%</span>
+      <button class="toggle-btn active" id="toggleMonthly" onclick="togglePricing('monthly')">Monthly</button>
+      <button class="toggle-btn" id="toggleAnnual" onclick="togglePricing('annual')">Annual <span class="save-badge" id="saveBadge">Save 18%</span></button>
     </div>
     <div class="pricing-cards pricing-cards--single">
       <div class="pricing-card featured">
@@ -2526,25 +2524,18 @@ function toggleFaq(btn) {
 
 // ===== PRICING TOGGLE =====
 let isAnnual = false;
-function togglePricing() {
-  isAnnual = !isAnnual;
-  const toggle = document.getElementById('pricingToggle');
-  const monthlyLabel = document.getElementById('toggleMonthly');
-  const annualLabel = document.getElementById('toggleAnnual');
-  toggle.classList.toggle('active', isAnnual);
-  monthlyLabel.classList.toggle('active', !isAnnual);
-  annualLabel.classList.toggle('active', isAnnual);
+function togglePricing(mode) {
+  isAnnual = (mode === 'annual');
+  document.getElementById('toggleMonthly').classList.toggle('active', !isAnnual);
+  document.getElementById('toggleAnnual').classList.toggle('active', isAnnual);
   if (isAnnual) {
     document.getElementById('mainPrice').textContent = '£49';
     document.getElementById('mainPeriod').textContent = '/year';
     document.getElementById('mainNote').textContent = 'Billed annually — save 18%';
-    document.getElementById('saveBadge').textContent = 'Save 18%';
-    document.getElementById('saveBadge').style.display = 'inline-block';
   } else {
     document.getElementById('mainPrice').textContent = '£4.99';
     document.getElementById('mainPeriod').textContent = '/month';
     document.getElementById('mainNote').textContent = '14-day free trial, cancel anytime';
-    document.getElementById('saveBadge').style.display = 'none';
   }
 }
 
