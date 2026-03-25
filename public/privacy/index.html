@@ -439,12 +439,12 @@
           </tr>
           <tr>
             <td><strong>Images &amp; photos</strong></td>
-            <td>Photos you send to the bot (e.g. photos of documents, receipts, letters). Text is extracted via OCR and the image is not retained beyond processing.</td>
+            <td>Photos you send to the bot (e.g. photos of documents, receipts, letters). Text is extracted via OCR, and both the extracted text and the original image file are securely stored.</td>
             <td>You, via Meta WhatsApp Cloud API</td>
           </tr>
           <tr>
             <td><strong>PDF documents</strong></td>
-            <td>PDF files you send to the bot (e.g. insurance documents, school letters). Text content is extracted and stored; the raw PDF is not retained beyond processing.</td>
+            <td>PDF files you send to the bot (e.g. insurance documents, school letters). Both the extracted text content and the original raw PDF file are securely stored.</td>
             <td>You, via Meta WhatsApp Cloud API</td>
           </tr>
           <tr>
@@ -624,11 +624,11 @@
         <p><strong>No automatic deletions.</strong> FamilyBrain does not run scheduled jobs that delete your data based on age or time. Nothing is removed without your explicit instruction. Your data is yours, and it stays until you choose to remove it.</p>
       </div>
 
-      <p>There are two narrow exceptions to this principle:</p>
+      <p>There is one narrow exception to this principle:</p>
       <ul style="margin: 10px 0 14px 20px; color: var(--text-mid); font-size: 0.92rem;">
         <li style="margin-bottom: 8px;"><strong>Google Calendar tokens</strong> — if you disconnect your Google Calendar (either from within FamilyBrain or via your Google Account settings), the OAuth access token is deleted immediately and automatically, as it is no longer needed.</li>
-        <li style="margin-bottom: 8px;"><strong>Raw images and PDFs</strong> — when you send a photo or PDF to the bot, the text content is extracted and stored, but the original file is not retained beyond the processing step. Only the extracted text is saved.</li>
       </ul>
+      <p><strong>Note on files:</strong> Raw images, PDFs, and voice notes are stored securely alongside their extracted text or transcriptions. They are subject to the same retention rules as all other data and are not automatically deleted after processing.</p>
 
       <p>If you close your account or ask us to delete your data by email, we will complete the deletion within 30 days and confirm once it is done.</p>
     </section>
@@ -704,6 +704,7 @@
       <p>Because this affects everyone, it requires consensus. When you send this command, the bot will message all registered adult members of your family asking them to confirm. <strong>All members must reply YES within 48 hours.</strong> Once the final member confirms, the entire family's data is permanently deleted, including:</p>
       <ul style="margin: 10px 0 14px 20px; color: var(--text-mid); font-size: 0.92rem;">
         <li style="margin-bottom: 6px;">All stored memories, notes, and document extracts</li>
+        <li style="margin-bottom: 6px;">All raw PDF, image, and audio files</li>
         <li style="margin-bottom: 6px;">All calendar events</li>
         <li style="margin-bottom: 6px;">All briefing and notification logs</li>
         <li style="margin-bottom: 6px;">Any generated emergency PDF files</li>
