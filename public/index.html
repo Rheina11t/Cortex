@@ -826,6 +826,7 @@ p { color: #2C2C2C; }
 .toggle-switch.active::after { transform: translateX(24px); }
 .save-badge { background: #E8714A; color: #fff; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
 .pricing-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; max-width: 780px; margin: 0 auto; }
+.pricing-cards--single { grid-template-columns: 1fr; max-width: 420px; }
 .pricing-card {
   background: #fff;
   border-radius: 20px;
@@ -1958,46 +1959,25 @@ p { color: #2C2C2C; }
       <span id="toggleMonthly" class="active">Monthly</span>
       <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
       <span id="toggleAnnual">Annual</span>
-      <span class="save-badge">Save £60</span>
+      <span class="save-badge" id="saveBadge">Save 18%</span>
     </div>
-    <div class="pricing-cards">
-      <!-- Founding Member -->
+    <div class="pricing-cards pricing-cards--single">
       <div class="pricing-card featured">
-        <div class="pricing-badge">Most Popular</div>
-        <h3>Founding Member</h3>
+        <h3>FamilyBrain</h3>
         <div class="pricing-price">
-          <span id="founderPrice">£9.99</span><span class="period" id="founderPeriod">/month</span>
-          <span class="original" id="founderOriginal">£19.99</span>
+          <span id="mainPrice">£4.99</span><span class="period" id="mainPeriod">/month</span>
         </div>
-        <div class="pricing-note" id="founderNote">Lock in this price forever — first 100 families only</div>
-        <div class="spots-badge" id="pricing-slots-counter">🔥 47 spots remaining</div>
+        <div class="pricing-note" id="mainNote">14-day free trial, cancel anytime</div>
         <ul class="pricing-features">
-          <li>Unlimited documents</li>
+          <li>Unlimited documents &amp; photos</li>
           <li>Up to 6 family members</li>
           <li>Voice note transcription</li>
-          <li>Smart reminders</li>
+          <li>Smart reminders &amp; nudges</li>
           <li>Google Calendar sync</li>
           <li>Priority support</li>
         </ul>
-        <a href="/join" class="btn btn-primary">Claim Founding Member Price</a>
-      </div>
-      <!-- Standard -->
-      <div class="pricing-card fade-in-delay-2">
-        <h3>Standard</h3>
-        <div class="pricing-price">
-          <span id="standardPrice">£19.99</span><span class="period" id="standardPeriod">/month</span>
-        </div>
-        <div class="pricing-note" id="standardNote" style="color: #7A7A7A;">14-day free trial, cancel anytime</div>
-        <ul class="pricing-features">
-          <li>Unlimited documents</li>
-          <li>Up to 6 family members</li>
-          <li>Voice note transcription</li>
-          <li>Smart reminders</li>
-          <li>Google Calendar sync</li>
-          <li>Email support</li>
-        </ul>
-        <a href="/join" class="btn btn-outline">Start Free Trial</a>
-        <div class="small-note">14-day free trial, cancel anytime</div>
+        <a href="/join" class="btn btn-primary">Start Free Trial</a>
+        <div class="small-note">14-day free trial · No credit card required</div>
       </div>
     </div>
   </div>
@@ -2555,21 +2535,16 @@ function togglePricing() {
   monthlyLabel.classList.toggle('active', !isAnnual);
   annualLabel.classList.toggle('active', isAnnual);
   if (isAnnual) {
-    document.getElementById('founderPrice').textContent = '£7.49';
-    document.getElementById('founderPeriod').textContent = '/month';
-    document.getElementById('founderOriginal').textContent = '£14.92/mo';
-    document.getElementById('founderNote').textContent = 'Billed annually at £89.90/year — founding price forever';
-    document.getElementById('standardPrice').textContent = '£14.92';
-    document.getElementById('standardPeriod').textContent = '/month';
-    document.getElementById('standardNote').textContent = 'Billed annually at £179/year — save £60';
+    document.getElementById('mainPrice').textContent = '£49';
+    document.getElementById('mainPeriod').textContent = '/year';
+    document.getElementById('mainNote').textContent = 'Billed annually — save 18%';
+    document.getElementById('saveBadge').textContent = 'Save 18%';
+    document.getElementById('saveBadge').style.display = 'inline-block';
   } else {
-    document.getElementById('founderPrice').textContent = '£9.99';
-    document.getElementById('founderPeriod').textContent = '/month';
-    document.getElementById('founderOriginal').textContent = '£19.99';
-    document.getElementById('founderNote').textContent = 'Lock in this price forever — first 100 families only';
-    document.getElementById('standardPrice').textContent = '£19.99';
-    document.getElementById('standardPeriod').textContent = '/month';
-    document.getElementById('standardNote').textContent = '14-day free trial, cancel anytime';
+    document.getElementById('mainPrice').textContent = '£4.99';
+    document.getElementById('mainPeriod').textContent = '/month';
+    document.getElementById('mainNote').textContent = '14-day free trial, cancel anytime';
+    document.getElementById('saveBadge').style.display = 'none';
   }
 }
 
