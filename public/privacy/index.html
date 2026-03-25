@@ -136,43 +136,32 @@
 
     /* ── Layout ── */
     .layout {
-      display: grid;
-      grid-template-columns: 240px 1fr;
-      gap: 0;
-      max-width: 1100px;
+      max-width: 760px;
       margin: 0 auto;
       padding: 48px 24px 80px;
-      align-items: start;
-    }
-    @media (max-width: 800px) {
-      .layout { grid-template-columns: 1fr; }
-      .toc-sidebar { display: none; }
     }
 
-    /* ── Sidebar TOC ── */
-    .toc-sidebar {
-      position: sticky;
-      top: 80px;
-      padding-right: 32px;
+    /* ── Inline TOC ── */
+    .toc-inline {
+      background: #f8faf9;
+      border-left: 3px solid #4A8C7A;
+      padding: 20px 24px;
+      margin-bottom: 40px;
+      border-radius: 0 8px 8px 0;
     }
-    .toc-sidebar h3 {
-      font-family: 'Playfair Display', Georgia, serif;
+    .toc-inline h3 {
       font-size: 0.9rem;
       font-weight: 600;
-      color: var(--text-mid);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
+      color: #4A8C7A;
       margin-bottom: 12px;
-      font-style: normal;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-family: 'Inter', sans-serif;
     }
-    .toc-sidebar ol {
-      padding-left: 16px;
-      font-size: 0.82rem;
-      line-height: 2;
-      color: var(--text-mid);
-    }
-    .toc-sidebar a { color: var(--text-mid); text-decoration: none; transition: color 0.2s; }
-    .toc-sidebar a:hover { color: var(--green); }
+    .toc-inline ol { margin: 0; padding-left: 20px; }
+    .toc-inline li { margin-bottom: 6px; }
+    .toc-inline a { color: #2C2C2C; text-decoration: none; font-size: 0.9rem; }
+    .toc-inline a:hover { color: #4A8C7A; }
 
     /* ── Sections ── */
     .content section {
@@ -375,8 +364,8 @@
     <a href="/" class="back-link">← Back to FamilyBrain</a>
 
 
-  <!-- Sidebar table of contents -->
-  <aside class="toc-sidebar" aria-label="Table of contents">
+  <!-- Inline table of contents -->
+  <nav class="toc-inline" aria-label="Table of contents">
     <h3>Contents</h3>
     <ol>
       <li><a href="#who-we-are">Who We Are</a></li>
@@ -393,7 +382,7 @@
       <li><a href="#changes">Changes to This Policy</a></li>
       <li><a href="#contact">Contact &amp; Complaints</a></li>
     </ol>
-  </aside>
+  </nav>
 
   <!-- Main content -->
   <main class="content" id="main-content">
