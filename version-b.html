@@ -790,59 +790,60 @@ p { color: #2C2C2C; }
 .pricing-toggle span { font-size: 0.9rem; font-weight: 500; color: #7A7A7A; transition: color 0.2s; }
 .pricing-toggle span.active { color: #2C2C2C; font-weight: 600; }
 .toggle-switch {
-  width: 52px; height: 28px;
-  background: #ccc;
-  border-radius: 14px;
-  position: relative;
-  cursor: pointer;
-  transition: background 0.3s;
+  width: 48px; height: 26px; background: #D1D1D1; border-radius: 13px;
+  position: relative; cursor: pointer; transition: background 0.25s;
 }
 .toggle-switch.active { background: #4A8C7A; }
 .toggle-switch::after {
-  content: '';
-  position: absolute;
-  width: 22px; height: 22px;
-  background: #fff;
-  border-radius: 50%;
-  top: 3px; left: 3px;
-  transition: transform 0.3s;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; background: #fff; border-radius: 50%;
+  transition: transform 0.25s; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
-.toggle-switch.active::after { transform: translateX(24px); }
-.save-badge { background: #E8714A; color: #fff; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
-.pricing-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; max-width: 780px; margin: 0 auto; }
-.pricing-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 36px 32px;
-  border: 2px solid rgba(0,0,0,0.06);
-  position: relative;
-  transition: all 0.3s ease;
+.toggle-switch.active::after { transform: translateX(22px); }
+.save-badge {
+  background: #4A8C7A; color: #fff; font-size: 0.72rem; font-weight: 700;
+  padding: 3px 9px; border-radius: 20px; letter-spacing: 0.04em;
 }
-.pricing-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
-.pricing-card.featured { border-color: #E8714A; box-shadow: 0 8px 32px rgba(232,113,74,0.15); }
-.pricing-badge {
-  position: absolute;
-  top: -14px; left: 50%;
-  transform: translateX(-50%);
-  background: #E8714A;
-  color: #fff;
-  font-size: 0.78rem; font-weight: 600;
-  padding: 5px 18px;
-  border-radius: 20px;
-  white-space: nowrap;
+/* Single centred pricing card */
+.pricing-single { display: flex; justify-content: center; }
+.pricing-card-solo {
+  background: #fff; border: 2px solid #4A8C7A;
+  border-radius: 20px; padding: 44px 48px;
+  max-width: 460px; width: 100%;
+  box-shadow: 0 8px 40px rgba(74,140,122,0.12);
+  text-align: center;
 }
-.pricing-card h3 { font-size: 1.25rem; margin-bottom: 8px; }
-.pricing-price { font-family: 'Fraunces', serif; font-size: 2.8rem; font-weight: 700; color: #2C2C2C; line-height: 1; margin-bottom: 4px; }
-.pricing-price .period { font-size: 1rem; font-weight: 400; color: #7A7A7A; }
-.pricing-price .original { font-size: 1rem; color: #7A7A7A; text-decoration: line-through; margin-left: 8px; font-weight: 400; }
-.pricing-note { font-size: 0.85rem; color: #E8714A; font-weight: 500; margin-bottom: 24px; margin-top: 4px; }
-.pricing-features { list-style: none; margin-bottom: 28px; }
-.pricing-features li { padding: 8px 0; font-size: 0.93rem; color: #2C2C2C; display: flex; align-items: center; gap: 10px; }
-.pricing-features li::before { content: '✓'; color: #4A8C7A; font-weight: 700; font-size: 0.9rem; }
-.pricing-card .btn { width: 100%; }
-.pricing-card .small-note { font-size: 0.8rem; color: #7A7A7A; text-align: center; margin-top: 12px; }
-.spots-badge { display: inline-flex; align-items: center; gap: 6px; background: #FFF3EE; color: #E8714A; font-size: 0.82rem; font-weight: 600; padding: 6px 14px; border-radius: 8px; margin-bottom: 20px; }
+.pricing-card-solo h3 {
+  font-family: 'Fraunces', Georgia, serif; font-size: 1.6rem;
+  font-weight: 500; color: #2C2C2C; margin-bottom: 6px;
+}
+.pricing-tagline { font-size: 0.95rem; color: #7A7A7A; margin-bottom: 28px; }
+.pricing-amount {
+  font-family: 'Fraunces', Georgia, serif; font-size: 3.4rem;
+  font-weight: 600; color: #2C2C2C; line-height: 1;
+  display: flex; align-items: flex-start; justify-content: center; gap: 2px;
+}
+.pricing-amount .currency { font-size: 1.6rem; margin-top: 8px; }
+.pricing-amount .period { font-size: 1rem; font-weight: 400; color: #7A7A7A; align-self: flex-end; margin-bottom: 6px; }
+.pricing-annual-note {
+  font-size: 0.85rem; color: #4A8C7A; font-weight: 500;
+  min-height: 1.2em; margin-top: 6px; margin-bottom: 4px;
+}
+.pricing-trial { font-size: 0.82rem; color: #7A7A7A; margin-bottom: 28px; }
+.pricing-divider { border: none; border-top: 1px solid #EEE; margin: 0 0 24px; }
+.pricing-features-solo { list-style: none; text-align: left; margin-bottom: 32px; }
+.pricing-features-solo li {
+  padding: 9px 0; font-size: 0.95rem; color: #2C2C2C;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid #F5F5F5;
+}
+.pricing-features-solo li:last-child { border-bottom: none; }
+.pricing-features-solo li::before {
+  content: '\2713'; color: #4A8C7A; font-weight: 700;
+  font-size: 0.9rem; flex-shrink: 0;
+}
+.pricing-card-solo .btn { width: 100%; font-size: 1.05rem; padding: 16px 24px; }
+.pricing-card-solo .small-note { font-size: 0.8rem; color: #7A7A7A; margin-top: 14px; }
 
 /* ========== PRIVACY ========== */
 .privacy { background: #fff; }
@@ -1282,7 +1283,7 @@ p { color: #2C2C2C; }
   .steps { grid-template-columns: 1fr !important; max-width: 360px !important; margin: 0 auto; gap: 48px; }
   .pain-cards { grid-template-columns: repeat(2, 1fr); }
   .features-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
-  .pricing-cards { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+  .pricing-card-solo { padding: 32px 24px; }
   .privacy-grid { grid-template-columns: 1fr; }
   .social-proof-inner { flex-direction: column; gap: 24px; }
   .social-proof-divider { width: 40px; height: 1px; }
@@ -1938,58 +1939,42 @@ p { color: #2C2C2C; }
   <div class="container">
     <div class="pricing-header">
       <p class="section-label">Pricing</p>
-      <h2>Simple, family pricing.</h2>
+      <h2>Simple, honest pricing.</h2>
       <p>One plan. Everything included. No surprises.</p>
     </div>
     <div class="pricing-toggle">
       <span id="toggleMonthly" class="active">Monthly</span>
       <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
       <span id="toggleAnnual">Annual</span>
-      <span class="save-badge">Save £60</span>
+      <span class="save-badge" id="saveBadge" style="display:none;">Save 18%</span>
     </div>
-    <div class="pricing-cards">
-      <!-- Founding Member -->
-      <div class="pricing-card featured fade-in">
-        <div class="pricing-badge">Most Popular</div>
-        <h3>Founding Member</h3>
-        <div class="pricing-price">
-          <span id="founderPrice">£9.99</span><span class="period" id="founderPeriod">/month</span>
-          <span class="original" id="founderOriginal">£19.99</span>
+    <div class="pricing-single">
+      <div class="pricing-card-solo fade-in">
+        <h3>FamilyBrain</h3>
+        <p class="pricing-tagline">Everything your family needs, in one place.</p>
+        <div class="pricing-amount">
+          <span class="currency">&pound;</span>
+          <span id="mainPrice">4.99</span>
+          <span class="period" id="mainPeriod">/month</span>
         </div>
-        <div class="pricing-note" id="founderNote">Lock in this price forever — first 100 families only</div>
-        <div class="spots-badge" id="pricing-slots-counter">🔥 47 spots remaining</div>
-        <ul class="pricing-features">
-          <li>Unlimited documents</li>
+        <p class="pricing-annual-note" id="annualNote">&nbsp;</p>
+        <p class="pricing-trial">14-day free trial &mdash; cancel anytime</p>
+        <hr class="pricing-divider">
+        <ul class="pricing-features-solo">
+          <li>Unlimited documents &amp; photos</li>
           <li>Up to 6 family members</li>
           <li>Voice note transcription</li>
           <li>Smart reminders</li>
           <li>Google Calendar sync</li>
-          <li>Priority support</li>
-        </ul>
-        <a href="/join" class="btn btn-primary">Claim Founding Member Price</a>
-      </div>
-      <!-- Standard -->
-      <div class="pricing-card fade-in fade-in-delay-2">
-        <h3>Standard</h3>
-        <div class="pricing-price">
-          <span id="standardPrice">£19.99</span><span class="period" id="standardPeriod">/month</span>
-        </div>
-        <div class="pricing-note" id="standardNote" style="color: #7A7A7A;">14-day free trial, cancel anytime</div>
-        <ul class="pricing-features">
-          <li>Unlimited documents</li>
-          <li>Up to 6 family members</li>
-          <li>Voice note transcription</li>
-          <li>Smart reminders</li>
-          <li>Google Calendar sync</li>
+          <li>WhatsApp-native &mdash; no app to download</li>
           <li>Email support</li>
         </ul>
-        <a href="/join" class="btn btn-outline">Start Free Trial</a>
-        <div class="small-note">14-day free trial, cancel anytime</div>
+        <a href="/join" class="btn btn-primary">Start Free Trial</a>
+        <p class="small-note">No credit card required during trial</p>
       </div>
     </div>
   </div>
 </section>
-
 <!-- ==================== PRIVACY ==================== -->
 <section class="privacy section fade-in" id="privacy">
   <div class="container">
@@ -2162,27 +2147,19 @@ p { color: #2C2C2C; }
       <div>
         <label>Choose your plan</label>
         <div class="plan-selector">
-          <label class="plan-option plan-featured selected" id="plan-founding" onclick="selectPlan(this,'founding')">
+          <label class="plan-option plan-featured selected" id="plan-monthly" onclick="selectPlan(this,'monthly')">
             <span class="plan-badge">Most popular</span>
-            <input type="radio" name="plan" value="founding" checked>
+            <input type="radio" name="plan" value="monthly" checked>
             <div class="plan-option-body">
-              <div class="plan-option-name">🌟 Founding Member — £9.99/month</div>
-              <div class="plan-option-price">Locked in forever. First 100 families only.</div>
-              <div class="plan-slots" id="modal-slots-counter">🌟 47 founding member spots remaining</div>
-            </div>
-          </label>
-          <label class="plan-option" id="plan-monthly" onclick="selectPlan(this,'monthly')">
-            <input type="radio" name="plan" value="monthly">
-            <div class="plan-option-body">
-              <div class="plan-option-name">Monthly — £19.99/month</div>
+              <div class="plan-option-name">📅 Monthly &mdash; &pound;4.99/month</div>
               <div class="plan-option-price">14-day free trial, cancel anytime.</div>
             </div>
           </label>
           <label class="plan-option" id="plan-annual" onclick="selectPlan(this,'annual')">
             <input type="radio" name="plan" value="annual">
             <div class="plan-option-body">
-              <div class="plan-option-name">Annual — £179/year</div>
-              <div class="plan-option-price">Save 25% vs monthly. Billed once a year.</div>
+              <div class="plan-option-name">📆 Annual &mdash; &pound;49/year</div>
+              <div class="plan-option-price">Save 18% &mdash; billed once a year.</div>
             </div>
           </label>
         </div>
@@ -2547,25 +2524,20 @@ function togglePricing() {
   const toggle = document.getElementById('pricingToggle');
   const monthlyLabel = document.getElementById('toggleMonthly');
   const annualLabel = document.getElementById('toggleAnnual');
+  const saveBadge = document.getElementById('saveBadge');
   toggle.classList.toggle('active', isAnnual);
   monthlyLabel.classList.toggle('active', !isAnnual);
   annualLabel.classList.toggle('active', isAnnual);
   if (isAnnual) {
-    document.getElementById('founderPrice').textContent = '£7.49';
-    document.getElementById('founderPeriod').textContent = '/month';
-    document.getElementById('founderOriginal').textContent = '£14.92/mo';
-    document.getElementById('founderNote').textContent = 'Billed annually at £89.90/year — founding price forever';
-    document.getElementById('standardPrice').textContent = '£14.92';
-    document.getElementById('standardPeriod').textContent = '/month';
-    document.getElementById('standardNote').textContent = 'Billed annually at £179/year — save £60';
+    document.getElementById('mainPrice').textContent = '49';
+    document.getElementById('mainPeriod').textContent = '/year';
+    document.getElementById('annualNote').textContent = 'Billed annually — save £10.88 vs monthly';
+    if (saveBadge) saveBadge.style.display = 'inline-block';
   } else {
-    document.getElementById('founderPrice').textContent = '£9.99';
-    document.getElementById('founderPeriod').textContent = '/month';
-    document.getElementById('founderOriginal').textContent = '£19.99';
-    document.getElementById('founderNote').textContent = 'Lock in this price forever — first 100 families only';
-    document.getElementById('standardPrice').textContent = '£19.99';
-    document.getElementById('standardPeriod').textContent = '/month';
-    document.getElementById('standardNote').textContent = '14-day free trial, cancel anytime';
+    document.getElementById('mainPrice').textContent = '4.99';
+    document.getElementById('mainPeriod').textContent = '/month';
+    document.getElementById('annualNote').innerHTML = '&nbsp;';
+    if (saveBadge) saveBadge.style.display = 'none';
   }
 }
 
