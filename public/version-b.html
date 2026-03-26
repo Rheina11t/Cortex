@@ -380,11 +380,21 @@ p { color: #2C2C2C; }
 /* Input bar */
 .hero-phone-input-bar {
   background: #F0F0F0;
-  padding: 7px 10px 40px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
+  padding: 7px 10px 12px;
   display: flex;
   align-items: center;
   gap: 7px;
   flex-shrink: 0;
+}
+/* Fill the rounded bottom corners of the dark phone shell so #1C1C1E
+   never shows below the input bar. The ::after sits at the very bottom
+   of the shell (overflow:hidden clips it to the border-radius arc) and
+   paints over the dark corner pixels with the input bar colour. */
+.hero-phone::after {
+  content: '';
+  display: block;
+  background: #F0F0F0;
+  height: 48px; /* matches border-radius:48px — fills the rounded corner arc */
 }
 .hero-phone-input-field {
   flex: 1;
@@ -587,8 +597,15 @@ p { color: #2C2C2C; }
 }
 .wa-input-bar {
   background: #F0F0F0;
-  padding: 10px 16px 40px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
+  padding: 10px 16px 12px;
   display: flex; align-items: center; gap: 10px;
+}
+/* Fill the rounded bottom corners of the dark phone shell */
+.wa-phone::after {
+  content: '';
+  display: block;
+  background: #F0F0F0;
+  height: 36px; /* matches border-radius:28px — fills the rounded corner arc */
 }
 .wa-input-field {
   flex: 1;
@@ -1343,10 +1360,17 @@ p { color: #2C2C2C; }
 /* Input bar */
 .gd-input-bar {
   background: #F0F0F0;
-  padding: 8px 12px 40px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
+  padding: 8px 12px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+/* Fill the rounded bottom corners of the dark phone shell */
+.gd-phone::after {
+  content: '';
+  display: block;
+  background: #F0F0F0;
+  height: 44px; /* matches border-radius:44px — fills the rounded corner arc */
 }
 .gd-input-field {
   flex: 1;
