@@ -357,7 +357,7 @@ p { color: #2C2C2C; }
 /* Input bar */
 .hero-phone-input-bar {
   background: #F0F0F0;
-  padding: 7px 10px;
+  padding: 7px 10px 18px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1314,7 +1314,7 @@ p { color: #2C2C2C; }
 /* Input bar */
 .gd-input-bar {
   background: #F0F0F0;
-  padding: 8px 12px;
+  padding: 8px 12px 20px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2558,7 +2558,7 @@ function switchTab(tabName, btn) {
   });
 }
 
- =====
+// ===== HERO PHONE WALKTHROUGH =====
 (function() {
   var chat = document.getElementById('hpChat');
   var insight = document.getElementById('hpInsight');
@@ -2825,17 +2825,27 @@ function switchTab(tabName, btn) {
     setTimeout(function() { runSequence(messages, 0); }, 400);
   }
 
-  // Scroll-triggered: start when phone enters viewport
+  // Scroll-triggered: start when phone enters viewport.
+  // threshold:0.15 fires earlier on mobile; immediate rect check handles
+  // cases where the section is already in view on page load.
   if (phone) {
-    var gdObserver = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
-        if (entry.isIntersecting) {
-          startDemo();
-          gdObserver.disconnect();
-        }
-      });
-    }, { threshold: 0.35 });
-    gdObserver.observe(phone);
+    // Immediate check — if phone is already visible when script runs, start now
+    var rect = phone.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      startDemo();
+    } else {
+      var gdObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            startDemo();
+            gdObserver.disconnect();
+          }
+        });
+      }, { threshold: 0.15 });
+      gdObserver.observe(phone);
+      // Safety fallback: start after 3s regardless, so chat is never permanently blank
+      setTimeout(function() { startDemo(); }, 3000);
+    }
   }
 })();
 
