@@ -2293,7 +2293,7 @@ p { color: #2C2C2C; }
       <span id="toggleMonthly" class="active">Monthly</span>
       <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
       <span id="toggleAnnual">Annual</span>
-      <span class="save-badge" id="saveBadge" style="display:none;">Save 18%</span>
+      <span class="save-badge" id="saveBadge" style="display:none;">Save 25%</span>
     </div>
     <div class="pricing-single">
       <div class="pricing-card-solo">
@@ -2301,7 +2301,7 @@ p { color: #2C2C2C; }
         <p class="pricing-tagline">Everything your family needs, in one place.</p>
         <div class="pricing-amount">
           <span class="currency">&pound;</span>
-          <span id="mainPrice">4.99</span>
+          <span id="mainPrice">9.99</span>
           <span class="period" id="mainPeriod">/month</span>
         </div>
         <p class="pricing-annual-note" id="annualNote">&nbsp;</p>
@@ -2498,15 +2498,15 @@ p { color: #2C2C2C; }
             <span class="plan-badge">Most popular</span>
             <input type="radio" name="plan" value="monthly" checked>
             <div class="plan-option-body">
-              <div class="plan-option-name">📅 Monthly &mdash; &pound;4.99/month</div>
+              <div class="plan-option-name">📅 Monthly &mdash; &pound;9.99/month</div>
               <div class="plan-option-price">14-day free trial, cancel anytime.</div>
             </div>
           </label>
           <label class="plan-option" id="plan-annual" onclick="selectPlan(this,'annual')">
             <input type="radio" name="plan" value="annual">
             <div class="plan-option-body">
-              <div class="plan-option-name">📆 Annual &mdash; &pound;49/year</div>
-              <div class="plan-option-price">Save 18% &mdash; billed once a year.</div>
+              <div class="plan-option-name">📆 Annual &mdash; &pound;89.99/year</div>
+              <div class="plan-option-price">Save 25% &mdash; &pound;7.50/month, billed annually.</div>
             </div>
           </label>
         </div>
@@ -2886,12 +2886,12 @@ function togglePricing() {
   monthlyLabel.classList.toggle('active', !isAnnual);
   annualLabel.classList.toggle('active', isAnnual);
   if (isAnnual) {
-    document.getElementById('mainPrice').textContent = '49';
+    document.getElementById('mainPrice').textContent = '89.99';
     document.getElementById('mainPeriod').textContent = '/year';
-    document.getElementById('annualNote').textContent = 'Billed annually — save £10.88 vs monthly';
+    document.getElementById('annualNote').textContent = 'Billed annually — £7.50/month, save 25% vs monthly';
     if (saveBadge) saveBadge.style.display = 'inline-block';
   } else {
-    document.getElementById('mainPrice').textContent = '4.99';
+    document.getElementById('mainPrice').textContent = '9.99';
     document.getElementById('mainPeriod').textContent = '/month';
     document.getElementById('annualNote').innerHTML = '&nbsp;';
     if (saveBadge) saveBadge.style.display = 'none';
