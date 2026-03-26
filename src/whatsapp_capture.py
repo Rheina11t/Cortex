@@ -2433,6 +2433,61 @@ Relevant memories:
 
 Answer:'''
 
+# ---------------------------------------------------------------------------
+# Family Digital Twin system prompt
+# ---------------------------------------------------------------------------
+
+_FAMILY_DIGITAL_TWIN_SYSTEM_PROMPT = """\
+You are the Family Digital Twin — a calm, practical, and protective AI assistant for this UK household. \
+Your role is to run accurate "what-if" simulations and answer questions using ONLY the retrieved vault data.
+
+<thinking>
+Step 1: Identify all relevant vault items from the retrieved context — note categories, dates, key figures.
+Step 2: Map dependencies and impacts (e.g., how insurance links to mortgage, how one parent's absence affects kids' schedule).
+Step 3: Surface realistic patterns, risks, or opportunities. Do NOT speculate beyond the data.
+Step 4: Identify any data gaps that would improve the simulation.
+Step 5: Formulate 1–3 practical next actions tailored to UK life.
+</thinking>
+
+Core rules (never break these):
+- Ground every statement strictly in the provided context.
+- If something is missing, say: "Based on current vault data, I don't have enough information about [item] — forward the relevant document to improve this."
+- Tone: Warm, straightforward British English — like a trusted co-parent or close friend. Reassuring, never dramatic or legalistic.
+- Always include a confidence level: High / Medium / Low.
+- Output must be readable in WhatsApp (no heavy markdown, use plain text and line breaks).
+
+Output format:
+Quick Summary: [one sentence on current data]
+
+What changes:
+• [effect 1]
+• [effect 2]
+• [effect 3]
+
+Easy next steps:
+1. [action]
+2. [action]
+
+Data gap (if any): [missing item — forward it?]
+
+Confidence: [High/Medium/Low] — [one-sentence reason]
+"""
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """Remove <thinking>...</thinking> blocks from LLM output before sending to WhatsApp.
+
+    Some models (e.g. o3, claude-3-7-sonnet) emit chain-of-thought inside
+    <thinking> tags.  These are internal reasoning traces and must never be
+    forwarded to the user.
+    """
+    import re as _re
+    # Remove <thinking>...</thinking> blocks (case-insensitive, dotall)
+    cleaned = _re.sub(r'<thinking>.*?</thinking>', '', text, flags=_re.IGNORECASE | _re.DOTALL)
+    # Collapse any resulting double blank lines
+    cleaned = _re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
+
 def _answer_query(text: str, from_number: str, conversation_history: list[dict] | None = None) -> Response:
     """Handle a message that has been identified as a query."""
     logger.info("Handling message as a query: %s", text)
@@ -2618,33 +2673,26 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 )
 
             prompt = (
-                f"You are Family Brain, a personal AI assistant for the {family_name} family. "
-                f"The person asking this question is {family_name}. "
-                f"Today's date is {today_str}. "
-                + graph_prompt_section +
-                "Each stored memory below is prefixed with a [stored: <timestamp>] label showing when it was saved. "
-                "MEMORY FRESHNESS RULE (STRICT): If a memory uses relative time words such as 'tonight', 'today', "
-                "'tomorrow', 'this week', 'next week', 'yesterday', or similar, you MUST check its [stored:] "
-                "timestamp. If the memory was stored MORE THAN 24 HOURS AGO relative to now, you MUST "
-                "COMPLETELY IGNORE that memory for any availability or schedule question. Do NOT mention it, "
-                "do NOT include it in your answer, do NOT say it might be stale — simply exclude it entirely. "
-                "A memory stored 2+ days ago saying 'kickboxing tonight' is irrelevant to today's schedule and "
-                "must be silently discarded. Only memories stored within the last 24 hours may use relative "
-                "time words to describe current-day events. "
-                "Answer the user's question based on the stored memories below. "
-                "Do NOT invent details that are not in the memories or web results. "
-                "If the memories contain conflicting information, use the most specific and detailed one. "
-                "If the question asks about ALL items of a type (e.g. 'what cars do I have', 'list my policies'), "
-                "make sure to include EVERY relevant item found in the memories, not just the first one. "
-                "IMPORTANT: If any stored item contains a date that is today, tomorrow, or within the next 7 days "
-                "(e.g. contract end, renewal, expiry, payment due, MOT due), you MUST start your answer with a "
-                "\u26a0\ufe0f URGENT alert line before anything else. Example: '\u26a0\ufe0f URGENT: Your VW ID.Buzz contract hire ends TODAY (20 March 2026). You should contact VW Financial Services immediately.' "
-                "Do not bury time-sensitive dates in the middle of a list \u2014 always lead with them. "
-                "If web search results are provided, you may use them to supplement missing contact details "
-                "(phone numbers, emails, opening hours) \u2014 but clearly indicate these came from a web search, not stored memory. "
-                "If information is genuinely missing and not found online, say so and offer to store it. "
-                "Refer to the asker by name. Use the conversation history for context if needed. "
-                "Never mention memory IDs in your answer."
+                _FAMILY_DIGITAL_TWIN_SYSTEM_PROMPT
+                + f"\n\nFamily: {family_name} household. The person asking is {family_name}."
+                + f" Today's date is {today_str}."
+                + (f"\n\n{graph_prompt_section}" if graph_prompt_section else "")
+                + "\n\nEach stored memory below is prefixed with a [stored: <timestamp>] label showing when it was saved."
+                " MEMORY FRESHNESS RULE (STRICT): If a memory uses relative time words such as 'tonight', 'today',"
+                " 'tomorrow', 'this week', 'next week', 'yesterday', or similar, you MUST check its [stored:]"
+                " timestamp. If the memory was stored MORE THAN 24 HOURS AGO relative to now, you MUST"
+                " COMPLETELY IGNORE that memory for any availability or schedule question. Do NOT mention it,"
+                " do NOT include it in your answer, do NOT say it might be stale — simply exclude it entirely."
+                " A memory stored 2+ days ago saying 'kickboxing tonight' is irrelevant to today's schedule and"
+                " must be silently discarded. Only memories stored within the last 24 hours may use relative"
+                " time words to describe current-day events."
+                " IMPORTANT: If any stored item contains a date that is today, tomorrow, or within the next 7 days"
+                " (e.g. contract end, renewal, expiry, payment due, MOT due), you MUST start your answer with a"
+                " \u26a0\ufe0f URGENT alert line before anything else."
+                " If web search results are provided, you may use them to supplement missing contact details"
+                " (phone numbers, emails, opening hours) — but clearly indicate these came from a web search, not stored memory."
+                " If information is genuinely missing and not found online, say so and offer to store it."
+                " Never mention memory IDs in your answer."
             )
             
             messages = [{"role": "system", "content": prompt}]
@@ -2653,13 +2701,15 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             messages.append({"role": "user", "content": f"Question: {text}\n\nStored memories:\n{memories_text}{web_context}"})
 
             answer = brain.get_llm_reply(messages=messages)
-            reply_text = answer[:3800]
+            # Strip any <thinking>...</thinking> chain-of-thought blocks before delivery
+            answer_clean = _strip_thinking_tags(answer)
+            reply_text = answer_clean[:3800]
 
-            # Update conversation history
+            # Update conversation history (store cleaned answer so follow-up context is also clean)
             if from_number not in _conversation_history:
                 _conversation_history[from_number] = []
             _conversation_history[from_number].append({"role": "user", "content": text})
-            _conversation_history[from_number].append({"role": "assistant", "content": answer})
+            _conversation_history[from_number].append({"role": "assistant", "content": answer_clean})
             _conversation_history[from_number] = _conversation_history[from_number][-6:] # keep last 3 turns
 
         else:
@@ -2728,12 +2778,13 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                     logger.warning("Web fallback enrichment failed: %s", exc)
 
             if web_fallback_answer:
-                reply_text = web_fallback_answer[:3800]
+                web_fallback_clean = _strip_thinking_tags(web_fallback_answer)
+                reply_text = web_fallback_clean[:3800]
                 # Update conversation history
                 if from_number not in _conversation_history:
                     _conversation_history[from_number] = []
                 _conversation_history[from_number].append({"role": "user", "content": text})
-                _conversation_history[from_number].append({"role": "assistant", "content": web_fallback_answer})
+                _conversation_history[from_number].append({"role": "assistant", "content": web_fallback_clean})
                 _conversation_history[from_number] = _conversation_history[from_number][-6:]
             else:
                 reply_text = "I don't have anything stored about that yet. Send me the information and I'll remember it for next time."
