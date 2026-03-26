@@ -333,7 +333,11 @@ p { color: #2C2C2C; }
   position: relative;
 }
 /* Insight badge inside hero phone */
+/* Hidden by default (display:none) so the empty div takes zero space and
+   does not create a dark gap between the chat area and the input bar.
+   JS adds .hp-vis which switches it back to block and fades it in. */
 .hero-phone-insight {
+  display: none;
   background: linear-gradient(135deg, #F0F8F5 0%, #E8F5EF 100%);
   border: 1px solid #A8D4C0;
   border-radius: 10px;
@@ -348,7 +352,11 @@ p { color: #2C2C2C; }
   line-height: 1.5;
   flex-shrink: 0;
 }
-.hero-phone-insight.hp-vis { opacity: 1; transform: translateY(0); }
+.hero-phone-insight.hp-vis {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
 @keyframes hpPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(74,140,122,0); }
   50% { box-shadow: 0 0 0 5px rgba(74,140,122,0.12); }
