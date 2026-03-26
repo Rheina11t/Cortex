@@ -12,7 +12,12 @@
 <style>
 /* ========== RESET & BASE ========== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { font-size: 17px; }
+html {
+  font-size: 17px;
+  /* height:100% on html prevents iOS Safari from recalculating page
+     height when the URL bar appears/disappears */
+  height: 100%;
+}
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
@@ -21,6 +26,9 @@ body {
   background: #FAF8F4;
   color: #2C2C2C;
   overscroll-behavior-y: none;
+  min-height: 100%;
+  /* Prevent iOS Safari URL bar from causing body height recalculation */
+  -webkit-overflow-scrolling: touch;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
@@ -136,6 +144,11 @@ p { color: #2C2C2C; }
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(0,0,0,0.06);
   transition: box-shadow 0.3s ease;
+  /* Promote nav to its own GPU compositor layer so iOS Safari URL bar
+     show/hide does not trigger a full-page repaint or layout shift */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
 }
 .nav.scrolled { box-shadow: 0 2px 20px rgba(0,0,0,0.06); }
 .nav-inner {
@@ -178,7 +191,11 @@ p { color: #2C2C2C; }
 .mobile-menu .btn { width: 100%; margin-top: 16px; text-align: center; }
 
 /* ========== HERO ========== */
-.hero { padding-top: 140px; padding-bottom: 80px; min-height: 90vh; min-height: 90dvh; display: flex; align-items: center; }
+.hero { padding-top: 140px; padding-bottom: 80px; min-height: 90vh; display: flex; align-items: center; }
+/* dvh accounts for iOS Safari URL bar show/hide — overrides the vh fallback above */
+@supports (min-height: 1dvh) {
+  .hero { min-height: 90dvh; }
+}
 .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
 .hero-content h1 { margin-bottom: 20px; }
 .hero-content p { font-size: 1.18rem; color: #7A7A7A; line-height: 1.7; margin-bottom: 36px; max-width: 520px; }
@@ -994,7 +1011,7 @@ p { color: #2C2C2C; }
   background: #fff; border-radius: 24px; padding: 44px 40px;
   max-width: 520px; width: 100%; position: relative;
   animation: modalIn 0.3s ease;
-  max-height: 92vh; overflow-y: auto;
+  max-height: 92vh; max-height: 92dvh; overflow-y: auto;
 }
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.95) translateY(10px); }
