@@ -4,6 +4,11 @@
     { "source": "/",        "destination": "/version-b.html" },
     { "source": "/privacy", "destination": "/privacy/index.html" },
     { "source": "/join",    "destination": "/join.html" },
-    { "source": "/terms",   "destination": "/terms.html" }
+    { "source": "/terms",   "destination": "/terms.html" },
+    {
+      "source": "/join/:token",
+      "destination": "https://cortex-production-eb84.up.railway.app/join/:token"
+    },
+    { "source": "/join-invite", "destination": "/join-invite.html" }
   ]
 }

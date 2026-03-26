@@ -62,6 +62,7 @@ from . import brain
 from . import entity_graph
 from . import stripe_billing
 from . import meta_whatsapp
+from . import family_invites
 import threading
 
 logger = logging.getLogger("open_brain.whatsapp")
@@ -957,6 +958,11 @@ app = Flask(__name__)
 # Register Stripe billing routes (/join, /subscribe, /stripe/*)
 # ---------------------------------------------------------------------------
 app.register_blueprint(stripe_billing.billing_bp)
+
+# ---------------------------------------------------------------------------
+# Register Family Invites routes (/join/<token>)
+# ---------------------------------------------------------------------------
+app.register_blueprint(family_invites.invites_bp)
 
 
 # ---------------------------------------------------------------------------
@@ -3633,6 +3639,223 @@ def _handle_add_member_command(
 
 
 # ---------------------------------------------------------------------------
+# Add-by-name invite handler
+# ---------------------------------------------------------------------------
+
+def _handle_add_by_name_command(
+    invited_name: str,
+    from_number: str,
+    family_name: str,
+    family_id: str,
+) -> Response:
+    """Handle \"add [name]\" — generate an invite link the user can forward.
+
+    Unlike /add-member (which requires a phone number), this flow creates a
+    shareable link so the invitee can join themselves via WhatsApp.
+    """
+    # Resolve the family display name for the invite message
+    db = brain._supabase
+    family_display = family_name or 'Your family'
+    if db:
+        try:
+            fam_res = db.table('families').select('primary_name').eq('family_id', family_id).limit(1).execute()
+            if fam_res.data and fam_res.data[0].get('primary_name'):
+                family_display = fam_res.data[0]['primary_name']
+        except Exception as exc:
+            logger.warning('Could not fetch family display name: %s', exc)
+
+    # Enforce 6-member cap (count existing members)
+    if db:
+        try:
+            count_res = db.table('whatsapp_members').select('phone', count='exact').eq('family_id', family_id).execute()
+            current_count = count_res.count if count_res.count is not None else 0
+            if current_count >= 6:
+                return _make_response(
+                    'Your family already has 6 members \u2014 that\u2019s the maximum. '
+                    'To add someone new, you\u2019d need to remove an existing member first.',
+                    from_number=from_number,
+                )
+        except Exception as exc:
+            logger.warning('add-by-name member count check failed: %s', exc)
+
+    # Normalise the inviter's phone (strip whatsapp: prefix)
+    inviter_phone = from_number.replace('whatsapp:', '').strip()
+
+    # Create the invite record and generate the token
+    token = family_invites.create_invite(
+        family_id=family_id,
+        invited_name=invited_name,
+        invited_by_phone=inviter_phone,
+    )
+    if not token:
+        return _make_response(
+            'Sorry, I couldn\u2019t generate an invite link right now. Please try again.',
+            from_number=from_number,
+        )
+
+    # Build the forwardable message
+    invite_msg = family_invites.build_invite_message(
+        invited_name=invited_name,
+        family_display_name=family_display,
+        token=token,
+    )
+
+    log_action(
+        family_id, 'invite_created',
+        subject=f'Invite for {invited_name}',
+        detail={'token': token, 'invited_name': invited_name},
+        phone_number=from_number,
+    )
+
+    return _make_response(invite_msg, from_number=from_number)
+
+
+# ---------------------------------------------------------------------------
+# Join-via-token handler
+# ---------------------------------------------------------------------------
+
+def _handle_join_invite_command(token: str, from_number: str) -> Response:
+    """Handle \"join TOKEN\" messages — validate the invite and add the sender.
+
+    Steps:
+      1. Look up the invite token in Supabase.
+      2. Validate it exists and has not been used.
+      3. Add the sender's phone to the family's whatsapp_members.
+      4. Mark the invite as used.
+      5. Send a welcome message to the new member.
+      6. Notify the inviting user that [name] has joined.
+    """
+    # Normalise phone
+    new_member_phone = from_number.replace('whatsapp:', '').strip()
+
+    # 1. Look up the invite
+    invite = family_invites.get_invite(token)
+    if invite is None:
+        return _make_response(
+            'That invite link doesn\u2019t exist. Please ask the person who invited you to send a new link.',
+            from_number=from_number,
+        )
+
+    # 2. Check if already used
+    if invite.get('used_at'):
+        return _make_response(
+            'This invite link has already been used. Each link can only be used once. '
+            'Ask your family member to generate a new one.',
+            from_number=from_number,
+        )
+
+    family_id = invite['family_id']
+    invited_name = invite.get('invited_name', 'Family Member')
+    inviter_phone = invite.get('invited_by_phone', '')
+
+    db = brain._supabase
+    if not db:
+        return _make_response(
+            'Sorry, I can\u2019t process your invite right now \u2014 please try again in a moment.',
+            from_number=from_number,
+        )
+
+    # 3a. Check the new member isn't already in this family
+    try:
+        existing = db.table('whatsapp_members').select('family_id').eq('phone', new_member_phone).limit(1).execute()
+        if existing.data:
+            existing_fam = existing.data[0].get('family_id', '')
+            if existing_fam == family_id:
+                return _make_response(
+                    'You\u2019re already a member of this family on FamilyBrain! '
+                    'Just send me a message to get started.',
+                    from_number=from_number,
+                )
+            else:
+                return _make_response(
+                    'Your number is already registered with another FamilyBrain family. '
+                    'Please contact support if you\u2019d like to switch families.',
+                    from_number=from_number,
+                )
+    except Exception as exc:
+        logger.error('join: duplicate check failed: %s', exc)
+
+    # 3b. Enforce 6-member cap
+    try:
+        count_res = db.table('whatsapp_members').select('phone', count='exact').eq('family_id', family_id).execute()
+        current_count = count_res.count if count_res.count is not None else 0
+        if current_count >= 6:
+            return _make_response(
+                'Sorry, this family already has the maximum of 6 members. '
+                'Please ask them to remove a member before you can join.',
+                from_number=from_number,
+            )
+    except Exception as exc:
+        logger.warning('join: member count check failed: %s', exc)
+
+    # 3c. Add to whatsapp_members
+    try:
+        db.table('whatsapp_members').upsert({
+            'phone': new_member_phone,
+            'family_id': family_id,
+            'name': invited_name,
+            'created_at': datetime.now(pytz.UTC).isoformat(),
+        }).execute()
+        logger.info('Join invite: added %s (%s) -> family %s', new_member_phone, invited_name, family_id)
+    except Exception as exc:
+        logger.error('join: insert into whatsapp_members failed: %s', exc)
+        return _make_response(
+            'Sorry, I couldn\u2019t add you to the family right now. Please try again.',
+            from_number=from_number,
+        )
+
+    # Invalidate phone cache so the new member is recognised immediately
+    _phone_cache.pop(new_member_phone.lstrip('+'), None)
+    _phone_cache.pop(new_member_phone, None)
+
+    # 4. Mark the invite as used
+    family_invites.mark_invite_used(token, new_member_phone)
+
+    # 5. Fetch family display name for the welcome message
+    family_display = 'Your family'
+    try:
+        fam_res = db.table('families').select('primary_name').eq('family_id', family_id).limit(1).execute()
+        if fam_res.data and fam_res.data[0].get('primary_name'):
+            family_display = fam_res.data[0]['primary_name']
+    except Exception:
+        pass
+
+    # 6. Send welcome message to the new member
+    welcome_msg = (
+        f'\U0001f44b Welcome to FamilyBrain, {invited_name}!\n\n'
+        f'You\u2019ve been added to {family_display}\u2019s family. '
+        f'You can now send me documents, photos, voice notes, or questions \u2014 '
+        f'I\u2019ll remember everything for the whole family.\n\n'
+        f'What would you like me to remember first? \U0001f5c2\ufe0f'
+    )
+    return_response = _make_response(welcome_msg, from_number=from_number)
+
+    # 7. Notify the inviting user
+    if inviter_phone:
+        try:
+            notify_msg = (
+                f'\U0001f389 {invited_name} has joined your FamilyBrain! '
+                f'They\u2019ve been added to your family and can now send and receive memories.'
+            )
+            _send_proactive_message(
+                to=f'whatsapp:{inviter_phone}',
+                body=notify_msg,
+            )
+        except Exception as exc:
+            logger.warning('join: failed to notify inviter %s: %s', inviter_phone, exc)
+
+    # 8. Log the action
+    log_action(
+        family_id, 'member_joined_via_invite',
+        subject=f'{invited_name} joined via invite',
+        detail={'token': token, 'phone': new_member_phone, 'invited_name': invited_name},
+        phone_number=new_member_phone,
+    )
+
+    return return_response
+
+
+# ---------------------------------------------------------------------------
 # Text message handler
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
@@ -3680,7 +3903,34 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
         return _handle_sos_command(from_number, family_name, _family_id)
 
-    # --- Add Member Command ---
+    # --- Join via invite token (e.g. "join aB3xZ9qR") ---
+    # Must run BEFORE the add-member command so "join TOKEN" is never misrouted.
+    _join_match = re.match(r'^join\s+([A-Za-z0-9]{4,20})$', text_lower.strip())
+    if _join_match:
+        return _handle_join_invite_command(
+            token=_join_match.group(1),
+            from_number=from_number,
+        )
+
+    # --- Add Member by Name (invite link flow) ---
+    # Matches: "add Sarah", "add family member", "add [name]"
+    # Does NOT match "/add-member 07700..." (phone-number flow handled below)
+    _add_by_name_match = re.match(
+        r'^add\s+(?:family\s+member|([A-Za-z][A-Za-z\s\-\']{0,30}))$',
+        text, re.IGNORECASE,
+    )
+    if _add_by_name_match and not re.search(r'[\d+]', text):
+        # Extract name: group(1) is the captured name, or generic if "add family member"
+        raw_name = (_add_by_name_match.group(1) or '').strip()
+        invited_name = raw_name.split()[0].capitalize() if raw_name else 'Family Member'
+        return _handle_add_by_name_command(
+            invited_name=invited_name,
+            from_number=from_number,
+            family_name=family_name,
+            family_id=_family_id,
+        )
+
+    # --- Add Member Command (phone number flow — existing behaviour) ---
     _add_member_match = re.match(
         r'^(?:/add-member|/addmember|add\s+(?:member|my\s+\w+))\s+(.+)$',
         text, re.IGNORECASE,
@@ -3805,6 +4055,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/history* \u2014 See what I've done for your family this week\n"
             "*/connect* \u2014 Connect your Google or Apple Calendar\n"
             "*/invite* (or *share* / *refer a friend*) \u2014 Get your personal referral link to share with friends\n"
+            "*add [name]* \u2014 Add a family member by name \u2014 generates a shareable invite link\n"
             "*/add-member* \u2014 Add a family member by phone number (account owner only)\n"
             "*/graph* \u2014 View your family's knowledge graph (people, places, relationships)\n"
             "*/delete-my-data* \u2014 Delete all data submitted by your number\n"

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Join FamilyBrain — You've been invited</title>
+  <meta name="description" content="You've been invited to join a family on FamilyBrain — the family organiser that lives in WhatsApp." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green:       #4A8C7A;
+      --green-dark:  #3a7060;
+      --green-light: #e8f4f1;
+      --navy:        #1e3a5f;
+      --text-dark:   #2C2C2C;
+      --text-mid:    #5a5a5a;
+      --text-light:  #7A7A7A;
+      --border:      #e0e0e0;
+      --bg:          #f9fafb;
+      --white:       #ffffff;
+      --radius:      16px;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-dark);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
+      padding: 48px 40px 40px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--green);
+      text-decoration: none;
+      display: block;
+      margin-bottom: 32px;
+    }
+
+    .invite-icon {
+      font-size: 3.5rem;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--text-dark);
+      line-height: 1.25;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      font-size: 0.95rem;
+      color: var(--text-mid);
+      line-height: 1.65;
+      margin-bottom: 32px;
+    }
+
+    .feature-list {
+      list-style: none;
+      text-align: left;
+      margin-bottom: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: var(--text-mid);
+      line-height: 1.5;
+    }
+
+    .feature-list li .icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .btn-join {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 16px 20px;
+      background: #25D366;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 4px 14px rgba(37,211,102,0.35);
+    }
+
+    .btn-join:hover {
+      background: #1db954;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(37,211,102,0.45);
+    }
+
+    .btn-join svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
+    .small-note {
+      font-size: 0.78rem;
+      color: var(--text-light);
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 28px 0;
+    }
+
+    .about-section {
+      font-size: 0.85rem;
+      color: var(--text-light);
+      line-height: 1.6;
+    }
+
+    .about-section a {
+      color: var(--green);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .about-section a:hover {
+      color: var(--green-dark);
+    }
+
+    /* Loading state */
+    .loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 0;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--green-light);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 0.9rem;
+      color: var(--text-mid);
+    }
+
+    /* Error state */
+    .error-state { display: none; }
+    .error-icon { font-size: 2.5rem; margin-bottom: 16px; }
+    .error-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 1.4rem;
+      color: var(--text-dark);
+      margin-bottom: 10px;
+    }
+    .error-msg {
+      font-size: 0.9rem;
+      color: var(--text-mid);
+      line-height: 1.6;
+    }
+
+    @media (max-width: 480px) {
+      .card { padding: 36px 24px 32px; }
+      h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="mainCard">
+    <a class="logo" href="https://familybrain.co.uk">FamilyBrain</a>
+
+    <!-- Loading state (shown while JS validates / redirects) -->
+    <div class="loading-state" id="loadingState">
+      <div class="spinner"></div>
+      <p class="loading-text">Checking your invite…</p>
+    </div>
+
+    <!-- Main invite content (hidden until JS confirms token looks valid) -->
+    <div id="inviteContent" style="display:none;">
+      <span class="invite-icon">👋</span>
+      <h1>You've been invited to join FamilyBrain</h1>
+      <p class="subtitle">
+        A family member has added you to their FamilyBrain — the family organiser that lives entirely in WhatsApp.
+      </p>
+
+      <ul class="feature-list">
+        <li><span class="icon">🗓️</span><span>Shared family calendar — events, school dates, appointments</span></li>
+        <li><span class="icon">🧠</span><span>Family memory — store documents, photos, and important info</span></li>
+        <li><span class="icon">💬</span><span>All through WhatsApp — no app to download, ever</span></li>
+      </ul>
+
+      <a id="joinBtn" href="#" class="btn-join">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+        </svg>
+        Open WhatsApp to join
+      </a>
+      <p class="small-note">
+        Tapping the button opens WhatsApp with a pre-filled message. Just press send to join your family.
+      </p>
+
+      <hr class="divider" />
+
+      <p class="about-section">
+        New to FamilyBrain?
+        <a href="https://familybrain.co.uk">Learn more</a> about how it works —
+        or <a href="https://familybrain.co.uk/join">start your own free trial</a>.
+      </p>
+    </div>
+
+    <!-- Error state -->
+    <div class="error-state" id="errorState">
+      <div class="error-icon" id="errorIcon">🔗</div>
+      <h2 class="error-title" id="errorTitle">Invalid invite link</h2>
+      <p class="error-msg" id="errorMsg">This invite link doesn't look right. Please ask the person who invited you to send a fresh link.</p>
+      <hr class="divider" />
+      <p class="about-section">
+        <a href="https://familybrain.co.uk">Back to FamilyBrain &rarr;</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Extract the token from the URL path: /join/<token>
+      var pathParts = window.location.pathname.split('/').filter(Boolean);
+      // pathParts[0] = "join", pathParts[1] = token
+      var token = pathParts.length >= 2 ? pathParts[pathParts.length - 1] : null;
+
+      var loadingEl  = document.getElementById('loadingState');
+      var contentEl  = document.getElementById('inviteContent');
+      var errorEl    = document.getElementById('errorState');
+      var joinBtn    = document.getElementById('joinBtn');
+      var errorIcon  = document.getElementById('errorIcon');
+      var errorTitle = document.getElementById('errorTitle');
+      var errorMsg   = document.getElementById('errorMsg');
+
+      function showError(icon, title, msg) {
+        loadingEl.style.display  = 'none';
+        contentEl.style.display  = 'none';
+        errorEl.style.display    = 'block';
+        errorIcon.textContent    = icon;
+        errorTitle.textContent   = title;
+        errorMsg.textContent     = msg;
+      }
+
+      function showContent(waUrl) {
+        loadingEl.style.display  = 'none';
+        errorEl.style.display    = 'none';
+        contentEl.style.display  = 'block';
+        joinBtn.href = waUrl;
+      }
+
+      // Basic client-side token validation (alphanumeric, 4-20 chars)
+      if (!token || !/^[A-Za-z0-9]{4,20}$/.test(token)) {
+        showError(
+          '🔗',
+          'Invalid invite link',
+          "This invite link doesn't look right. Please ask the person who invited you to send a fresh link."
+        );
+        return;
+      }
+
+      // Redirect to the Railway backend /join/<token> route which validates
+      // the token server-side and returns a 302 to the wa.me deep link.
+      // We use a meta-refresh + JS redirect so the user sees the friendly page
+      // briefly before being sent to WhatsApp.
+      var railwayUrl = 'https://cortex-production-eb84.up.railway.app/join/' + token;
+
+      // Build the WhatsApp deep link directly for the button (instant UX)
+      // The Railway route will also redirect there, but we pre-populate the
+      // button so users can tap it without waiting for the server round-trip.
+      var waNumber = '447782384375'; // FamilyBrain WhatsApp number (digits only)
+      var waUrl = 'https://wa.me/' + waNumber + '?text=join+' + encodeURIComponent(token);
+
+      showContent(waUrl);
+
+      // Auto-redirect to Railway after a short delay so the server can
+      // validate the token and handle edge cases (already used, expired, etc.)
+      // If the token is invalid the Railway route returns an HTML error page.
+      setTimeout(function () {
+        window.location.href = railwayUrl;
+      }, 2500);
+    })();
+  </script>
+</body>
+</html>
