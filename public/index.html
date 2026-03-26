@@ -105,32 +105,11 @@ p { color: #2C2C2C; }
 .fade-in-delay-2 { transition-delay: 0.2s; }
 .fade-in-delay-3 { transition-delay: 0.3s; }
 .fade-in-delay-4 { transition-delay: 0.4s; }
-/* ========== SCROLL ANIMATIONS ========== */
-/* Pre-animation state: sections start invisible and shifted down.
-   We use transition (not animation) so reflows never re-trigger the effect.
-   Once .animate-in is added by the IntersectionObserver it is never removed,
-   so the revealed state is permanent and resize-safe. */
+/* Sections are always fully visible — no scroll-reveal animations.
+   Scroll-triggered opacity/transform was removed to eliminate iOS Safari
+   layout shifts caused by viewport height changes triggering reflows. */
 .section {
-  opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.55s ease, transform 0.55s ease;
-  will-change: opacity, transform;
-  /* Isolate paint layer to prevent child reflows causing page-level layout shifts.
-     Using 'paint' (not 'layout') so position:sticky/fixed children still work. */
-  contain: paint;
-}
-/* Once revealed: fully visible, no containment, no will-change overhead */
-.section.animate-in {
-  opacity: 1;
-  transform: translateY(0);
-  will-change: auto;
-  contain: none;
-}
-/* Hero section is always visible — it's above the fold */
-.hero {
-  opacity: 1 !important;
-  transform: none !important;
-  transition: none !important;
+  /* padding only — no opacity or transform pre-states */
 }
 .fade-in-delay-5 { transition-delay: 0.5s; }
 
@@ -1528,39 +1507,10 @@ p { color: #2C2C2C; }
 }
 /* Phone mockup wrapper */
 .conv-phone-wrap {
-  position: relative;
   display: flex;
   justify-content: center;
-  /* Isolate phone mockup from page-level reflows */
-  contain: paint;
-}
-.conv-phone-wrap::before {
-  content: '';
-  position: absolute;
-  inset: -12px -10px;
-  border-radius: 44px;
-  background: linear-gradient(145deg, #2a2a2a, #111);
-  box-shadow:
-    0 0 0 2px #444,
-    0 32px 80px rgba(0,0,0,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.06);
-  z-index: 0;
-}
-.conv-phone-wrap::after {
-  content: '';
-  position: absolute;
-  top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60px;
-  height: 6px;
-  background: #111;
-  border-radius: 0 0 6px 6px;
-  z-index: 2;
 }
 .conv-wa-phone {
-  position: relative;
-  z-index: 1;
   width: 100%;
   max-width: 360px;
   border-radius: 28px;
@@ -3046,54 +2996,9 @@ async function handleSubmit(e) {
   }
 }
 
-// Scroll animations
-// Uses transition (not animation) so reflows never re-trigger the effect.
-// Once animate-in is added it is never removed — resize-safe by design.
-(function() {
-  var sections = document.querySelectorAll('.section');
-  if (!sections.length) {
-    // Fallback: no IntersectionObserver support — show everything immediately
-    sections.forEach(function(el) { el.classList.add('animate-in'); });
-    return;
-  }
-  if (!window.IntersectionObserver) {
-    sections.forEach(function(el) { el.classList.add('animate-in'); });
-    return;
-  }
-
-  // Mark sections that are already in the viewport on page load (e.g. hero
-  // equivalents, or sections near the top on short pages) so they never
-  // flash invisible.
-  var viewportH = window.innerHeight || document.documentElement.clientHeight;
-  sections.forEach(function(el) {
-    var rect = el.getBoundingClientRect();
-    // If the top of the section is already within the viewport, reveal it now
-    if (rect.top < viewportH - 40) {
-      el.classList.add('animate-in');
-    }
-  });
-
-  var obs = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('animate-in');
-        // Unobserve immediately — animate-in is permanent, never replay
-        obs.unobserve(entry.target);
-      }
-    });
-  }, {
-    // Lower threshold so narrow/tall sections still trigger on mobile
-    threshold: 0.05,
-    rootMargin: '0px 0px -20px 0px'
-  });
-
-  sections.forEach(function(el) {
-    // Only observe sections not already revealed
-    if (!el.classList.contains('animate-in')) {
-      obs.observe(el);
-    }
-  });
-})();
+// Scroll-reveal animations removed — sections are always fully visible.
+// This eliminates the iOS Safari URL bar layout shift that was caused by
+// IntersectionObserver triggering opacity/transform changes on scroll.
 </script>
 </body>
 </html>
