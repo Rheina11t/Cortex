@@ -183,7 +183,8 @@ def _get_family_name(phone_number: str) -> Optional[str]:
 
     Checks env-var config first (for existing single-family deployments),
     then falls back to the whatsapp_members Supabase table (for multi-tenant).
-    When no family members are configured at all, returns 'Unknown' (open mode).
+    Returns None if the number is not found, which triggers the rejection
+    message in the webhook handler.
     """
     # 1. Check env-var registry (backward compat for single-family deployments)
     if FAMILY_MEMBERS:
@@ -192,8 +193,8 @@ def _get_family_name(phone_number: str) -> Optional[str]:
     db_result = _lookup_phone_in_db(phone_number)
     if db_result:
         return db_result[0]
-    # 3. Open mode — no auth configured
-    return "Unknown"
+    # 3. Number not found in any registry — reject
+    return None
 
 
 def _get_family_id_for_phone(phone_number: str) -> str:
@@ -3362,6 +3363,195 @@ def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response 
 
 
 # ---------------------------------------------------------------------------
+# Add Member command handler
+# ---------------------------------------------------------------------------
+
+def _normalise_uk_phone(raw: str) -> Optional[str]:
+    """Attempt to normalise a raw phone string to E.164 (+44...) format.
+
+    Accepts formats like:
+        07700900123, 07700 900 123, +447700900123, 447700900123,
+        00447700900123
+    Returns the normalised string or None if it cannot be parsed.
+    """
+    digits = re.sub(r'[^0-9+]', '', raw)
+    # Strip leading + for digit-only processing, remember if it was there
+    had_plus = digits.startswith('+')
+    digits = digits.lstrip('+')
+    # Remove leading 00 international prefix
+    if digits.startswith('00'):
+        digits = digits[2:]
+    # UK mobile starting with 0 -> replace with 44
+    if digits.startswith('0') and len(digits) == 11:
+        digits = '44' + digits[1:]
+    # Already starts with 44
+    if digits.startswith('44') and len(digits) in (12, 13):
+        return f'+{digits}'
+    # If it looks like a full international number with country code
+    if had_plus and len(digits) >= 10:
+        return f'+{digits}'
+    return None
+
+
+def _is_primary_user(from_number: str, family_id: str) -> bool:
+    """Check whether *from_number* is the primary (account-owner) phone for
+    the given family by querying the ``families`` table.
+    """
+    try:
+        db = brain._supabase
+        if not db:
+            return False
+        normalised = from_number.replace('whatsapp:', '').strip()
+        result = db.table('families').select('primary_phone').eq('family_id', family_id).limit(1).execute()
+        if result.data:
+            stored = (result.data[0].get('primary_phone') or '').strip()
+            return stored == normalised
+    except Exception as exc:
+        logger.warning('Primary-user check failed for %s / %s: %s', from_number, family_id, exc)
+    return False
+
+
+def _handle_add_member_command(
+    raw_input: str,
+    from_number: str,
+    family_name: str,
+    family_id: str,
+) -> Response:
+    """Handle the /add-member command.
+
+    *raw_input* is everything after the command keyword, e.g.
+    ``"Sarah, 07700900123"`` or just ``"07700900123"``.
+    """
+    # --- 1. Only the primary user may add members ---
+    if not _is_primary_user(from_number, family_id):
+        return _make_response(
+            'Only the account owner can add family members.',
+            from_number=from_number,
+        )
+
+    # --- 2. Extract a phone number from the raw input ---
+    # Try to find a phone-like token (digits, spaces, +, hyphens)
+    phone_match = re.search(r'[\d+][\d\s\-+]{8,}', raw_input)
+    if not phone_match:
+        return _make_response(
+            'I couldn\u2019t find a phone number in that message. '
+            'Try: */add-member 07700 900123*',
+            from_number=from_number,
+        )
+
+    e164 = _normalise_uk_phone(phone_match.group(0))
+    if not e164:
+        return _make_response(
+            'I couldn\u2019t recognise that as a valid phone number. '
+            'Please use a UK mobile number, e.g. */add-member 07700 900123*',
+            from_number=from_number,
+        )
+
+    # --- 3. Extract an optional name (anything before the phone number) ---
+    name_part = raw_input[:phone_match.start()].strip().rstrip(',').strip()
+    member_name = name_part if name_part else 'Family Member'
+
+    # --- 4. Check the number isn't already in this family ---
+    db = brain._supabase
+    if not db:
+        return _make_response(
+            'Sorry, I can\u2019t add members right now \u2014 database unavailable.',
+            from_number=from_number,
+        )
+
+    try:
+        existing = db.table('whatsapp_members').select('family_id').eq('phone', e164).limit(1).execute()
+        if existing.data:
+            existing_fam = existing.data[0].get('family_id', '')
+            if existing_fam == family_id:
+                return _make_response(
+                    f'{e164} is already a member of your family.',
+                    from_number=from_number,
+                )
+            else:
+                return _make_response(
+                    f'That number is already registered with another FamilyBrain family. '
+                    f'They would need to leave that family first.',
+                    from_number=from_number,
+                )
+    except Exception as exc:
+        logger.error('add-member duplicate check failed: %s', exc)
+        return _make_response(
+            'Sorry, something went wrong checking that number. Please try again.',
+            from_number=from_number,
+        )
+
+    # --- 5. Enforce 6-member cap ---
+    try:
+        count_res = db.table('whatsapp_members').select('phone', count='exact').eq('family_id', family_id).execute()
+        current_count = count_res.count if count_res.count is not None else 0
+        if current_count >= 6:
+            return _make_response(
+                'Your family already has 6 members \u2014 that\u2019s the maximum. '
+                'To add someone new, you\u2019d need to remove an existing member first.',
+                from_number=from_number,
+            )
+    except Exception as exc:
+        logger.warning('add-member count check failed: %s', exc)
+
+    # --- 6. Insert into whatsapp_members ---
+    try:
+        db.table('whatsapp_members').upsert({
+            'phone': e164,
+            'family_id': family_id,
+            'name': member_name,
+            'created_at': datetime.now(pytz.UTC).isoformat(),
+        }).execute()
+        logger.info('Added member %s (%s) -> family %s', e164, member_name, family_id)
+    except Exception as exc:
+        logger.error('add-member insert failed: %s', exc)
+        return _make_response(
+            'Sorry, I couldn\u2019t add that number. Please try again.',
+            from_number=from_number,
+        )
+
+    # --- 7. Invalidate phone cache so the new member is recognised immediately ---
+    _phone_cache.pop(e164.lstrip('+'), None)
+    _phone_cache.pop(e164, None)
+
+    # --- 8. Look up the primary user's name for the welcome message ---
+    try:
+        fam_res = db.table('families').select('primary_name').eq('family_id', family_id).limit(1).execute()
+        primary_name = (fam_res.data[0].get('primary_name') or 'Your family') if fam_res.data else 'Your family'
+        first_name = primary_name.split()[0] if primary_name else 'Your family'
+    except Exception:
+        first_name = family_name or 'Your family'
+
+    # --- 9. Send welcome WhatsApp to the new member ---
+    welcome_msg = (
+        f'\U0001f44b Hi! {first_name} has added you to their FamilyBrain.\n\n'
+        f'You can now send me documents, photos, voice notes, or questions \u2014 '
+        f'I\u2019ll remember everything for the whole family.\n\n'
+        f'What would you like me to remember first? \U0001f5c2\ufe0f'
+    )
+    to_wa = f'whatsapp:{e164}' if not e164.startswith('whatsapp:') else e164
+    try:
+        _send_proactive_message(to=to_wa, body=welcome_msg)
+        logger.info('Welcome message sent to new member %s', e164)
+    except Exception as exc:
+        logger.error('Failed to send welcome to new member %s: %s', e164, exc)
+
+    # --- 10. Log the action ---
+    log_action(
+        family_id, 'member_added',
+        subject=f'Added {member_name} ({e164})',
+        detail={'phone': e164, 'name': member_name},
+        phone_number=from_number,
+    )
+
+    # --- 11. Confirm to the primary user ---
+    return _make_response(
+        f'\u2705 Done \u2014 {e164} has been added to your family and sent a welcome message.',
+        from_number=from_number,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Text message handler
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
@@ -3410,6 +3600,19 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     # --- SOS / Emergency File Command ---
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
         return _handle_sos_command(from_number, family_name, _family_id)
+
+    # --- Add Member Command ---
+    _add_member_match = re.match(
+        r'^(?:/add-member|/addmember|add\s+(?:member|my\s+\w+))\s+(.+)$',
+        text, re.IGNORECASE,
+    )
+    if _add_member_match:
+        return _handle_add_member_command(
+            raw_input=_add_member_match.group(1).strip(),
+            from_number=from_number,
+            family_name=family_name,
+            family_id=_family_id,
+        )
 
     # --- Invite Command ---
     if text_lower in ("/invite", "invite", "refer", "/refer"):
@@ -3474,6 +3677,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/history* \u2014 See what I've done for your family this week\n"
             "*/connect* \u2014 Connect your Google or Apple Calendar\n"
             "*/invite* \u2014 Get a link to invite friends to FamilyBrain\n"
+            "*/add-member* \u2014 Add a family member by phone number (account owner only)\n"
             "*/graph* \u2014 View your family's knowledge graph (people, places, relationships)\n"
             "*/delete-my-data* \u2014 Delete all data submitted by your number\n"
             "*/delete-all-family-data* \u2014 Request a full wipe of all family data (requires confirmation from all members)\n"
