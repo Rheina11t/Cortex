@@ -2382,18 +2382,19 @@ def _send_gcal_connect_link(phone: str, family_id: str) -> tuple[str, str]:
         base_url = os.environ.get("FAMILYBRAIN_BASE_URL", "https://cortex-production-eb84.up.railway.app").rstrip("/")
         connect_url = f"{base_url}/gcal/connect?token={token}"
 
-        # Build the webcal:// subscription URL using the family's calendar_token
+        # Build the https:// subscription URL for Apple Calendar.
+        # WhatsApp only renders http:// and https:// as tappable links — webcal:// is not clickable.
+        # iOS/macOS recognise .ics files served over https:// and offer to subscribe in Calendar,
+        # so the user experience is identical to webcal:// but the link is tappable in WhatsApp.
         webcal_url = ""
         try:
             cal_token = _get_or_create_calendar_token(family_id)
             if cal_token:
-                # webcal:// is https:// with the scheme replaced; iOS Safari intercepts it
-                feed_https = f"{base_url}/calendar/feed/{cal_token}.ics"
-                webcal_url = feed_https.replace("https://", "webcal://", 1).replace("http://", "webcal://", 1)
+                webcal_url = f"{base_url}/calendar/feed/{cal_token}.ics"
         except Exception as wc_exc:
-            logger.warning("Could not build webcal URL for %s: %s", phone, wc_exc)
+            logger.warning("Could not build calendar URL for %s: %s", phone, wc_exc)
 
-        logger.info("Generated hybrid calendar links for %s (gcal=%s, webcal=%s)", phone, bool(connect_url), bool(webcal_url))
+        logger.info("Generated hybrid calendar links for %s (gcal=%s, ics=%s)", phone, bool(connect_url), bool(webcal_url))
         return (connect_url, webcal_url)
     except Exception as exc:
         logger.error("Failed to generate gcal connect link: %s", exc)
@@ -3650,23 +3651,21 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     if text_lower in ("/connect calendar", "/setup calendar", "connect calendar", "setup calendar", "/connect", "/connect google", "connect google calendar") or text_lower.startswith("/connect cal") or text_lower.startswith("/setup cal"):
         gcal_url, webcal_url = _send_gcal_connect_link(from_number.replace("whatsapp:", ""), _family_id)
         if gcal_url:
-            # Send as separate messages so each link is unambiguous in WhatsApp
-            msgs = [
-                "Option 1 - Google Calendar (Android & iPhone, two-way sync):\n"
-                + gcal_url + "\n"
-                + "Sign in with Google. Events sync both ways. Link expires in 1 hour.",
-            ]
-            if webcal_url:
-                msgs.append(
-                    "Option 2 - Apple Calendar (iPhone/Mac, one-tap):\n"
-                    + webcal_url + "\n"
-                    + "Tap this link on your iPhone or Mac. iOS/macOS will open the Calendar app directly with a Subscribe prompt \u2014 no login needed."
-                )
-            msgs.append(
-                "For families with children: by connecting your calendar you confirm parental consent "
-                "to share events involving under-18s with FamilyBrain. Stored securely, never shared outside your family."
+            # Build a single clean message with both links clearly separated.
+            # Each link sits on its own line so WhatsApp renders it as a tappable hyperlink.
+            apple_block = (
+                "*Apple Calendar (iPhone/Mac):*\n" + webcal_url
+            ) if webcal_url else ""
+
+            body = (
+                "*Connect your calendar to FamilyBrain:*\n\n"
+                "*Google Calendar:*\n"
+                + gcal_url + "\n\n"
+                + (apple_block + "\n\n" if apple_block else "")
+                + "Tap the link for your calendar type. "
+                "Google will ask you to sign in; Apple will open Calendar automatically."
             )
-            return _make_response(*msgs, from_number=from_number)
+            return _make_response(body, from_number=from_number)
         else:
             return _make_response("Sorry, could not generate your calendar link right now. Please try again.", from_number=from_number)
 
