@@ -343,8 +343,8 @@ p { color: #2C2C2C; }
   /* Always in the layout flow so toggling never causes reflow on the phone shell.
      Hidden via opacity+visibility only — background/border use rgba(0,0,0,0) so
      they are invisible without needing a colour transition that could show through. */
-  background: rgba(240,248,245,0);
-  border: 1px solid rgba(168,212,192,0);
+  background: #ECE5DD;
+  border: 1px solid transparent;
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 0.73rem;
@@ -380,7 +380,7 @@ p { color: #2C2C2C; }
 /* Input bar */
 .hero-phone-input-bar {
   background: #F0F0F0;
-  padding: 7px 10px 36px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
+  padding: 7px 10px 18px; /* extra bottom padding fills the rounded phone shell — prevents dark bar showing */
   display: flex;
   align-items: center;
   gap: 7px;
