@@ -343,8 +343,12 @@ p { color: #2C2C2C; }
   background: #ECE5DD;
   padding: 0 10px 8px;
   flex-shrink: 0;
-  /* Reserve a fixed height so it never causes layout shift */
-  min-height: 52px; /* 44px card + 8px bottom padding */
+  /* Strict fixed height — all three properties locked so no child or content
+     can ever make this wrapper taller or shorter between animation scenes */
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  overflow: hidden;
 }
 /* The actual badge card inside the wrapper */
 .hero-phone-insight-card {
