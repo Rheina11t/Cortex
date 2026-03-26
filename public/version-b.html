@@ -335,48 +335,44 @@ p { color: #2C2C2C; }
   position: relative;
   flex-shrink: 0;
 }
-/* Insight badge inside hero phone */
-/* Uses visibility+opacity instead of display:none so toggling it never
-   causes a layout reflow on the outer phone container. The badge is always
-   in the flow (height is reserved) but invisible until .hp-vis is added. */
+/* Insight badge wrapper — always full-width cream so the dark phone shell
+   (#1C1C1E) can never show through the reserved space between chat and
+   input bar. The inner card (.hero-phone-insight-card) fades in/out
+   independently via .hp-vis without affecting the wrapper's background. */
 .hero-phone-insight {
-  /* Always in the layout flow so toggling never causes reflow on the phone shell.
-     Hidden via opacity+visibility only — background/border use rgba(0,0,0,0) so
-     they are invisible without needing a colour transition that could show through. */
   background: #ECE5DD;
-  border: 1px solid transparent;
+  padding: 0 10px 8px;
+  flex-shrink: 0;
+  /* Reserve a fixed height so it never causes layout shift */
+  min-height: 52px; /* 44px card + 8px bottom padding */
+}
+/* The actual badge card inside the wrapper */
+.hero-phone-insight-card {
+  background: rgba(240,248,245,0);
+  border: 1px solid rgba(168,212,192,0);
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 0.73rem;
   color: #3a7264;
   font-style: italic;
-  margin: 0 10px 8px;
   opacity: 0;
-  visibility: hidden;
   transform: translateY(6px);
   transition: opacity 0.5s ease, transform 0.5s ease,
-              visibility 0s linear 0.5s,
               background 0.5s ease, border-color 0.5s ease;
   line-height: 1.5;
-  flex-shrink: 0;
-  /* Reserve a fixed height so it never causes layout shift */
   min-height: 44px;
 }
-.hero-phone-insight.hp-vis {
+.hero-phone-insight.hp-vis .hero-phone-insight-card {
   background: rgba(240,248,245,1);
   border-color: rgba(168,212,192,1);
   opacity: 1;
-  visibility: visible;
   transform: translateY(0);
-  transition: opacity 0.5s ease, transform 0.5s ease,
-              visibility 0s linear 0s,
-              background 0.5s ease, border-color 0.5s ease;
 }
 @keyframes hpPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(74,140,122,0); }
   50% { box-shadow: 0 0 0 5px rgba(74,140,122,0.12); }
 }
-.hero-phone-insight.hp-vis { animation: hpPulse 2s ease 0.5s 2; }
+.hero-phone-insight.hp-vis .hero-phone-insight-card { animation: hpPulse 2s ease 0.5s 2; }
 /* Input bar */
 .hero-phone-input-bar {
   background: #F0F0F0;
@@ -1809,7 +1805,7 @@ p { color: #2C2C2C; }
             <!-- Chat -->
             <div class="hero-phone-chat" id="hpChat"></div>
             <!-- Insight badge -->
-            <div class="hero-phone-insight" id="hpInsight"></div>
+            <div class="hero-phone-insight" id="hpInsight"><div class="hero-phone-insight-card" id="hpInsightCard"></div></div>
             <!-- Input bar -->
             <div class="hero-phone-input-bar">
               <div class="hero-phone-input-field">Message</div>
@@ -2713,9 +2709,11 @@ function switchTab(tabName, btn) {
   }
 
   // ---- Show / hide insight badge ----
+  var insightCard = document.getElementById('hpInsightCard');
   function showInsight(text) {
     if (!insight) return;
-    insight.textContent = text;
+    // Populate the inner card, not the wrapper (wrapper stays cream always)
+    if (insightCard) insightCard.textContent = text;
     insight.classList.remove('hp-vis');
     void insight.offsetWidth;
     requestAnimationFrame(function() {
@@ -2725,7 +2723,12 @@ function switchTab(tabName, btn) {
   function hideInsight() {
     if (!insight) return;
     insight.classList.remove('hp-vis');
-    insight.textContent = '';
+    // Clear card text after the fade-out transition completes (0.5s)
+    setTimeout(function() {
+      if (insightCard && !insight.classList.contains('hp-vis')) {
+        insightCard.textContent = '';
+      }
+    }, 500);
   }
 
   // ---- Update scene dots ----
