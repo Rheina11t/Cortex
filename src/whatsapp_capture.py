@@ -1987,10 +1987,28 @@ def gcal_connect() -> Response:
         logger.error("Token validation failed: %s", exc)
         return Response("<h1>Error</h1><p>Internal server error.</p>", status=500)
 
-    # Build Google OAuth URL
+    # Build Google OAuth URL with PKCE (S256)
+    import base64
+    import hashlib
+    import secrets as _secrets
     from google_auth_oauthlib.flow import Flow
     from . import google_calendar
-    
+
+    # --- PKCE: generate code_verifier and code_challenge ---
+    code_verifier = _secrets.token_urlsafe(96)  # 128 chars of URL-safe base64 = 96 bytes
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode("ascii")).digest()
+    ).rstrip(b"=").decode("ascii")
+
+    # Store the code_verifier alongside the existing token row
+    try:
+        db.table("gcal_connect_tokens").update(
+            {"code_verifier": code_verifier}
+        ).eq("token", token).execute()
+    except Exception as exc:
+        logger.error("Failed to store code_verifier: %s", exc)
+        return Response("<h1>Error</h1><p>Internal server error.</p>", status=500)
+
     client_config = {
         "web": {
             "client_id": google_calendar.CLIENT_ID,
@@ -1999,25 +2017,28 @@ def gcal_connect() -> Response:
             "token_uri": "https://oauth2.googleapis.com/token",
         }
     }
-    
+
     base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/")).rstrip("/")
     redirect_uri = os.environ.get("GOOGLE_CALENDAR_OAUTH_REDIRECT_URI", f"{base_url}/gcal/callback")
-    
+
     try:
         flow = Flow.from_client_config(
             client_config,
             scopes=google_calendar.SCOPES,
             redirect_uri=redirect_uri
         )
-        
-        # Pass the token as state so we can retrieve it in the callback
+
+        # Pass the token as state so we can retrieve it in the callback.
+        # Include PKCE code_challenge so Google can verify the verifier at exchange.
         auth_url, _ = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
             prompt="consent",
-            state=token
+            state=token,
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
         )
-        
+
         from flask import redirect
         return redirect(auth_url)
     except Exception as exc:
@@ -2042,23 +2063,28 @@ def gcal_callback() -> Response:
     if not db:
         return Response("<h1>Error</h1><p>Database connection failed.</p>", status=500)
         
-    # Validate token again
+    # Validate token again and retrieve the stored code_verifier
     try:
         result = db.table("gcal_connect_tokens").select("*").eq("token", state_token).execute()
         if not result.data:
             return Response("<h1>Error</h1><p>Invalid or expired session.</p>", status=400)
-            
+
         token_data = result.data[0]
         family_id = token_data["family_id"]
         phone = token_data["phone"]
+        # Retrieve the PKCE code_verifier stored during /gcal/connect
+        code_verifier = token_data.get("code_verifier") or ""
+        if not code_verifier:
+            logger.error("No code_verifier found in gcal_connect_tokens for state=%s", state_token)
+            return Response("<h1>Error</h1><p>OAuth session error: missing PKCE verifier. Please request a new link.</p>", status=400)
     except Exception as exc:
         logger.error("Token validation failed in callback: %s", exc)
         return Response("<h1>Error</h1><p>Internal server error.</p>", status=500)
-        
+
     # Exchange code for tokens
     from google_auth_oauthlib.flow import Flow
     from . import google_calendar
-    
+
     client_config = {
         "web": {
             "client_id": google_calendar.CLIENT_ID,
@@ -2067,23 +2093,26 @@ def gcal_callback() -> Response:
             "token_uri": "https://oauth2.googleapis.com/token",
         }
     }
-    
+
     base_url = os.environ.get("FAMILYBRAIN_BASE_URL", request.host_url.rstrip("/")).rstrip("/")
     redirect_uri = os.environ.get("GOOGLE_CALENDAR_OAUTH_REDIRECT_URI", f"{base_url}/gcal/callback")
-    
+
     try:
         flow = Flow.from_client_config(
             client_config,
             scopes=google_calendar.SCOPES,
             redirect_uri=redirect_uri
         )
-        
-        # We need to reconstruct the full URL to pass to fetch_token
-        # Railway might be behind a proxy, so ensure https
+
+        # Reconstruct the full callback URL (Railway is behind a proxy — ensure https)
         forwarded_proto = request.headers.get("X-Forwarded-Proto", "https")
         auth_response = request.url.replace("http://", f"{forwarded_proto}://", 1)
-        
-        flow.fetch_token(authorization_response=auth_response)
+
+        # Pass code_verifier so Google can verify the PKCE challenge sent during /gcal/connect
+        flow.fetch_token(
+            authorization_response=auth_response,
+            code_verifier=code_verifier,
+        )
         credentials = flow.credentials
         
         refresh_token = credentials.refresh_token

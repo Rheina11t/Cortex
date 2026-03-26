@@ -29,7 +29,9 @@ CALENDAR_ID = os.environ.get(
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
-    "https://www.googleapis.com/auth/gmail.readonly"
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "openid",
 ]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
