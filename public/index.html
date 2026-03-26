@@ -94,12 +94,30 @@ p { color: #2C2C2C; }
 .fade-in-delay-3 { transition-delay: 0.3s; }
 .fade-in-delay-4 { transition-delay: 0.4s; }
 /* ========== SCROLL ANIMATIONS ========== */
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(28px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* Pre-animation state: sections start invisible and shifted down.
+   We use transition (not animation) so reflows never re-trigger the effect.
+   Once .animate-in is added by the IntersectionObserver it is never removed,
+   so the revealed state is permanent and resize-safe. */
+.section {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+  will-change: opacity, transform;
+  /* Prevent child reflows from propagating up and causing layout jumps */
+  contain: layout style;
 }
-.animate-in {
-  animation: slideUp 0.55s ease forwards;
+/* Once revealed: fully visible, no containment, no will-change overhead */
+.section.animate-in {
+  opacity: 1;
+  transform: translateY(0);
+  will-change: auto;
+  contain: none;
+}
+/* Hero section is always visible — it's above the fold */
+.hero {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
 }
 .fade-in-delay-5 { transition-delay: 0.5s; }
 
@@ -155,7 +173,7 @@ p { color: #2C2C2C; }
 .mobile-menu .btn { width: 100%; margin-top: 16px; text-align: center; }
 
 /* ========== HERO ========== */
-.hero { padding-top: 140px; padding-bottom: 80px; min-height: 90vh; display: flex; align-items: center; }
+.hero { padding-top: 140px; padding-bottom: 80px; min-height: 90vh; min-height: 90dvh; display: flex; align-items: center; }
 .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
 .hero-content h1 { margin-bottom: 20px; }
 .hero-content p { font-size: 1.18rem; color: #7A7A7A; line-height: 1.7; margin-bottom: 36px; max-width: 520px; }
@@ -1294,7 +1312,7 @@ p { color: #2C2C2C; }
   .section { padding: 72px 0; }
   .nav-links { display: none; }
   .nav-hamburger { display: flex; }
-  .hero { padding-top: 120px; padding-bottom: 60px; min-height: auto; }
+  .hero { padding-top: 120px; padding-bottom: 60px; min-height: 0; }
   .steps { grid-template-columns: 1fr !important; max-width: 360px !important; margin: 0 auto; gap: 48px; }
   .pain-cards { grid-template-columns: repeat(2, 1fr); }
   .features-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
@@ -1450,6 +1468,226 @@ p { color: #2C2C2C; }
   gap: 3px;
 }
 .wa-attach-ticks { color: #53BDEB; font-size: 0.68rem; }
+
+/* ========== CONVERSATION DEMO SECTION ========== */
+.conv-demo {
+  background: linear-gradient(180deg, #FAF8F4 0%, #fff 100%);
+}
+.conv-demo-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.conv-demo-content h2 { margin-bottom: 16px; }
+.conv-demo-content > p {
+  color: #7A7A7A;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin-bottom: 28px;
+}
+.conv-demo-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 36px;
+}
+.conv-demo-pill {
+  background: #e8f5f1;
+  color: #4A8C7A;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 0.83rem;
+  font-weight: 500;
+  border: 1px solid rgba(74,140,122,0.25);
+}
+/* Phone mockup wrapper */
+.conv-phone-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.conv-phone-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -12px -10px;
+  border-radius: 44px;
+  background: linear-gradient(145deg, #2a2a2a, #111);
+  box-shadow:
+    0 0 0 2px #444,
+    0 32px 80px rgba(0,0,0,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+  z-index: 0;
+}
+.conv-phone-wrap::after {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 6px;
+  background: #111;
+  border-radius: 0 0 6px 6px;
+  z-index: 2;
+}
+.conv-wa-phone {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 360px;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  font-family: -apple-system, 'Helvetica Neue', sans-serif;
+}
+/* WhatsApp header */
+.conv-wa-header {
+  background: #075E54;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+}
+.conv-wa-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4A8C7A, #6db89f);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+.conv-wa-name { font-weight: 600; font-size: 0.93rem; }
+.conv-wa-status { font-size: 0.72rem; opacity: 0.8; }
+/* Chat area */
+.conv-wa-chat {
+  background: #ECE5DD url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect width='400' height='400' fill='%23ECE5DD'/%3E%3C/svg%3E") center/cover;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 360px;
+}
+/* Bubbles */
+.conv-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 0.87rem;
+  line-height: 1.55;
+  color: #1a1a1a;
+  position: relative;
+  word-break: break-word;
+}
+.conv-bubble-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+.conv-bubble-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+.conv-bubble-time {
+  font-size: 0.65rem;
+  color: #8a8a8a;
+  text-align: right;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.conv-bubble-ticks { color: #53BDEB; font-size: 0.7rem; }
+/* Structured reply elements */
+.conv-reply-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4A8C7A;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+.conv-reply-label:first-child { margin-top: 0; }
+.conv-reply-body {
+  font-size: 0.86rem;
+  color: #1a1a1a;
+  line-height: 1.5;
+  margin-bottom: 2px;
+}
+.conv-reply-step {
+  font-size: 0.84rem;
+  color: #1a1a1a;
+  line-height: 1.5;
+  padding-left: 4px;
+}
+.conv-confidence-badge {
+  display: inline-block;
+  background: #FFF3CD;
+  color: #856404;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.conv-data-gap {
+  background: #FFF0EB;
+  border-left: 3px solid #E8714A;
+  border-radius: 0 6px 6px 0;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: #7A4A3A;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+/* Input bar */
+.conv-wa-input-bar {
+  background: #F0F0F0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conv-wa-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  color: #aaa;
+}
+.conv-wa-send-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.conv-wa-send-btn svg {
+  width: 18px; height: 18px;
+  fill: #fff;
+}
+@media (max-width: 1024px) {
+  .conv-demo-inner { grid-template-columns: 1fr; gap: 48px; }
+  .conv-demo-content { text-align: center; }
+  .conv-demo-pills { justify-content: center; }
+  .conv-phone-wrap { margin: 0 auto; max-width: 380px; }
+}
+@media (max-width: 480px) {
+  .conv-wa-phone { max-width: 100%; }
+}
 
 </style>
 </head>
@@ -2500,7 +2738,7 @@ function switchTab(tabName, btn) {
           gdObserver.disconnect();
         }
       });
-    }, { threshold: 0.35 });
+    }, { threshold: 0.15, rootMargin: '0px 0px -20px 0px' });
     gdObserver.observe(phone);
   }
 })();
@@ -2708,18 +2946,52 @@ async function handleSubmit(e) {
 }
 
 // Scroll animations
+// Uses transition (not animation) so reflows never re-trigger the effect.
+// Once animate-in is added it is never removed — resize-safe by design.
 (function() {
   var sections = document.querySelectorAll('.section');
-  if (!sections.length || !window.IntersectionObserver) return;
+  if (!sections.length) {
+    // Fallback: no IntersectionObserver support — show everything immediately
+    sections.forEach(function(el) { el.classList.add('animate-in'); });
+    return;
+  }
+  if (!window.IntersectionObserver) {
+    sections.forEach(function(el) { el.classList.add('animate-in'); });
+    return;
+  }
+
+  // Mark sections that are already in the viewport on page load (e.g. hero
+  // equivalents, or sections near the top on short pages) so they never
+  // flash invisible.
+  var viewportH = window.innerHeight || document.documentElement.clientHeight;
+  sections.forEach(function(el) {
+    var rect = el.getBoundingClientRect();
+    // If the top of the section is already within the viewport, reveal it now
+    if (rect.top < viewportH - 40) {
+      el.classList.add('animate-in');
+    }
+  });
+
   var obs = new IntersectionObserver(function(entries) {
     entries.forEach(function(entry) {
       if (entry.isIntersecting) {
         entry.target.classList.add('animate-in');
+        // Unobserve immediately — animate-in is permanent, never replay
         obs.unobserve(entry.target);
       }
     });
-  }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
-  sections.forEach(function(el) { obs.observe(el); });
+  }, {
+    // Lower threshold so narrow/tall sections still trigger on mobile
+    threshold: 0.05,
+    rootMargin: '0px 0px -20px 0px'
+  });
+
+  sections.forEach(function(el) {
+    // Only observe sections not already revealed
+    if (!el.classList.contains('animate-in')) {
+      obs.observe(el);
+    }
+  });
 })();
 </script>
 </body>
