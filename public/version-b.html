@@ -76,17 +76,97 @@ p { color: #2C2C2C; }
 .btn-outline:hover { background: #E8714A; color: #fff; }
 
 /* ========== ANIMATIONS ========== */
-.fade-in {
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.7s ease, transform 0.7s ease;
+/* CSS-only page-load animations — no IntersectionObserver, no scroll triggers.
+   Works reliably on all devices including iOS Safari. */
+@keyframes sectionFadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.fade-in.visible { opacity: 1; transform: translateY(0); }
-.fade-in-delay-1 { transition-delay: 0.1s; }
-.fade-in-delay-2 { transition-delay: 0.2s; }
-.fade-in-delay-3 { transition-delay: 0.3s; }
-.fade-in-delay-4 { transition-delay: 0.4s; }
-.fade-in-delay-5 { transition-delay: 0.5s; }
+
+/* Hero section: immediate */
+.hero {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 0s;
+}
+/* Social proof */
+.social-proof {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 0.2s;
+}
+/* Problem */
+.problem {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 0.4s;
+}
+/* How It Works */
+.how-it-works {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 0.6s;
+}
+/* Conv Demo (See it in action) */
+.conv-demo {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 0.8s;
+}
+/* Graph Demo */
+.graph-demo {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 1.0s;
+}
+/* Features */
+.features {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 1.2s;
+}
+/* Testimonials */
+.testimonials {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 1.4s;
+}
+/* Advisor */
+.advisor {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 1.6s;
+}
+/* Emergency */
+.emergency {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 1.8s;
+}
+/* Knows */
+.knows {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 2.0s;
+}
+/* Demo */
+.demo {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 2.2s;
+}
+/* Pricing */
+.pricing {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 2.4s;
+}
+/* Privacy */
+.privacy {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 2.6s;
+}
+/* FAQ */
+.faq {
+  animation: sectionFadeUp 0.6s ease both;
+  animation-delay: 2.8s;
+}
+
+/* Legacy classes kept for CSS compatibility — not applied via JS */
+.fade-in { }
+.fade-in.visible { }
+.fade-in-delay-1 { }
+.fade-in-delay-2 { }
+.fade-in-delay-3 { }
+.fade-in-delay-4 { }
+.fade-in-delay-5 { }
 
 /* ========== STICKY NAV ========== */
 .nav {
@@ -1436,6 +1516,185 @@ p { color: #2C2C2C; }
 }
 .wa-attach-ticks { color: #53BDEB; font-size: 0.68rem; }
 
+
+/* ========== CONVERSATION DEMO (SEE IT IN ACTION) ========== */
+.conv-demo {
+  background: linear-gradient(180deg, #FAF8F4 0%, #fff 100%);
+}
+.conv-demo-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.conv-demo-content h2 { margin-bottom: 16px; }
+.conv-demo-content > p {
+  color: #7A7A7A;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin-bottom: 28px;
+}
+/* Phone mockup wrapper */
+.conv-phone-wrap {
+  display: flex;
+  justify-content: center;
+}
+.conv-wa-phone {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  font-family: -apple-system, 'Helvetica Neue', sans-serif;
+}
+/* WhatsApp header */
+.conv-wa-header {
+  background: #075E54;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+}
+.conv-wa-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4A8C7A, #6db89f);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+.conv-wa-name { font-weight: 600; font-size: 0.93rem; }
+.conv-wa-status { font-size: 0.72rem; opacity: 0.8; }
+/* Chat area */
+.conv-wa-chat {
+  background: #ECE5DD;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 360px;
+  overflow: hidden;
+}
+/* Bubbles */
+.conv-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 0.87rem;
+  line-height: 1.55;
+  color: #1a1a1a;
+  position: relative;
+  word-break: break-word;
+}
+.conv-bubble-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+.conv-bubble-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+.conv-bubble-time {
+  font-size: 0.65rem;
+  color: #8a8a8a;
+  text-align: right;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.conv-bubble-ticks { color: #53BDEB; font-size: 0.7rem; }
+/* Structured reply elements */
+.conv-reply-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4A8C7A;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+.conv-reply-label:first-child { margin-top: 0; }
+.conv-reply-body {
+  font-size: 0.86rem;
+  color: #1a1a1a;
+  line-height: 1.5;
+  margin-bottom: 2px;
+}
+.conv-reply-step {
+  font-size: 0.84rem;
+  color: #1a1a1a;
+  line-height: 1.5;
+  padding-left: 4px;
+}
+.conv-confidence-badge {
+  display: inline-block;
+  background: #FFF3CD;
+  color: #856404;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.conv-data-gap {
+  background: #FFF0EB;
+  border-left: 3px solid #E8714A;
+  border-radius: 0 6px 6px 0;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: #7A4A3A;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+/* Input bar */
+.conv-wa-input-bar {
+  background: #F0F0F0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conv-wa-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  color: #aaa;
+}
+.conv-wa-send-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.conv-wa-send-btn svg {
+  width: 18px; height: 18px;
+  fill: #fff;
+}
+@media (max-width: 1024px) {
+  .conv-demo-inner { grid-template-columns: 1fr; gap: 48px; }
+  .conv-demo-content { text-align: center; }
+  .conv-phone-wrap { margin: 0 auto; max-width: 380px; }
+}
+@media (max-width: 480px) {
+  .conv-wa-phone { max-width: 100%; }
+}
+
 </style>
 </head>
 <body>
@@ -1466,7 +1725,7 @@ p { color: #2C2C2C; }
 <section class="hero section" id="hero">
   <div class="container">
     <div class="hero-grid">
-      <div class="hero-content fade-in visible">
+      <div class="hero-content">
         <h1>Your family's second brain. Just WhatsApp.</h1>
         <p>Send FamilyBrain your documents, photos, and voice notes. Ask any question later — about insurance, passports, prescriptions, school trips, or anything else. It remembers everything so you don't have to.</p>
         <div class="hero-buttons">
@@ -1474,7 +1733,7 @@ p { color: #2C2C2C; }
           <a href="#how-it-works" class="hero-link">See how it works ↓</a>
         </div>
       </div>
-      <div class="fade-in fade-in-delay-2 visible">
+      <div class="">
         <div class="hero-phone-wrap">
           <div class="hero-aurora"></div>
           <div class="hero-phone" id="hpPhone">
@@ -1528,7 +1787,7 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== SOCIAL PROOF ==================== -->
-<section class="social-proof fade-in visible">
+<section class="social-proof">
   <div class="container">
     <div class="social-proof-inner">
       <div class="social-proof-stat">
@@ -1545,7 +1804,7 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== PROBLEM SECTION ==================== -->
-<section class="problem section fade-in visible" id="problem">
+<section class="problem section" id="problem">
   <div class="container">
     <div class="problem-header">
       <p class="section-label">The Problem</p>
@@ -1553,27 +1812,27 @@ p { color: #2C2C2C; }
       <p>School forms. Vaccination records. Insurance renewals. Birthday lists. MOT dates. Most of it lives in your head — until it doesn't. FamilyBrain gives your family's information somewhere better to live.</p>
     </div>
     <div class="pain-cards">
-      <div class="pain-card fade-in visible">
+      <div class="pain-card">
         <div class="pain-card-icon">🛡️</div>
         <h4>Insurance Renewals</h4>
       </div>
-      <div class="pain-card fade-in fade-in-delay-1 visible">
+      <div class="pain-card">
         <div class="pain-card-icon">🛂</div>
         <h4>Passport Expiry Dates</h4>
       </div>
-      <div class="pain-card fade-in fade-in-delay-2 visible">
+      <div class="pain-card">
         <div class="pain-card-icon">📋</div>
         <h4>School Trip Forms</h4>
       </div>
-      <div class="pain-card fade-in fade-in-delay-3 visible">
+      <div class="pain-card">
         <div class="pain-card-icon">📦</div>
         <h4>Warranty Claims</h4>
       </div>
-      <div class="pain-card fade-in fade-in-delay-4 visible">
+      <div class="pain-card">
         <div class="pain-card-icon">💊</div>
         <h4>Prescription Repeats</h4>
       </div>
-      <div class="pain-card fade-in fade-in-delay-5 visible">
+      <div class="pain-card">
         <div class="pain-card-icon">🚗</div>
         <h4>MOT &amp; Service Records</h4>
       </div>
@@ -1582,7 +1841,7 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== HOW IT WORKS ==================== -->
-<section class="how-it-works section fade-in visible" id="how-it-works">
+<section class="how-it-works section" id="how-it-works">
   <div class="container">
     <div class="how-header">
       <p class="section-label">How It Works</p>
@@ -1591,7 +1850,7 @@ p { color: #2C2C2C; }
     </div>
     <div class="steps">
       <!-- Step 1 -->
-      <div class="step fade-in visible">
+      <div class="step">
         <div class="step-number">01</div>
         <h3>Send anything</h3>
         <p>Forward documents, photos, voice notes, emails, or just type a thought. Insurance policies, school letters, receipts, prescriptions — FamilyBrain reads them all.</p>
@@ -1618,7 +1877,7 @@ p { color: #2C2C2C; }
         </div>
       </div>
       <!-- Step 2 -->
-      <div class="step fade-in fade-in-delay-2 visible">
+      <div class="step">
         <div class="step-number">02</div>
         <h3>Remember everything</h3>
         <p>FamilyBrain extracts the key details, categorises them, and stores them securely. Dates, names, reference numbers, amounts — all indexed and searchable.</p>
@@ -1645,7 +1904,7 @@ p { color: #2C2C2C; }
         </div>
       </div>
       <!-- Step 3 -->
-      <div class="step fade-in fade-in-delay-3 visible">
+      <div class="step">
         <div class="step-number">03</div>
         <h3>Ask anything</h3>
         <p>FamilyBrain checks everyone's schedules, documents, and history to give you a complete answer — from calendar clashes to passport expiries.</p>
@@ -1661,7 +1920,7 @@ p { color: #2C2C2C; }
         </div>
       </div>
       <!-- Step 4 -->
-      <div class="step fade-in fade-in-delay-4 visible">
+      <div class="step">
         <div class="step-number">04</div>
         <h3>Suggest everything</h3>
         <p>Every week, FamilyBrain reviews everything it knows and proactively flags what matters — renewals, deadlines, documents that need updating — without being asked.</p>
@@ -1676,7 +1935,7 @@ p { color: #2C2C2C; }
         </div>
       </div>
       <!-- Step 5: Emergency File -->
-      <div class="step fade-in fade-in-delay-5 visible" style="grid-column:1/-1; max-width:760px; margin:0 auto; background:linear-gradient(135deg,#fdf6f2,#fef0e8); border:1px solid rgba(232,113,74,0.2); border-radius:24px; padding:40px;">
+      <div class="step" style="grid-column:1/-1; max-width:760px; margin:0 auto; background:linear-gradient(135deg,#fdf6f2,#fef0e8); border:1px solid rgba(232,113,74,0.2); border-radius:24px; padding:40px;">
         <div class="step-number" style="background:linear-gradient(135deg,#E8714A,#d45e38);">05</div>
         <h3>Your family emergency file — always ready</h3>
         <p style="margin-bottom:12px;">As you add documents, FamilyBrain quietly builds your family emergency file in the background. When you need it, just type <span class="sos-command">/sos</span> in WhatsApp. You'll get a complete PDF covering legal documents, insurance, pensions, bank details, property, and more — ready to share with a trusted person.</p>
@@ -1720,8 +1979,77 @@ p { color: #2C2C2C; }
   </div>
 </section>
 
+<!-- ==================== SEE IT IN ACTION (CONVERSATION DEMO) ==================== -->
+<section class="conv-demo section" id="conv-demo">
+  <div class="container">
+    <div class="conv-demo-inner">
+
+      <!-- Left: copy -->
+      <div class="conv-demo-content">
+        <p class="section-label">See it in action</p>
+        <h2>A real question. A real answer.</h2>
+        <p>FamilyBrain connects the dots across everything you&rsquo;ve stored &mdash; documents, policies, reminders, events &mdash; and gives you a clear, grounded answer. No searching. No guessing.</p>
+        <a href="/join" class="btn btn-primary">Try it free for 14 days</a>
+      </div>
+
+      <!-- Right: phone mockup -->
+      <div class="conv-phone-wrap">
+        <div class="conv-wa-phone">
+
+          <!-- WhatsApp header -->
+          <div class="conv-wa-header">
+            <div class="conv-wa-avatar">FB</div>
+            <div>
+              <div class="conv-wa-name">FamilyBrain</div>
+              <div class="conv-wa-status">online</div>
+            </div>
+          </div>
+
+          <!-- Chat area -->
+          <div class="conv-wa-chat">
+
+            <!-- Parent message (right) -->
+            <div class="conv-bubble conv-bubble-user">
+              We keep meaning to sort out what would happen to the kids if something happened to us &mdash; what have we actually got in place?
+              <div class="conv-bubble-time">14:22 <span class="conv-bubble-ticks">&#10003;&#10003;</span></div>
+            </div>
+
+            <!-- FamilyBrain response (left) -->
+            <div class="conv-bubble conv-bubble-bot">
+              <div class="conv-reply-label">Quick Summary</div>
+              <div class="conv-reply-body">Life insurance covers the mortgage. But there&rsquo;s no will &mdash; which means the courts, not you, decide who looks after the kids.</div>
+
+              <div class="conv-reply-label">Easy next steps</div>
+              <div class="conv-reply-step">1. Write a will (from &pound;100 online)</div>
+              <div class="conv-reply-step">2. Forward your insurance renewal &mdash; it&rsquo;s due March 2026</div>
+
+              <div class="conv-data-gap">&#128274; Data gap: No will or LPA stored yet.</div>
+
+              <div>
+                <span class="conv-confidence-badge">Confidence: Medium</span>
+              </div>
+              <div class="conv-bubble-time">14:22</div>
+            </div>
+
+          </div>
+
+          <!-- Input bar -->
+          <div class="conv-wa-input-bar">
+            <div class="conv-wa-input-field">Type a message</div>
+            <div class="conv-wa-send-btn">
+              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- ==================== FEATURES GRID ==================== -->
-<section class="features section fade-in visible" id="features">
+<section class="features section" id="features">
   <div class="container">
     <div class="features-header">
       <p class="section-label">Features</p>
@@ -1729,37 +2057,37 @@ p { color: #2C2C2C; }
       <p>FamilyBrain doesn't just answer questions — it proactively looks out for your family.</p>
     </div>
     <div class="features-grid">
-      <div class="feature-card fade-in visible">
+      <div class="feature-card">
         <div class="feature-icon">📄</div>
         <h3>Find any document in seconds</h3>
         <p>Just ask. FamilyBrain searches everything you've ever shared — insurance policies, school letters, receipts, and more.</p>
       </div>
-      <div class="feature-card feature-highlight fade-in fade-in-delay-1 visible">
+      <div class="feature-card feature-highlight">
         <div class="feature-icon">🧠</div>
         <h3>Answers that connect the dots</h3>
         <p>Ask about your Spain trip and FamilyBrain checks passports, insurance, and vaccinations — all at once. No question is too complex.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-2 visible">
+      <div class="feature-card">
         <div class="feature-icon">👨‍👩‍👧‍👦</div>
         <h3>The whole family, on the same page</h3>
         <p>Every family member can ask questions and capture memories. Everyone stays in the loop.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-3 visible">
+      <div class="feature-card">
         <div class="feature-icon">🎙️</div>
         <h3>Send a voice note</h3>
         <p>Speak your thought. FamilyBrain transcribes and stores it instantly — perfect for the school run.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-4 visible">
+      <div class="feature-card">
         <div class="feature-icon">🔍</div>
         <h3>Surfaces insights you didn't know to ask for</h3>
         <p>Every week, FamilyBrain reviews everything it knows about your family and flags what matters — renewals coming up, documents that need updating, things you might have missed.</p>
       </div>
-      <div class="feature-card fade-in fade-in-delay-5 visible">
+      <div class="feature-card">
         <div class="feature-icon">📱</div>
         <h3>No new app. Just WhatsApp.</h3>
         <p>The app already on your phone, now running your family life. No downloads, no new habits, no friction.</p>
       </div>
-      <div class="feature-card feature-sos fade-in fade-in-delay-5 visible">
+      <div class="feature-card feature-sos">
         <div class="feature-icon">📂</div>
         <h3>Your family emergency file, always ready</h3>
         <p>Type <strong>/sos</strong> and FamilyBrain generates a complete emergency document — legal, financial, insurance, pensions, and more — in seconds.</p>
@@ -1774,7 +2102,7 @@ p { color: #2C2C2C; }
     <div class="graph-demo-inner">
 
       <!-- Copy side -->
-      <div class="graph-demo-copy fade-in visible">
+      <div class="graph-demo-copy">
         <p class="section-label">Your family, joined up</p>
         <h2>It just knows.</h2>
         <p class="lead">FamilyBrain doesn't just store information — it connects it. Ask about any family member, any event, any document, and it draws on everything it knows to give you a complete answer. Instantly.</p>
@@ -1782,7 +2110,7 @@ p { color: #2C2C2C; }
       </div>
 
       <!-- Phone mockup side -->
-      <div class="fade-in fade-in-delay-2 visible">
+      <div class="">
         <div class="gd-phone" id="gdPhone">
           <!-- Notch -->
           <div class="gd-notch"></div>
@@ -1835,14 +2163,14 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== TESTIMONIALS ==================== -->
-<section class="testimonials section fade-in visible" id="testimonials">
+<section class="testimonials section" id="testimonials">
   <div class="container">
     <div class="testimonials-header">
       <p class="section-label">Testimonials</p>
       <h2>Loved by families like yours.</h2>
     </div>
     <div class="testimonials-grid">
-      <div class="testimonial-card fade-in visible">
+      <div class="testimonial-card">
         <div class="testimonial-stars">★★★★★</div>
         <blockquote>"I forwarded our insurance documents six months ago and forgot about them. Last week I asked if we were covered for a hire car — FamilyBrain found the answer in seconds. Genuinely life-changing."</blockquote>
         <div class="testimonial-author">
@@ -1853,7 +2181,7 @@ p { color: #2C2C2C; }
           </div>
         </div>
       </div>
-      <div class="testimonial-card fade-in fade-in-delay-2 visible">
+      <div class="testimonial-card">
         <div class="testimonial-stars">★★★★★</div>
         <blockquote>"My wife and I both use it. No more 'did you remember to...' conversations. FamilyBrain just knows."</blockquote>
         <div class="testimonial-author">
@@ -1864,7 +2192,7 @@ p { color: #2C2C2C; }
           </div>
         </div>
       </div>
-      <div class="testimonial-card fade-in fade-in-delay-4 visible">
+      <div class="testimonial-card">
         <div class="testimonial-stars">★★★★★</div>
         <blockquote>"The voice note feature is brilliant. I just speak my thoughts on the school run and it captures everything. It's like having a PA."</blockquote>
         <div class="testimonial-author">
@@ -1880,10 +2208,10 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== PROACTIVE ADVISOR ==================== -->
-<section class="advisor section fade-in visible" id="advisor">
+<section class="advisor section" id="advisor">
   <div class="container">
     <div class="advisor-inner">
-      <div class="advisor-content fade-in visible">
+      <div class="advisor-content">
         <p class="section-label">Proactive Insights</p>
         <h2>FamilyBrain thinks ahead, so you don't have to.</h2>
         <p>Every week, FamilyBrain reviews everything it knows about your family and sends you a proactive summary — no prompting required.</p>
@@ -1894,7 +2222,7 @@ p { color: #2C2C2C; }
         </ul>
         <a href="/join" class="btn btn-primary">Start Your Free Trial</a>
       </div>
-      <div class="advisor-mockup fade-in fade-in-delay-2 visible">
+      <div class="advisor-mockup">
         <div class="advisor-time-label">Sunday, 8:14am</div>
         <div class="wa-phone">
           <div class="wa-header">
@@ -1933,7 +2261,7 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== PRICING ==================== -->
-<section class="pricing section fade-in visible" id="pricing">
+<section class="pricing section" id="pricing">
   <div class="container">
     <div class="pricing-header">
       <p class="section-label">Pricing</p>
@@ -1947,7 +2275,7 @@ p { color: #2C2C2C; }
       <span class="save-badge" id="saveBadge" style="display:none;">Save 18%</span>
     </div>
     <div class="pricing-single">
-      <div class="pricing-card-solo fade-in visible">
+      <div class="pricing-card-solo">
         <h3>FamilyBrain</h3>
         <p class="pricing-tagline">Everything your family needs, in one place.</p>
         <div class="pricing-amount">
@@ -1974,29 +2302,29 @@ p { color: #2C2C2C; }
   </div>
 </section>
 <!-- ==================== PRIVACY ==================== -->
-<section class="privacy section fade-in visible" id="privacy">
+<section class="privacy section" id="privacy">
   <div class="container">
     <div class="privacy-header">
       <p class="section-label">Privacy &amp; Security</p>
       <h2>Your family's data is yours. Always.</h2>
     </div>
     <div class="privacy-grid">
-      <div class="privacy-card fade-in visible">
+      <div class="privacy-card">
         <div class="privacy-icon">🔒</div>
         <h4>End-to-end encrypted</h4>
         <p>All your family's data is encrypted in transit and at rest. Only you can access it.</p>
       </div>
-      <div class="privacy-card fade-in fade-in-delay-1 visible">
+      <div class="privacy-card">
         <div class="privacy-icon">🚫</div>
         <h4>Never used for AI training</h4>
         <p>Your data is never used to train AI models. Period. It's yours and yours alone.</p>
       </div>
-      <div class="privacy-card fade-in fade-in-delay-2 visible">
+      <div class="privacy-card">
         <div class="privacy-icon">🇬🇧</div>
         <h4>GDPR compliant, UK-based</h4>
         <p>We're a UK company, fully GDPR compliant, with data stored securely in the UK.</p>
       </div>
-      <div class="privacy-card fade-in fade-in-delay-3 visible">
+      <div class="privacy-card">
         <div class="privacy-icon">🗑️</div>
         <h4>Delete everything, anytime</h4>
         <p>One click and all your data is permanently deleted. No questions, no delays.</p>
@@ -2006,7 +2334,7 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== FAQ ==================== -->
-<section class="faq section fade-in visible" id="faq">
+<section class="faq section" id="faq">
   <div class="container">
     <div class="faq-header">
       <p class="section-label">FAQ</p>
@@ -2072,7 +2400,7 @@ p { color: #2C2C2C; }
 </section>
 
 <!-- ==================== FINAL CTA ==================== -->
-<section class="final-cta fade-in visible">
+<section class="final-cta">
   <div class="container">
     <h2>Give your family the memory it deserves.</h2>
     <p>Join 200+ families already using FamilyBrain. Start your free 14-day trial today.</p>
