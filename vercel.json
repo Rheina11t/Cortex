@@ -1,5 +1,7 @@
 {
+  "outputDirectory": "public",
   "rewrites": [
+    { "source": "/",        "destination": "/version-b.html" },
     { "source": "/privacy", "destination": "/privacy/index.html" },
     { "source": "/join",    "destination": "/join.html" },
     { "source": "/terms",   "destination": "/terms.html" }
