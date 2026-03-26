@@ -77,7 +77,16 @@ p { color: #2C2C2C; }
 
 /* ========== ANIMATIONS ========== */
 /* CSS-only page-load animations — no IntersectionObserver, no scroll triggers.
-   Works reliably on all devices including iOS Safari. */
+   Works reliably on all devices including iOS Safari.
+
+   DESIGN RATIONALE:
+   animation-fill-mode: both  →  element starts at opacity:0 / translateY(20px)
+                                  and stays at opacity:1 / translateY(0) after finishing.
+   Only the first three above-fold sections get a visible stagger (0s / 0.1s / 0.15s).
+   All below-fold sections use animation-delay: 0s so they are NEVER invisible when
+   the user scrolls to them — the animation has already completed by then.
+   Duration is kept short (0.55s) so the effect is felt but never blocks reading.
+*/
 @keyframes sectionFadeUp {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -85,78 +94,79 @@ p { color: #2C2C2C; }
 
 /* Hero section: immediate */
 .hero {
-  animation: sectionFadeUp 0.6s ease both;
+  animation: sectionFadeUp 0.55s ease both;
   animation-delay: 0s;
 }
-/* Social proof */
+/* Social proof: slight stagger so hero lands first */
 .social-proof {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 0.2s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0.1s;
 }
-/* Problem */
+/* Problem: last above-fold stagger */
 .problem {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 0.4s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0.15s;
 }
+/* All remaining sections: delay 0s — animation completes before user scrolls to them */
 /* How It Works */
 .how-it-works {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 0.6s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Conv Demo (See it in action) */
 .conv-demo {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 0.8s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Graph Demo */
 .graph-demo {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 1.0s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Features */
 .features {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 1.2s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Testimonials */
 .testimonials {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 1.4s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Advisor */
 .advisor {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 1.6s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Emergency */
 .emergency {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 1.8s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Knows */
 .knows {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 2.0s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Demo */
 .demo {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 2.2s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Pricing */
 .pricing {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 2.4s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* Privacy */
 .privacy {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 2.6s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 /* FAQ */
 .faq {
-  animation: sectionFadeUp 0.6s ease both;
-  animation-delay: 2.8s;
+  animation: sectionFadeUp 0.55s ease both;
+  animation-delay: 0s;
 }
 
 /* Legacy classes kept for CSS compatibility — not applied via JS */
@@ -1542,9 +1552,10 @@ p { color: #2C2C2C; }
 .conv-wa-phone {
   width: 100%;
   max-width: 360px;
-  border-radius: 28px;
+  /* No black bezel — clean card with subtle shadow only */
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);
   font-family: -apple-system, 'Helvetica Neue', sans-serif;
 }
 /* WhatsApp header */
@@ -1555,6 +1566,7 @@ p { color: #2C2C2C; }
   align-items: center;
   gap: 12px;
   color: #fff;
+  /* No back-arrow padding — clean header matching spec */
 }
 .conv-wa-avatar {
   width: 36px; height: 36px;
@@ -1573,6 +1585,7 @@ p { color: #2C2C2C; }
 /* Chat area */
 .conv-wa-chat {
   background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
@@ -2011,7 +2024,7 @@ p { color: #2C2C2C; }
             <!-- Parent message (right) -->
             <div class="conv-bubble conv-bubble-user">
               We keep meaning to sort out what would happen to the kids if something happened to us &mdash; what have we actually got in place?
-              <div class="conv-bubble-time">14:22 <span class="conv-bubble-ticks">&#10003;&#10003;</span></div>
+              <div class="conv-bubble-time">14:22 <span class="conv-bubble-ticks" aria-label="Read">&#10003;&#10003;</span></div>
             </div>
 
             <!-- FamilyBrain response (left) -->
