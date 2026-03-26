@@ -12,11 +12,15 @@
 <style>
 /* ========== RESET & BASE ========== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; font-size: 17px; }
+html { font-size: 17px; }
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: #FAF8F4;
   color: #2C2C2C;
+  overscroll-behavior-y: none;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
@@ -55,7 +59,7 @@ p { color: #2C2C2C; }
   border-radius: 12px;
   font-size: 1rem;
   font-weight: 600;
-  transition: all 0.25s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, color 0.25s ease, opacity 0.25s ease;
 }
 .btn-primary {
   background: #E8714A;
@@ -103,8 +107,9 @@ p { color: #2C2C2C; }
   transform: translateY(28px);
   transition: opacity 0.55s ease, transform 0.55s ease;
   will-change: opacity, transform;
-  /* Prevent child reflows from propagating up and causing layout jumps */
-  contain: layout style;
+  /* Isolate paint layer to prevent child reflows causing page-level layout shifts.
+     Using 'paint' (not 'layout') so position:sticky/fixed children still work. */
+  contain: paint;
 }
 /* Once revealed: fully visible, no containment, no will-change overhead */
 .section.animate-in {
@@ -152,12 +157,12 @@ p { color: #2C2C2C; }
   padding: 10px 22px;
   border-radius: 10px;
   font-weight: 600 !important;
-  transition: all 0.25s ease !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, color 0.25s ease !important;
   box-shadow: 0 2px 10px rgba(232,113,74,0.25);
 }
 .nav-cta:hover { background: #d4613c !important; color: #fff !important; transform: translateY(-1px); }
 .nav-hamburger { display: none; flex-direction: column; gap: 5px; background: none; padding: 4px; }
-.nav-hamburger span { display: block; width: 24px; height: 2.5px; background: #2C2C2C; border-radius: 2px; transition: all 0.3s ease; }
+.nav-hamburger span { display: block; width: 24px; height: 2.5px; background: #2C2C2C; border-radius: 2px; transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease; }
 .mobile-menu {
   display: none;
   position: fixed;
@@ -188,6 +193,8 @@ p { color: #2C2C2C; }
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  /* Isolate animated carousel from page-level reflows */
+  contain: paint;
 }
 /* Aurora glow behind the phone */
 .hero-aurora {
@@ -274,6 +281,7 @@ p { color: #2C2C2C; }
   gap: 5px;
   overflow: hidden;
   position: relative;
+  transition: opacity 0.35s ease;
 }
 /* Insight badge inside hero phone */
 .hero-phone-insight {
@@ -555,7 +563,7 @@ p { color: #2C2C2C; }
   padding: 28px 24px;
   text-align: center;
   border: 1px solid rgba(0,0,0,0.05);
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .pain-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.06); }
 .pain-card-icon {
@@ -607,7 +615,7 @@ p { color: #2C2C2C; }
   border-radius: 18px;
   padding: 32px 28px;
   border: 1px solid rgba(0,0,0,0.05);
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .feature-card:hover { transform: translateY(-4px); box-shadow: 0 12px 36px rgba(0,0,0,0.07); }
 .feature-card.feature-highlight {
@@ -732,7 +740,7 @@ p { color: #2C2C2C; }
   border-radius: 14px;
   padding: 20px 14px;
   text-align: center;
-  transition: all 0.25s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   cursor: default;
 }
 .knows-tile:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.07); border-color: rgba(74,140,122,0.25); }
@@ -759,7 +767,7 @@ p { color: #2C2C2C; }
   background: #fff;
   color: #7A7A7A;
   border: 2px solid rgba(0,0,0,0.08);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 .demo-tab:hover { border-color: #4A8C7A; color: #4A8C7A; }
 .demo-tab.active { background: #4A8C7A; color: #fff; border-color: #4A8C7A; }
@@ -820,7 +828,7 @@ p { color: #2C2C2C; }
 .pricing-header h2 { margin-bottom: 12px; }
 .pricing-header p { color: #7A7A7A; font-size: 1.05rem; }
 .pricing-toggle { display: flex; gap: 0; margin-bottom: 48px; border: 1.5px solid #4A8C7A; border-radius: 8px; overflow: hidden; width: fit-content; margin-left: auto; margin-right: auto; }
-.pricing-toggle .toggle-btn { padding: 8px 28px; background: transparent; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; color: #4A8C7A; transition: all 0.2s; font-family: 'Inter', sans-serif; }
+.pricing-toggle .toggle-btn { padding: 8px 28px; background: transparent; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; color: #4A8C7A; transition: background-color 0.2s ease, color 0.2s ease; font-family: 'Inter', sans-serif; }
 .pricing-toggle .toggle-btn.active { background: #4A8C7A; color: #fff; }
 .toggle-switch {
   width: 52px; height: 28px;
@@ -851,7 +859,7 @@ p { color: #2C2C2C; }
   padding: 36px 32px;
   border: 2px solid rgba(0,0,0,0.06);
   position: relative;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .pricing-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
 .pricing-card.featured { border-color: #E8714A; box-shadow: 0 8px 32px rgba(232,113,74,0.15); }
@@ -1506,6 +1514,8 @@ p { color: #2C2C2C; }
   position: relative;
   display: flex;
   justify-content: center;
+  /* Isolate phone mockup from page-level reflows */
+  contain: paint;
 }
 .conv-phone-wrap::before {
   content: '';
@@ -1566,12 +1576,13 @@ p { color: #2C2C2C; }
 .conv-wa-status { font-size: 0.72rem; opacity: 0.8; }
 /* Chat area */
 .conv-wa-chat {
-  background: #ECE5DD url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect width='400' height='400' fill='%23ECE5DD'/%3E%3C/svg%3E") center/cover;
+  background: #ECE5DD;
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 360px;
+  overflow: hidden;
 }
 /* Bubbles */
 .conv-bubble {
@@ -2508,7 +2519,7 @@ p { color: #2C2C2C; }
 const nav = document.getElementById('nav');
 window.addEventListener('scroll', () => {
   nav.classList.toggle('scrolled', window.scrollY > 20);
-});
+}, { passive: true });
 
 // ===== MOBILE MENU =====
 function toggleMobileMenu() {
@@ -2527,14 +2538,13 @@ function switchTab(tabName, btn) {
   // Show selected
   document.getElementById('panel-' + tabName).classList.add('active');
   btn.classList.add('active');
-  // Re-trigger bubble animations for the newly shown panel
+  // Reveal bubbles in the newly shown panel using staggered opacity transitions
+  // (no forced reflow — avoids layout recalculation on tab switch)
   const bubbles = document.querySelectorAll('#panel-' + tabName + ' .wa-bubble');
   bubbles.forEach((b, i) => {
+    b.style.opacity = '1';
+    b.style.transform = 'none';
     b.style.animation = 'none';
-    b.style.opacity = '0';
-    void b.offsetWidth; // reflow
-    b.style.animation = '';
-    b.style.animationDelay = (0.3 + i * 0.5) + 's';
   });
 }
 
@@ -2700,7 +2710,6 @@ function switchTab(tabName, btn) {
           setTimeout(function() {
             var next = (sceneIdx + 1) % scenes.length;
             chat.style.opacity = '0';
-            chat.style.transition = 'opacity 0.35s ease';
             setTimeout(function() {
               currentScene = next;
               chat.innerHTML = '';
