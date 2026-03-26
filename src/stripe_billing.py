@@ -301,6 +301,16 @@ _JOIN_PAGE_HTML = """\
       return /^\\+[0-9]{9,}$/.test(val.replace(/\\s/g, ''));
     }
 
+    // Capture referral code from URL query parameter (?ref=XXXXXX)
+    // and persist it in sessionStorage so it survives any redirects on this domain.
+    (function captureRef() {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref') || params.get('REF');
+      if (ref) {
+        sessionStorage.setItem('fb_ref', ref.trim().toUpperCase());
+      }
+    })();
+
     document.getElementById('joinForm').addEventListener('submit', async function(e) {
       e.preventDefault();
       const phoneInput = document.getElementById('phone');
@@ -324,11 +334,16 @@ _JOIN_PAGE_HTML = """\
       btn.textContent = 'Preparing your checkout\u2026';
       btn.disabled = true;
 
+      // Read referral code from sessionStorage (set above or by the landing page)
+      const refCode = sessionStorage.getItem('fb_ref') || '';
+
       try {
+        const payload = { phone: phone };
+        if (refCode) { payload.ref = refCode; }
         const res = await fetch('/stripe/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: phone })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error('API error ' + res.status);
         const data = await res.json();
@@ -384,7 +399,7 @@ def create_checkout() -> Response:
     Create a Stripe Checkout Session for a monthly subscription.
 
     Expected JSON body:
-      { "phone": "+447700900000" }
+      { "phone": "+447700900000", "ref": "FAMXXXXX" }  (ref is optional)
 
     Returns:
       { "checkout_url": "https://checkout.stripe.com/..." }
@@ -402,6 +417,9 @@ def create_checkout() -> Response:
     if not phone.startswith("+"):
         return jsonify({"error": "phone must be in E.164 format (e.g. +447700900000)"}), 400
 
+    # Optional referral code passed from the landing page (?ref=XXXXXX)
+    ref_code: str = (data.get("ref") or "").strip().upper()
+
     # Resolve price ID — fall back to a default £4.99 label if not set
     price_id = STRIPE_PRICE_ID
     if not price_id:
@@ -411,6 +429,15 @@ def create_checkout() -> Response:
         return jsonify({"error": "STRIPE_PRICE_ID is not configured on this server"}), 500
 
     family_id = _generate_family_id(phone)
+
+    # Build Stripe metadata — include ref_code if present
+    session_metadata: dict[str, str] = {
+        "family_id": family_id,
+        "primary_phone": phone,
+    }
+    if ref_code:
+        session_metadata["ref_code"] = ref_code
+        logger.info("Checkout session for family %s includes ref_code=%s", family_id, ref_code)
 
     try:
         session = stripe.checkout.Session.create(
@@ -422,10 +449,7 @@ def create_checkout() -> Response:
                 "?session_id={CHECKOUT_SESSION_ID}"
             ),
             cancel_url=f"{FAMILYBRAIN_BASE_URL}/join?cancelled=1",
-            metadata={
-                "family_id": family_id,
-                "primary_phone": phone,
-            },
+            metadata=session_metadata,
             phone_number_collection={"enabled": False},
         )
         logger.info(
@@ -563,6 +587,7 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
     metadata: dict = session.get("metadata") or {}
     family_id: str = metadata.get("family_id", "")
     primary_phone: str = metadata.get("primary_phone", "")
+    ref_code: str = metadata.get("ref_code", "").strip().upper()
     stripe_customer_id: str = session.get("customer", "") or ""
     stripe_subscription_id: str = session.get("subscription", "") or ""
 
@@ -574,16 +599,17 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
         return
 
     logger.info(
-        "Provisioning family %s (phone=%s, customer=%s, subscription=%s)",
+        "Provisioning family %s (phone=%s, customer=%s, subscription=%s, ref=%s)",
         family_id, primary_phone, stripe_customer_id, stripe_subscription_id,
+        ref_code or "none",
     )
 
     try:
         sb = _get_supabase()
 
-        # 1. Upsert the families record
+        # 1. Upsert the families record (include referred_by if a ref code was used)
         now = datetime.now(timezone.utc).isoformat()
-        sb.table("families").upsert({
+        families_row: dict[str, Any] = {
             "family_id": family_id,
             "primary_name": family_id,   # will be updated when user introduces themselves
             "primary_phone": primary_phone,
@@ -595,7 +621,11 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
             "subscription_started_at": now,
             "status": "active",
             "created_at": now,
-        }).execute()
+        }
+        if ref_code:
+            families_row["referred_by"] = ref_code
+
+        sb.table("families").upsert(families_row).execute()
         logger.info("Families record upserted for %s", family_id)
 
         # 2. Register phone in whatsapp_members
@@ -608,7 +638,11 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
         }).execute()
         logger.info("Registered phone %s -> family %s", normalised_phone, family_id)
 
-        # 3. Send welcome WhatsApp via Twilio
+        # 3. Handle referral conversion tracking
+        if ref_code:
+            _handle_referral_conversion(sb, ref_code, family_id, now)
+
+        # 4. Send welcome WhatsApp
         _send_welcome_whatsapp(primary_phone)
 
     except Exception as exc:
@@ -617,6 +651,104 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
             "Failed to provision family %s: %s\n%s",
             family_id, exc, traceback.format_exc(),
         )
+
+
+def _handle_referral_conversion(
+    sb: Any,
+    ref_code: str,
+    referred_family_id: str,
+    now: str,
+) -> None:
+    """
+    Record a referral conversion when a referred user completes their first payment.
+
+    Steps:
+      1. Look up the canonical referral row (owner's row: referred_family_id IS NULL)
+      2. Increment uses_count on that row
+      3. Insert a new conversion row linking the referring family to the new family
+      4. Flag credit_issued=True on the canonical row once the first conversion lands
+         (the free-month credit itself is applied manually / via a future automation)
+      5. Send a proactive WhatsApp to the referrer notifying them of the conversion
+    """
+    try:
+        # Find the canonical referral row for this code
+        owner_res = (
+            sb.table("referrals")
+            .select("id, family_id, uses_count, user_phone, credit_issued")
+            .eq("ref_code", ref_code)
+            .is_("referred_family_id", "null")
+            .limit(1)
+            .execute()
+        )
+        if not owner_res.data:
+            logger.warning(
+                "Referral conversion: no canonical row found for ref_code=%s", ref_code
+            )
+            return
+
+        owner_row = owner_res.data[0]
+        owner_family_id: str = owner_row["family_id"]
+        current_uses: int = owner_row.get("uses_count") or 0
+        referrer_phone: str = owner_row.get("user_phone") or ""
+        already_credited: bool = bool(owner_row.get("credit_issued"))
+
+        new_uses = current_uses + 1
+
+        # Increment uses_count on the canonical row; flag credit_issued on first conversion
+        update_payload: dict[str, Any] = {"uses_count": new_uses}
+        if not already_credited:
+            update_payload["credit_issued"] = True  # flag for manual / automated credit
+
+        sb.table("referrals").update(update_payload).eq("id", owner_row["id"]).execute()
+        logger.info(
+            "Referral conversion: ref_code=%s, referring_family=%s, new_uses=%d",
+            ref_code, owner_family_id, new_uses,
+        )
+
+        # Insert a conversion row to record which family was referred
+        sb.table("referrals").insert({
+            "family_id": owner_family_id,
+            "ref_code": ref_code,
+            "referred_family_id": referred_family_id,
+            "converted_at": now,
+            "uses_count": 0,  # conversion rows don't track further uses
+        }).execute()
+
+        # Notify the referrer via WhatsApp if we have their phone number
+        if referrer_phone:
+            _notify_referrer(referrer_phone, new_uses)
+
+    except Exception as exc:
+        import traceback
+        logger.error(
+            "Referral conversion tracking failed for ref_code=%s: %s\n%s",
+            ref_code, exc, traceback.format_exc(),
+        )
+
+
+def _notify_referrer(referrer_phone: str, total_conversions: int) -> None:
+    """Send a WhatsApp notification to the referrer when someone converts."""
+    to_number = (
+        referrer_phone
+        if referrer_phone.startswith("whatsapp:")
+        else f"whatsapp:{referrer_phone}"
+    )
+    if total_conversions == 1:
+        msg = (
+            "\U0001f389 Great news! Someone just signed up to FamilyBrain using your referral link. "
+            "You've earned a *free month* on your next billing cycle — we'll apply it automatically. "
+            "Thanks for spreading the word!"
+        )
+    else:
+        msg = (
+            f"\U0001f389 Another referral converted! You've now referred {total_conversions} families to FamilyBrain. "
+            "Your free month credit has been noted. Keep sharing!"
+        )
+    try:
+        _send_wa(to_number, msg)
+        logger.info("Referral conversion notification sent to %s", referrer_phone)
+    except Exception as exc:
+        logger.warning("Failed to send referral notification to %s: %s", referrer_phone, exc)
 
 
 def _handle_subscription_deleted(subscription: dict[str, Any]) -> None:

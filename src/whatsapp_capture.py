@@ -3693,52 +3693,101 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             family_id=_family_id,
         )
 
-    # --- Invite Command ---
-    if text_lower in ("/invite", "invite", "refer", "/refer"):
+    # --- Invite / Referral Command ---
+    # Matches: invite, share, refer a friend, /invite, /refer, /share, and natural language variants
+    _REFERRAL_TRIGGERS = {
+        "invite", "/invite", "refer", "/refer", "share", "/share",
+        "refer a friend", "refer friend", "share familybrain",
+        "invite a friend", "invite friend", "get referral",
+        "referral", "referral link", "my referral", "my invite",
+        "send invite", "get invite", "invite link",
+    }
+    if text_lower in _REFERRAL_TRIGGERS or any(
+        text_lower.startswith(t) for t in ("invite ", "refer ", "share ")
+    ):
         db = brain._supabase
         if not db:
-            return _make_response("Sorry, I can't generate an invite link right now.", from_number=from_number)
-            
-        # Look up existing ref code or generate one
-        ref_res = db.table("referrals").select("ref_code").eq("family_id", _family_id).is_("referred_family_id", "null").execute()
-        
+            return _make_response("Sorry, I can't generate an invite link right now. Please try again in a moment.", from_number=from_number)
+
+        import random as _random
+        import string as _string
+
+        # Normalise the phone for storage (strip whatsapp: prefix)
+        _normalised_phone = from_number.replace("whatsapp:", "").strip()
+
+        # 1. Look up an existing referral code for this family (the canonical row
+        #    is the one with no referred_family_id — it is the owner's personal code)
+        try:
+            ref_res = db.table("referrals") \
+                .select("ref_code, uses_count") \
+                .eq("family_id", _family_id) \
+                .is_("referred_family_id", "null") \
+                .limit(1) \
+                .execute()
+        except Exception as _exc:
+            logger.warning("Referral lookup failed: %s", _exc)
+            ref_res = type("_R", (), {"data": []})()  # empty stub
+
         if ref_res.data:
             ref_code = ref_res.data[0]["ref_code"]
+            uses_count = ref_res.data[0].get("uses_count", 0) or 0
         else:
-            # Generate a new unique code (e.g. first 3 letters of family name + random digits)
-            import random
-            import string
+            # 2. Generate a new unique code: 3-letter prefix + 5 alphanumeric chars
             prefix = "".join(c for c in family_name if c.isalpha())[:3].upper()
             if not prefix:
                 prefix = "FAM"
-            while True:
-                suffix = "".join(random.choices(string.digits, k=3))
+            for _attempt in range(20):
+                suffix = "".join(_random.choices(_string.ascii_uppercase + _string.digits, k=5))
                 ref_code = f"{prefix}{suffix}"
-                # Check uniqueness
-                check = db.table("referrals").select("id").eq("ref_code", ref_code).execute()
-                if not check.data:
+                try:
+                    check = db.table("referrals").select("id").eq("ref_code", ref_code).execute()
+                    if not check.data:
+                        break
+                except Exception:
                     break
-            
-            # Store the new base referral code for this family
-            db.table("referrals").insert({
-                "family_id": _family_id,
-                "ref_code": ref_code
-            }).execute()
-            
-        # Count successful referrals
-        count_res = db.table("referrals").select("id", count="exact").eq("family_id", _family_id).not_.is_("referred_family_id", "null").execute()
-        ref_count = count_res.count if count_res.count is not None else 0
-        
-        invite_msg = (
-            "👨‍👩‍👧 Hey! I've been using FamilyBrain to keep our family organised — school letters, calendar events, reminders, all through WhatsApp. No app to download.\n\n"
-            f"Try it free: https://familybrain.co.uk/?ref={ref_code}\n\n"
-            "Just message the bot and it walks you through setup 👋"
+
+            # 3. Persist the new code — this is the owner's canonical referral row
+            try:
+                db.table("referrals").insert({
+                    "family_id": _family_id,
+                    "ref_code": ref_code,
+                    "user_phone": _normalised_phone,
+                    "uses_count": 0,
+                }).execute()
+                logger.info("New referral code %s created for family %s", ref_code, _family_id)
+            except Exception as _exc:
+                logger.error("Failed to store referral code for %s: %s", _family_id, _exc)
+            uses_count = 0
+
+        # 4. Build the shareable message the user can forward directly in WhatsApp
+        _ref_url = f"https://familybrain.co.uk/?ref={ref_code}"
+        _share_msg = (
+            f"Here's your personal invite link:\n"
+            f"{_ref_url}\n\n"
+            "Forward this message to a friend or family member — "
+            "they'll get a 14-day free trial and you'll get a free month when they subscribe. 🎉"
         )
-        
-        msgs = [invite_msg]
-        if ref_count > 0:
-            msgs.append(f"You've invited {ref_count} famil{'ies' if ref_count != 1 else 'y'} so far \U0001f389")
-        return _make_response(*msgs, from_number=from_number)
+
+        # 5. Build the reply to the user (includes their code + conversion count)
+        _reply_lines = [
+            f"📨 *Your personal referral link is ready!*\n\n"
+            f"Share this with friends or family:\n"
+            f"{_ref_url}\n\n"
+            "When someone signs up using your link they get a *14-day free trial*, "
+            "and you'll earn a *free month* when they subscribe.\n\n"
+            f"💬 *Ready-to-forward message:*\n\n"
+            f"{_share_msg}"
+        ]
+        if uses_count > 0:
+            _reply_lines.append(
+                f"\n🏆 You've already converted {uses_count} referral{'s' if uses_count != 1 else ''}. "
+                "Keep sharing!"
+            )
+
+        log_action(_family_id, 'referral_link_requested', subject=ref_code,
+                   detail={'ref_code': ref_code, 'uses_count': uses_count},
+                   phone_number=from_number)
+        return _make_response("\n".join(_reply_lines), from_number=from_number)
 
     # --- Help Command ---
     if text_lower in ("/help", "/commands", "help", "commands"):
@@ -3755,7 +3804,7 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/sos* \u2014 Generate your family emergency file (PDF)\n"
             "*/history* \u2014 See what I've done for your family this week\n"
             "*/connect* \u2014 Connect your Google or Apple Calendar\n"
-            "*/invite* \u2014 Get a link to invite friends to FamilyBrain\n"
+            "*/invite* (or *share* / *refer a friend*) \u2014 Get your personal referral link to share with friends\n"
             "*/add-member* \u2014 Add a family member by phone number (account owner only)\n"
             "*/graph* \u2014 View your family's knowledge graph (people, places, relationships)\n"
             "*/delete-my-data* \u2014 Delete all data submitted by your number\n"
