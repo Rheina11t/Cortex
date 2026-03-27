@@ -4836,21 +4836,35 @@ def _handle_death_binder_command(
             family_id, cat_num, subcategory, from_number,
         )
 
-        # Count how many categories are now covered
-        covered = _get_binder_covered_categories(family_id)
-        n_covered = len(covered)
-        missing_count = 10 - n_covered
+        # Compute rich checklist state and build confirmation message
+        try:
+            from .binder_checklist import (
+                compute_checklist, format_save_confirmation,
+                get_cached_pct, maybe_send_nudge,
+            )
+            prev_pct = get_cached_pct(family_id)
+            cl_result = compute_checklist(family_id)
+            reply = format_save_confirmation(cl_result, cat_num, cat_name, prev_pct)
+            # Fire proactive nudge asynchronously (best-effort, non-blocking)
+            try:
+                maybe_send_nudge(family_id, from_number, prev_pct, cl_result)
+            except Exception as nudge_exc:
+                logger.warning("Nudge failed (non-fatal): %s", nudge_exc)
+        except Exception as cl_exc:
+            logger.warning("Checklist compute failed (%s), using simple reply", cl_exc)
+            covered = _get_binder_covered_categories(family_id)
+            n_covered = len(covered)
+            missing_count = 10 - n_covered
+            if missing_count == 0:
+                progress_line = "\U0001f389 Your emergency file is now complete across all 10 sections!"
+            else:
+                progress_line = f"\U0001f4cb {n_covered}/10 sections covered. Send /binder to see what's still missing."
+            reply = (
+                f"\u2705 Saved to your *{cat_name}* section.\n\n"
+                f"{progress_line}\n\n"
+                f"Send /sos to generate your full 'If Anything Happens' PDF."
+            )
 
-        if missing_count == 0:
-            progress_line = "🎉 Your emergency file is now complete across all 10 sections!"
-        else:
-            progress_line = f"📋 {n_covered}/10 sections covered. Send /binder to see what's still missing."
-
-        reply = (
-            f"✅ Saved to your *{cat_name}* section.\n\n"
-            f"{progress_line}\n\n"
-            f"Send /sos to generate your full 'If Anything Happens' PDF."
-        )
         return _make_response(reply, from_number=from_number)
 
     except Exception as exc:
@@ -4873,13 +4887,24 @@ def _resolve_binder_category(arg: str) -> "Optional[str]":
 
 
 def _get_binder_covered_categories(family_id: str) -> set:
-    """Return the set of category numbers covered in death_binder_entries + memories."""
+    """
+    Return the set of category numbers that have at least one item covered.
+    Delegates to binder_checklist.compute_checklist for accuracy, but falls
+    back to a lightweight DB scan if the import fails.
+    """
+    try:
+        from .binder_checklist import compute_checklist
+        result = compute_checklist(family_id)
+        return result.complete_cats | result.partial_cats
+    except Exception as exc:
+        logger.warning("_get_binder_covered_categories (checklist): %s — falling back", exc)
+
+    # Fallback: simple scan of death_binder_entries + memories
     covered: set[str] = set()
     db = brain._supabase
     if not db:
         return covered
     try:
-        # From death_binder_entries
         result = db.table("death_binder_entries") \
             .select("category") \
             .eq("family_id", family_id) \
@@ -4891,7 +4916,6 @@ def _get_binder_covered_categories(family_id: str) -> set:
     except Exception as exc:
         logger.warning("_get_binder_covered_categories (binder): %s", exc)
     try:
-        # From memories emergency_category
         result = db.table("memories") \
             .select("metadata") \
             .contains("metadata", {"family_id": family_id}) \
@@ -4908,31 +4932,54 @@ def _get_binder_covered_categories(family_id: str) -> set:
 
 
 def _handle_binder_status(from_number: str, family_id: str) -> "Response":
-    """Show the user a summary of their emergency file coverage."""
-    from .emergency_pdf import CATEGORIES
-    covered = _get_binder_covered_categories(family_id)
-    lines = ["📋 *Your Emergency File Coverage*\n"]
-    for i in range(1, 11):
-        cat_num = str(i)
-        cat_name = CATEGORIES[cat_num][0]
-        icon = "✅" if cat_num in covered else "❌"
-        lines.append(f"{icon} {i}. {cat_name}")
-    n_covered = len(covered)
-    lines.append(f"\n{n_covered}/10 sections covered.")
-    if n_covered < 10:
-        lines.append("\nSend *funeral: [your wishes]*, *digital: [accounts]*, etc. to fill in missing sections.")
-        lines.append("Or send /sos to generate the PDF with what you have so far.")
-    else:
-        lines.append("\n🎉 All sections complete! Send /sos to generate your PDF.")
-    return _make_response("\n".join(lines), from_number=from_number)
+    """Show the user a rich per-item checklist summary of their emergency file."""
+    try:
+        from .binder_checklist import compute_checklist, format_binder_status
+        result = compute_checklist(family_id)
+        body = format_binder_status(result)
+    except Exception as exc:
+        logger.warning("_handle_binder_status: checklist failed (%s), using fallback", exc)
+        # Simple fallback
+        covered = _get_binder_covered_categories(family_id)
+        from .emergency_pdf import CATEGORIES
+        lines = ["\U0001f4cb *Your Emergency File Coverage*\n"]
+        for i in range(1, 11):
+            cat_num = str(i)
+            cat_name = CATEGORIES[cat_num][0]
+            icon = "\u2705" if cat_num in covered else "\u274c"
+            lines.append(f"{icon} {i}. {cat_name}")
+        n_covered = len(covered)
+        lines.append(f"\n{n_covered}/10 sections covered.")
+        lines.append("Send /sos to generate the PDF with what you have so far.")
+        body = "\n".join(lines)
+    return _make_response(body, from_number=from_number)
 
 
 def _handle_binder_category_view(from_number: str, family_id: str, cat_num: str) -> "Response":
-    """Show the user what's stored in a specific category."""
+    """Show per-item checklist state + stored entries for a specific category."""
     from .emergency_pdf import CATEGORIES
     cat_name, cat_desc = CATEGORIES.get(cat_num, ("Unknown", ""))
     db = brain._supabase
-    lines = [f"📂 *{cat_name}*", f"_{cat_desc}_", ""]
+    lines = [f"\U0001f4c2 *{cat_name}*", f"_{cat_desc}_", ""]
+
+    # --- Per-item checklist for this category ---
+    try:
+        from .binder_checklist import compute_checklist, CHECKLIST_BY_CAT
+        cl_result = compute_checklist(family_id)
+        items_in_cat = CHECKLIST_BY_CAT.get(cat_num, [])
+        if items_in_cat:
+            lines.append("*Checklist:*")
+            for it in items_in_cat:
+                done = cl_result.item_state.get(it.key, False)
+                icon = "\u2705" if done else "\u274c"
+                lines.append(f"{icon} {it.label}")
+                if not done:
+                    lines.append(f"   _e.g. {it.example}_")
+            lines.append("")
+    except Exception as exc:
+        logger.warning("_handle_binder_category_view checklist: %s", exc)
+
+    # --- Stored entries ---
     if db:
         try:
             result = db.table("death_binder_entries") \
@@ -4941,17 +4988,18 @@ def _handle_binder_category_view(from_number: str, family_id: str, cat_num: str)
                 .eq("category", cat_num) \
                 .order("created_at") \
                 .execute()
-            for row in (result.data or []):
-                label = row.get("label", "")
-                value = row.get("value", "")
-                lines.append(f"• *{label}*")
-                if value:
-                    lines.append(f"  {value[:200]}")
+            entries = result.data or []
+            if entries:
+                lines.append("*What you've stored:*")
+                for row in entries:
+                    label = row.get("label", "")
+                    value = row.get("value", "")
+                    lines.append(f"\u2022 *{label}*")
+                    if value:
+                        lines.append(f"  {value[:200]}")
         except Exception as exc:
-            logger.warning("_handle_binder_category_view: %s", exc)
-    if len(lines) <= 3:
-        lines.append("Nothing stored here yet.")
-        lines.append(f"\nSend e.g. *{cat_name.split()[0].lower()}: [your details]* to add something.")
+            logger.warning("_handle_binder_category_view entries: %s", exc)
+
     return _make_response("\n".join(lines), from_number=from_number)
 
 
@@ -4960,29 +5008,25 @@ def _handle_binder_category_view(from_number: str, family_id: str, cat_num: str)
 # ---------------------------------------------------------------------------
 
 def _send_emergency_progress_update(from_number: str, family_id: str) -> None:
-    """After every 3rd document, send a progress update on emergency file coverage."""
+    """After every 3rd document, send a rich progress update using the checklist engine."""
     try:
-        # Use the shared helper that checks both memories and death_binder_entries
-        covered_categories = _get_binder_covered_categories(family_id)
-        n_covered = len(covered_categories)
-        if n_covered >= 10:
-            return  # All sections covered, no need to prompt
-
-        missing_cats = [
-            _EMERGENCY_CATEGORY_NAMES.get(str(i), str(i))
-            for i in range(1, 11)
-            if str(i) not in covered_categories
-        ]
-        missing_str = ", ".join(missing_cats)
-
-        msg = (
-            f"\U0001f4cb You've covered {n_covered}/10 sections of your family emergency file. "
-            f"Missing: {missing_str}.\n"
-            "Send /sos when you're ready to generate your full 'If Anything Happens' PDF."
+        from .binder_checklist import (
+            compute_checklist, get_cached_pct, maybe_send_nudge, format_binder_status
         )
+        prev_pct = get_cached_pct(family_id)
+        cl_result = compute_checklist(family_id)
+        n_covered = cl_result.cats_complete
+        pct = cl_result.pct_complete
 
-        _send_proactive_message(to=from_number, body=msg)
-        logger.info("Emergency progress update sent to %s (%d/10 covered)", from_number, n_covered)
+        if pct >= 100:
+            return  # All items covered, no need to prompt
+
+        # Use maybe_send_nudge to decide whether to send (respects thresholds)
+        maybe_send_nudge(family_id, from_number, prev_pct, cl_result)
+        logger.info(
+            "Emergency progress update evaluated for %s (%d%% complete, %d/10 cats)",
+            from_number, pct, n_covered,
+        )
     except Exception as exc:
         logger.warning("Failed to send emergency progress update: %s", exc)
 
@@ -5118,13 +5162,52 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
                 ),
             )
 
-        # Step 5: Send follow-up summary
-        followup_msg = (
-            f"\u2705 Your emergency file is ready! "
-            f"{item_count} item{'s' if item_count != 1 else ''} across {cat_count} "
-            f"categor{'ies' if cat_count != 1 else 'y'}. "
-            "Keep it somewhere safe \u2014 and update it whenever something changes."
-        )
+        # Step 5: Send follow-up summary with checklist completion detail
+        try:
+            from .binder_checklist import compute_checklist
+            cl_result = compute_checklist(family_id)
+            pct = cl_result.pct_complete
+            n_cats = cl_result.cats_complete
+            missing_items = cl_result.missing_items
+
+            if pct == 100:
+                followup_msg = (
+                    "\u2705 Your emergency file is ready and *100% complete* across all 10 sections. "
+                    "Keep it somewhere safe \u2014 and update it whenever something changes."
+                )
+            else:
+                # Name up to 2 missing categories
+                missing_cats_str = ""
+                if missing_items:
+                    from .binder_checklist import CAT_SHORT
+                    seen_cats: list[str] = []
+                    for mi in missing_items:
+                        if mi.cat not in seen_cats:
+                            seen_cats.append(mi.cat)
+                        if len(seen_cats) == 2:
+                            break
+                    missing_cats_str = " and ".join(f"*{CAT_SHORT[c].lower()}*" for c in seen_cats)
+                    if len(cl_result.missing_items) > 2:
+                        remaining = len({mi.cat for mi in missing_items}) - len(seen_cats)
+                        if remaining > 0:
+                            missing_cats_str += f" (+{remaining} more)"
+
+                followup_msg = (
+                    f"\u2705 Your emergency file is ready! "
+                    f"{pct}% complete ({n_cats}/10 sections). "
+                )
+                if missing_cats_str:
+                    followup_msg += f"Still to add: {missing_cats_str}. "
+                followup_msg += "Send /binder to see exactly what's missing."
+        except Exception as cl_exc:
+            logger.warning("SOS follow-up checklist failed (%s), using simple message", cl_exc)
+            followup_msg = (
+                f"\u2705 Your emergency file is ready! "
+                f"{item_count} item{'s' if item_count != 1 else ''} across {cat_count} "
+                f"categor{'ies' if cat_count != 1 else 'y'}. "
+                "Keep it somewhere safe \u2014 and update it whenever something changes."
+            )
+
         _send_proactive_message(to=from_number, body=followup_msg)
         logger.info(
             "Emergency PDF flow complete for %s: %d items, %d categories",
