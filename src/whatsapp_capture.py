@@ -310,7 +310,7 @@ Given extracted text from a document (photo or PDF), you MUST return a JSON obje
 
 {{
   "cleaned_content": "<concise summary of the document's key information>",
-  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, pension_statement, utility, warranty, invoice, contract, mot_certificate, vehicle, vehicle_finance, contract_hire, finance_agreement, tax, hmrc_letter, government_letter, legal, bank_statement, payslip, other>",
+  "document_type": "<one of: insurance, receipt, school_letter, booking, medical, pension, pension_statement, utility, warranty, invoice, contract, mot_certificate, vehicle, vehicle_finance, contract_hire, finance_agreement, tax, hmrc_letter, government_letter, legal, bank_statement, payslip, funeral_plan, letter_of_wishes, organ_donation, digital_legacy, crypto, password_manager, will, lpa, birth_certificate, marriage_certificate, other>",
   "tags": ["<relevant topic tags>"],
   "people": ["<names of people mentioned, if any>"],
   "category": "<one of: idea, meeting-notes, decision, action-item, reference, personal, household, other>",
@@ -330,6 +330,16 @@ Rules:
 - Bank statements should be classified as `bank_statement`.
 - Payslips should be classified as `payslip`.
 - Legal documents, court letters, solicitor correspondence should be classified as `legal`.
+- Wills, last wills and testaments should be classified as `will`.
+- Lasting Power of Attorney documents should be classified as `lpa`.
+- Birth certificates should be classified as `birth_certificate`.
+- Marriage certificates should be classified as `marriage_certificate`.
+- Funeral plans, pre-paid funeral arrangements, funeral wishes letters should be classified as `funeral_plan`.
+- Letters of wishes, personal letters to loved ones for after death should be classified as `letter_of_wishes`.
+- Organ donation cards, NHS Organ Donor Register confirmations should be classified as `organ_donation`.
+- Documents about social media legacy, digital accounts, online subscriptions to cancel should be classified as `digital_legacy`.
+- Documents about cryptocurrency wallets, Bitcoin, Ethereum, hardware wallets, seed phrases should be classified as `crypto`.
+- Password manager setup documents, vault access instructions should be classified as `password_manager`.
 - For vehicle documents (mot_certificate, vehicle), you MUST extract ALL of the following fields if present in the text. Do NOT omit any field that appears in the document:
   - `mot_test_number`: REQUIRED for mot_certificate — the MOT test number (a long number, e.g. "1778 7252 2687"). Look for "MOT test number" label in the text.
   - `test_location`: REQUIRED for mot_certificate — the full address where the test was carried out. Look for "Location of the test" label.
@@ -838,6 +848,14 @@ _DOC_TYPE_TO_EMERGENCY_CATEGORY: dict[str, str] = {
     "finance_agreement": "6",
     # Category 7 — Contacts & Professionals
     "contract": "7",
+    # Category 8 — Funeral & Final Wishes
+    "funeral_plan": "8",
+    "letter_of_wishes": "8",
+    "organ_donation": "8",
+    # Category 9 — Digital Legacy
+    "digital_legacy": "9",
+    "crypto": "9",
+    "password_manager": "9",
     # Category 10 — Emergency Contacts & Family Details
     "medical": "10",
     "nhs": "10",
@@ -882,9 +900,9 @@ def _map_doc_type_to_emergency_category(doc_type: str, content: str = "") -> Opt
         return "6"
     if any(w in content_lower for w in ("solicitor", "accountant", "gp", "dentist", "school", "executor")):
         return "7"
-    if any(w in content_lower for w in ("funeral", "cremation", "burial", "organ donation")):
+    if any(w in content_lower for w in ("funeral", "cremation", "burial", "organ donation", "letter of wishes", "funeral plan", "funeral wishes")):
         return "8"
-    if any(w in content_lower for w in ("social media", "crypto", "digital legacy", "password manager")):
+    if any(w in content_lower for w in ("social media", "crypto", "digital legacy", "password manager", "bitcoin", "ethereum", "wallet seed", "2fa", "two factor")):
         return "9"
     if any(w in content_lower for w in ("nhs", "allerg", "medication", "blood type", "medical")):
         return "10"
@@ -3903,6 +3921,13 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):
         return _handle_sos_command(from_number, family_name, _family_id)
 
+    # --- Death Binder / Emergency File Category Commands ---
+    # Matches: "funeral: cremation, no flowers", "digital: cancel Netflix", etc.
+    # Also: /binder, /binder 8, /binder funeral
+    _binder_result = _handle_death_binder_command(text, text_lower, from_number, family_name, _family_id)
+    if _binder_result is not None:
+        return _binder_result
+
     # --- Join via invite token (e.g. "join aB3xZ9qR") ---
     # Must run BEFORE the add-member command so "join TOKEN" is never misrouted.
     _join_match = re.match(r'^join\s+([A-Za-z0-9]{4,20})$', text_lower.strip())
@@ -4051,7 +4076,18 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         help_text = (
             "\U0001f916 *FamilyBrain Commands*\n\n"
             "Here are the commands you can use anytime:\n\n"
-            "*/sos* \u2014 Generate your family emergency file (PDF)\n"
+            "*/sos* — Generate your family emergency file (PDF)\n"
+            "*/binder* — View your emergency file coverage (what's missing)\n"
+            "*funeral: [text]* — Store funeral wishes (e.g. funeral: cremation, no flowers)\n"
+            "*digital: [text]* — Store digital legacy info (e.g. digital: cancel Netflix, Spotify)\n"
+            "*legal: [text]* — Store legal doc locations (e.g. legal: Will at Smiths Solicitors)\n"
+            "*bank: [text]* — Store bank/financial account details\n"
+            "*insurance: [text]* — Store insurance policy details\n"
+            "*pension: [text]* — Store pension/investment details\n"
+            "*bills: [text]* — Store bills, debts, subscriptions\n"
+            "*assets: [text]* — Store property, car, valuables info\n"
+            "*contacts: [text]* — Store solicitor, executor, guardian details\n"
+            "*family: [text]* — Store NHS numbers, allergies, blood types\n"
             "*/history* \u2014 See what I've done for your family this week\n"
             "*/connect* \u2014 Connect your Google or Apple Calendar\n"
             "*/invite* (or *share* / *refer a friend*) \u2014 Get your personal referral link to share with friends\n"
@@ -4675,33 +4711,259 @@ def _handle_media_message(
 
 
 # ---------------------------------------------------------------------------
+# Death Binder command handler
+# ---------------------------------------------------------------------------
+
+# Mapping of command prefixes to (category_num, subcategory_label)
+_BINDER_PREFIX_MAP: dict[str, tuple[str, str]] = {
+    "legal":     ("1", "legal_document"),
+    "will":      ("1", "will"),
+    "lpa":       ("1", "lpa"),
+    "ni":        ("1", "ni_number"),
+    "nhs":       ("10", "nhs_number"),
+    "bank":      ("2", "bank_account"),
+    "finance":   ("2", "financial_account"),
+    "password":  ("2", "password_manager"),
+    "insurance": ("3", "insurance_policy"),
+    "pension":   ("4", "pension"),
+    "invest":    ("4", "investment"),
+    "isa":       ("4", "isa"),
+    "shares":    ("4", "shares"),
+    "bills":     ("5", "bill"),
+    "bill":      ("5", "bill"),
+    "debt":      ("5", "debt"),
+    "mortgage":  ("5", "mortgage"),
+    "rent":      ("5", "rent"),
+    "subscription": ("5", "subscription"),
+    "assets":    ("6", "asset"),
+    "asset":     ("6", "asset"),
+    "property":  ("6", "property"),
+    "car":       ("6", "vehicle"),
+    "safe":      ("6", "safe_deposit_box"),
+    "valuables": ("6", "valuables"),
+    "contacts":  ("7", "professional_contact"),
+    "contact":   ("7", "professional_contact"),
+    "solicitor": ("7", "solicitor"),
+    "executor":  ("7", "executor"),
+    "guardian":  ("7", "guardian"),
+    "funeral":   ("8", "funeral_wishes"),
+    "burial":    ("8", "burial_preference"),
+    "cremation": ("8", "burial_preference"),
+    "organ":     ("8", "organ_donation"),
+    "digital":   ("9", "digital_legacy"),
+    "crypto":    ("9", "crypto"),
+    "bitcoin":   ("9", "crypto"),
+    "family":    ("10", "family_details"),
+    "allerg":    ("10", "allergy"),
+    "blood":     ("10", "blood_type"),
+    "gp":        ("10", "gp_details"),
+}
+
+
+def _handle_death_binder_command(
+    text: str,
+    text_lower: str,
+    from_number: str,
+    family_name: str,
+    family_id: str,
+) -> "Optional[Response]":
+    """
+    Handle death binder category commands:
+      - "funeral: cremation, no flowers, donate organs"
+      - "digital: cancel Netflix, Spotify"
+      - "legal: Will at Smiths Solicitors, ref W-2024-001"
+      - "/binder" — show coverage summary
+      - "/binder 8" or "/binder funeral" — show what's in a specific category
+    Returns a Response if handled, else None.
+    """
+    from .emergency_pdf import CATEGORIES
+
+    # /binder — show coverage summary
+    if text_lower.strip() == "/binder":
+        return _handle_binder_status(from_number, family_id)
+
+    # /binder <num|name> — show a specific category
+    _binder_cat_match = re.match(r'^/binder\s+(\S+)$', text_lower.strip())
+    if _binder_cat_match:
+        cat_arg = _binder_cat_match.group(1)
+        cat_num = _resolve_binder_category(cat_arg)
+        if cat_num:
+            return _handle_binder_category_view(from_number, family_id, cat_num)
+
+    # Prefix commands: "funeral: ...", "digital: ...", "legal: ...", etc.
+    # Pattern: ^(keyword):\s*(.+)$  (case-insensitive)
+    _prefix_match = re.match(r'^([a-z]+):\s*(.+)$', text_lower.strip(), re.IGNORECASE)
+    if not _prefix_match:
+        return None
+
+    raw_prefix = _prefix_match.group(1).lower()
+    value_text  = text[len(raw_prefix) + 1:].strip()  # preserve original case for value
+
+    # Look up the prefix
+    cat_info = None
+    for prefix, info in _BINDER_PREFIX_MAP.items():
+        if raw_prefix.startswith(prefix):
+            cat_info = info
+            break
+
+    if not cat_info:
+        return None
+
+    cat_num, subcategory = cat_info
+    cat_name = CATEGORIES.get(cat_num, ("Unknown", ""))[0]
+
+    # Store in death_binder_entries
+    try:
+        db = brain._supabase
+        if not db:
+            return _make_response(
+                "⚠️ Could not save — database not available.",
+                from_number=from_number,
+            )
+
+        record = {
+            "family_id":    family_id,
+            "category":     cat_num,
+            "subcategory":  subcategory,
+            "label":        f"{raw_prefix.title()} — {value_text[:60]}",
+            "value":        value_text,
+            "notes":        "",
+            "source_phone": from_number,
+        }
+        db.table("death_binder_entries").insert(record).execute()
+        logger.info(
+            "Death binder entry stored: family=%s cat=%s sub=%s by=%s",
+            family_id, cat_num, subcategory, from_number,
+        )
+
+        # Count how many categories are now covered
+        covered = _get_binder_covered_categories(family_id)
+        n_covered = len(covered)
+        missing_count = 10 - n_covered
+
+        if missing_count == 0:
+            progress_line = "🎉 Your emergency file is now complete across all 10 sections!"
+        else:
+            progress_line = f"📋 {n_covered}/10 sections covered. Send /binder to see what's still missing."
+
+        reply = (
+            f"✅ Saved to your *{cat_name}* section.\n\n"
+            f"{progress_line}\n\n"
+            f"Send /sos to generate your full 'If Anything Happens' PDF."
+        )
+        return _make_response(reply, from_number=from_number)
+
+    except Exception as exc:
+        logger.error("Failed to store death binder entry: %s", exc)
+        return _make_response(
+            f"⚠️ Failed to save your entry: {exc}",
+            from_number=from_number,
+        )
+
+
+def _resolve_binder_category(arg: str) -> "Optional[str]":
+    """Resolve a /binder argument (number or keyword) to a category number string."""
+    arg = arg.lower().strip()
+    if arg.isdigit() and 1 <= int(arg) <= 10:
+        return arg
+    for prefix, (cat_num, _) in _BINDER_PREFIX_MAP.items():
+        if arg.startswith(prefix):
+            return cat_num
+    return None
+
+
+def _get_binder_covered_categories(family_id: str) -> set:
+    """Return the set of category numbers covered in death_binder_entries + memories."""
+    covered: set[str] = set()
+    db = brain._supabase
+    if not db:
+        return covered
+    try:
+        # From death_binder_entries
+        result = db.table("death_binder_entries") \
+            .select("category") \
+            .eq("family_id", family_id) \
+            .execute()
+        for row in (result.data or []):
+            cat = str(row.get("category", ""))
+            if cat.isdigit() and 1 <= int(cat) <= 10:
+                covered.add(cat)
+    except Exception as exc:
+        logger.warning("_get_binder_covered_categories (binder): %s", exc)
+    try:
+        # From memories emergency_category
+        result = db.table("memories") \
+            .select("metadata") \
+            .contains("metadata", {"family_id": family_id}) \
+            .limit(1000) \
+            .execute()
+        for row in (result.data or []):
+            meta = row.get("metadata") or {}
+            cat = str(meta.get("emergency_category", ""))
+            if cat.isdigit() and 1 <= int(cat) <= 10:
+                covered.add(cat)
+    except Exception as exc:
+        logger.warning("_get_binder_covered_categories (memories): %s", exc)
+    return covered
+
+
+def _handle_binder_status(from_number: str, family_id: str) -> "Response":
+    """Show the user a summary of their emergency file coverage."""
+    from .emergency_pdf import CATEGORIES
+    covered = _get_binder_covered_categories(family_id)
+    lines = ["📋 *Your Emergency File Coverage*\n"]
+    for i in range(1, 11):
+        cat_num = str(i)
+        cat_name = CATEGORIES[cat_num][0]
+        icon = "✅" if cat_num in covered else "❌"
+        lines.append(f"{icon} {i}. {cat_name}")
+    n_covered = len(covered)
+    lines.append(f"\n{n_covered}/10 sections covered.")
+    if n_covered < 10:
+        lines.append("\nSend *funeral: [your wishes]*, *digital: [accounts]*, etc. to fill in missing sections.")
+        lines.append("Or send /sos to generate the PDF with what you have so far.")
+    else:
+        lines.append("\n🎉 All sections complete! Send /sos to generate your PDF.")
+    return _make_response("\n".join(lines), from_number=from_number)
+
+
+def _handle_binder_category_view(from_number: str, family_id: str, cat_num: str) -> "Response":
+    """Show the user what's stored in a specific category."""
+    from .emergency_pdf import CATEGORIES
+    cat_name, cat_desc = CATEGORIES.get(cat_num, ("Unknown", ""))
+    db = brain._supabase
+    lines = [f"📂 *{cat_name}*", f"_{cat_desc}_", ""]
+    if db:
+        try:
+            result = db.table("death_binder_entries") \
+                .select("label, value, created_at") \
+                .eq("family_id", family_id) \
+                .eq("category", cat_num) \
+                .order("created_at") \
+                .execute()
+            for row in (result.data or []):
+                label = row.get("label", "")
+                value = row.get("value", "")
+                lines.append(f"• *{label}*")
+                if value:
+                    lines.append(f"  {value[:200]}")
+        except Exception as exc:
+            logger.warning("_handle_binder_category_view: %s", exc)
+    if len(lines) <= 3:
+        lines.append("Nothing stored here yet.")
+        lines.append(f"\nSend e.g. *{cat_name.split()[0].lower()}: [your details]* to add something.")
+    return _make_response("\n".join(lines), from_number=from_number)
+
+
+# ---------------------------------------------------------------------------
 # Emergency file helpers: progress tracking and /sos command
 # ---------------------------------------------------------------------------
 
 def _send_emergency_progress_update(from_number: str, family_id: str) -> None:
     """After every 3rd document, send a progress update on emergency file coverage."""
     try:
-        db = brain._supabase
-        if not db:
-            return
-
-        # Fetch all memories for this family with an emergency_category set
-        result = db.table("memories") \
-            .select("metadata") \
-            .contains("metadata", {"family_id": family_id}) \
-            .order("created_at", desc=True) \
-            .limit(1000) \
-            .execute()
-
-        covered_categories: set[str] = set()
-        for row in (result.data or []):
-            meta = row.get("metadata") or {}
-            cat = meta.get("emergency_category")
-            if cat:
-                cat_str = str(cat)
-                if cat_str.isdigit() and 1 <= int(cat_str) <= 10:
-                    covered_categories.add(cat_str)
-
+        # Use the shared helper that checks both memories and death_binder_entries
+        covered_categories = _get_binder_covered_categories(family_id)
         n_covered = len(covered_categories)
         if n_covered >= 10:
             return  # All sections covered, no need to prompt
@@ -4735,10 +4997,12 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
         from .emergency_pdf import generate_emergency_pdf, CATEGORIES
         pdf_bytes = generate_emergency_pdf(family_id)
 
-        # Check if PDF has meaningful content
-        db = brain._supabase
+        # Check if PDF has meaningful content (memories + death_binder_entries)
+        covered_cats = _get_binder_covered_categories(family_id)
+        cat_count = len(covered_cats)
+        # Also count raw memory items with emergency_category
         item_count = 0
-        cat_count = 0
+        db = brain._supabase
         if db:
             try:
                 result = db.table("memories") \
@@ -4746,22 +5010,25 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
                     .contains("metadata", {"family_id": family_id}) \
                     .limit(1000) \
                     .execute()
-                covered_cats: set[str] = set()
                 for row in (result.data or []):
                     meta = row.get("metadata") or {}
-                    cat = meta.get("emergency_category")
-                    if cat:
+                    if meta.get("emergency_category"):
                         item_count += 1
-                        covered_cats.add(str(cat))
-                cat_count = len(covered_cats)
+                # Also count death_binder_entries
+                binder_result = db.table("death_binder_entries") \
+                    .select("id") \
+                    .eq("family_id", family_id) \
+                    .execute()
+                item_count += len(binder_result.data or [])
             except Exception as exc:
                 logger.warning("SOS: failed to count items: %s", exc)
 
-        if item_count < 3:
+        if item_count < 1:
             return _make_response(
-                "\U0001f4cb Your emergency file is mostly empty. "
+                "\U0001f4cb Your emergency file is empty. "
                 "Start by sending me key documents \u2014 insurance policies, NHS numbers, "
-                "passport details \u2014 and I'll build it up automatically.",
+                "passport details \u2014 or use commands like *funeral: [wishes]* or *digital: [accounts]*.\n\n"
+                "Send */binder* to see what sections need filling in.",
                 from_number=from_number,
             )
 
