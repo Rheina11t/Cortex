@@ -4163,7 +4163,6 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             db = brain._supabase
             if db:
                 # Check for referral code in the first message
-                import re
                 ref_match = re.search(r"\(ref:([A-Z0-9]+)\)", text, re.IGNORECASE)
                 if ref_match:
                     ref_code = ref_match.group(1).upper()
