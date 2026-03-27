@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Standalone script to get a Google Calendar refresh token."""
+"""Standalone script to get a Google Calendar refresh token.
+
+SECURITY NOTE: This script requires GOOGLE_CALENDAR_CLIENT_ID and
+GOOGLE_CALENDAR_CLIENT_SECRET to be set as environment variables.
+NEVER hardcode real OAuth secrets in source code.
+"""
 
 import os
+import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
@@ -16,8 +22,18 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 #    Railway project's environment variables.
 # --- /Instructions ---
 
-CLIENT_ID = os.environ.get("GOOGLE_CALENDAR_CLIENT_ID", "71845778050-vgd7adv8s9i7ej0elnd7d17mpv3kh7jk.apps.googleusercontent.com")
-CLIENT_SECRET = os.environ.get("GOOGLE_CALENDAR_CLIENT_SECRET", "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")
+CLIENT_ID = os.environ.get("GOOGLE_CALENDAR_CLIENT_ID", "")
+CLIENT_SECRET = os.environ.get("GOOGLE_CALENDAR_CLIENT_SECRET", "")
+
+if not CLIENT_ID or not CLIENT_SECRET:
+    print(
+        "ERROR: GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET "
+        "must be set as environment variables.\n"
+        "Get these from https://console.cloud.google.com/apis/credentials",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/gmail.readonly"

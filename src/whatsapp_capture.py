@@ -34,6 +34,7 @@ import traceback
 from datetime import datetime, timedelta
 import pytz
 import hashlib
+import hmac
 from functools import wraps
 from typing import Any, Callable, Optional
 
@@ -926,7 +927,8 @@ def _validate_twilio_request(f: Callable) -> Callable:
     Returns HTTP 403 if the signature is invalid.
 
     When USE_META_API is enabled, this decorator is a no-op because Meta
-    webhook validation is handled separately in the route handler.
+    webhook signature validation (X-Hub-Signature-256 / HMAC-SHA256) is
+    handled inside _handle_meta_webhook() via _verify_meta_signature().
     """
     @wraps(f)
     def decorated(*args: Any, **kwargs: Any) -> Any:
@@ -2240,8 +2242,51 @@ def handle_whatsapp() -> Response:
     return _handle_twilio_webhook()
 
 
+def _verify_meta_signature(req) -> bool:
+    """Verify the X-Hub-Signature-256 header on incoming Meta webhooks.
+
+    Meta signs every webhook POST with HMAC-SHA256 using the App Secret.
+    The signature is sent in the X-Hub-Signature-256 header as:
+        sha256=<hex_digest>
+
+    Uses hmac.compare_digest to prevent timing-based side-channel attacks.
+    Returns False (reject) if META_APP_SECRET is not configured.
+    """
+    app_secret = os.environ.get("META_APP_SECRET", "")
+    if not app_secret:
+        logger.error(
+            "META_APP_SECRET not configured — rejecting webhook. "
+            "Set this env var to your Meta App Secret from developers.facebook.com."
+        )
+        return False
+
+    signature_header = req.headers.get("X-Hub-Signature-256", "")
+    if not signature_header.startswith("sha256="):
+        logger.warning("Missing or malformed X-Hub-Signature-256 header")
+        return False
+
+    expected = hmac.new(
+        key=app_secret.encode("utf-8"),
+        msg=req.get_data(),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(signature_header[7:], expected)
+
+
 def _handle_meta_webhook() -> Response:
-    """Process an incoming Meta Cloud API webhook POST."""
+    """Process an incoming Meta Cloud API webhook POST.
+
+    Security: verifies the X-Hub-Signature-256 header before processing.
+    """
+    # ── Security: verify Meta webhook signature ──────────────────────────
+    if not _verify_meta_signature(request):
+        logger.warning(
+            "Rejected Meta webhook: invalid signature from %s",
+            request.remote_addr,
+        )
+        return Response("Forbidden", status=403)
+
     try:
         payload = request.get_json(force=True, silent=True) or {}
     except Exception:

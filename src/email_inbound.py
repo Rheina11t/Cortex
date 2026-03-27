@@ -36,8 +36,11 @@ def verify_mailgun_signature(token: str, timestamp: str, signature: str) -> bool
     """Verify the Mailgun webhook signature."""
     signing_key = os.environ.get("MAILGUN_WEBHOOK_SIGNING_KEY", "")
     if not signing_key:
-        logger.warning("MAILGUN_WEBHOOK_SIGNING_KEY not set, skipping signature verification")
-        return True
+        logger.error(
+            "MAILGUN_WEBHOOK_SIGNING_KEY not configured — rejecting webhook. "
+            "Set this env var to your Mailgun webhook signing key."
+        )
+        return False
         
     hmac_digest = hmac.new(
         key=signing_key.encode(),

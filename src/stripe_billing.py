@@ -480,11 +480,11 @@ def stripe_webhook() -> Response:
     sig_header = request.headers.get("Stripe-Signature", "")
 
     if not STRIPE_WEBHOOK_SECRET:
-        logger.warning("STRIPE_WEBHOOK_SECRET not set — skipping signature verification")
-        try:
-            event_data = json.loads(payload)
-        except json.JSONDecodeError:
-            return Response("Invalid JSON", status=400)
+        logger.error(
+            "STRIPE_WEBHOOK_SECRET not configured — rejecting webhook. "
+            "Set this env var to your Stripe webhook signing secret (whsec_...)."
+        )
+        return Response("Webhook secret not configured", status=500)
     else:
         try:
             event_data = stripe.Webhook.construct_event(
@@ -796,6 +796,11 @@ def get_subscription_status(family_id: str) -> Optional[str]:
 
     Returns one of: 'active', 'inactive', 'trialing', or None.
     Grandfathered families always return 'active'.
+
+    Returns None when:
+      - The family has no record in the database
+      - A database error occurs
+    Callers MUST treat None as "unknown / not subscribed" (fail closed).
     """
     if family_id in GRANDFATHERED_FAMILY_IDS:
         return "active"
@@ -823,7 +828,7 @@ def get_subscription_status(family_id: str) -> Optional[str]:
         return None
     except Exception as exc:
         logger.warning("Could not check subscription status for %s: %s", family_id, exc)
-        return None  # Fail open — don't block messages on DB errors
+        return None  # Caller treats None as inactive (fail closed)
 
 
 def is_subscription_active(family_id: str) -> bool:
@@ -831,12 +836,19 @@ def is_subscription_active(family_id: str) -> bool:
     Return True if the family has an active or trialing subscription.
 
     Grandfathered family-dan is always active.
-    Fails open (returns True) on DB errors to avoid blocking legitimate users.
+    Fails CLOSED: returns False on DB errors or unknown families to prevent
+    unauthorised access. This was changed from fail-open as a security fix.
     """
     if family_id in GRANDFATHERED_FAMILY_IDS:
         return True
     status = get_subscription_status(family_id)
     if status is None:
-        # Family not found in DB — could be a legacy env-var-only deployment; allow through
-        return True
+        # Security fix: unknown families are denied access (fail closed).
+        # Previously this returned True, allowing unregistered phone numbers
+        # to bypass the paywall entirely.
+        logger.warning(
+            "Subscription check: family_id=%s not found or DB error — denying access (fail-closed)",
+            family_id,
+        )
+        return False
     return status in ("active", "trialing")
