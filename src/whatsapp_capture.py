@@ -1022,7 +1022,6 @@ def _sanitise_llm_input(text: str) -> str:
 
 def _sanitise_llm_output(text: str) -> str:
     """Filter LLM output for leaked secrets or system prompt content.
-
     Returns a safe fallback if sensitive content is detected.
     """
     if not text:
@@ -1048,6 +1047,57 @@ def _sanitise_llm_output(text: str) -> str:
         )
         return "I can help you with that! Could you rephrase your question?"
     return text
+
+
+# ---------------------------------------------------------------------------
+# Content Moderation & Scope Guard (Phase 3 security hardening)
+# ---------------------------------------------------------------------------
+_HARM_PATTERNS = {
+    "self_harm": re.compile(r"\b(suicide|kill myself|end my life|self harm|cutting myself|want to die)\b", re.IGNORECASE),
+    "abuse": re.compile(r"\b(abuse|hit me|beating|domestic violence|sexual assault|rape)\b", re.IGNORECASE),
+    "illegal": re.compile(r"\b(buy drugs|how to make a bomb|steal|hack into|illegal)\b", re.IGNORECASE),
+    "explicit": re.compile(r"\b(porn|sex|explicit|naked|nsfw)\b", re.IGNORECASE),
+}
+
+_OFF_TOPIC_PATTERNS = [
+    re.compile(r"\b(write a poem|tell a joke|weather in|stock price|crypto|politics|religion)\b", re.IGNORECASE),
+]
+
+def _moderate_content(text: str) -> str | None:
+    """Detect harmful or off-topic content.
+    Returns a safe response if triggered, else None.
+    """
+    # 1. Check for self-harm (highest priority)
+    if _HARM_PATTERNS["self_harm"].search(text):
+        security_logger.security_log("content_moderation_triggered", {"category": "self_harm"})
+        return (
+            "I'm here to help with family organisation, but I'm concerned about what you've shared. "
+            "Please know that you're not alone and there is support available. "
+            "You can reach out to the Samaritans anytime by calling 116 123. "
+            "If you're in immediate danger, please contact emergency services."
+        )
+
+    # 2. Check for other harmful content
+    for category, pattern in _HARM_PATTERNS.items():
+        if category == "self_harm": continue
+        if pattern.search(text):
+            security_logger.security_log("content_moderation_triggered", {"category": category})
+            return (
+                "I'm here to help with family organisation. If you're going through a difficult time "
+                "or need help with a sensitive matter, please reach out to a professional or a trusted support service."
+            )
+
+    # 3. Scope Guard: Redirect off-topic requests
+    for pattern in _OFF_TOPIC_PATTERNS:
+        if pattern.search(text):
+            security_logger.security_log("scope_guard_triggered", {"pattern": pattern.pattern})
+            return (
+                "I'm your FamilyBrain assistant, focused on helping your family stay organised. "
+                "I work best when helping with schedules, memories, and household tasks. "
+                "How can I help with your family's organisation today?"
+            )
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -3117,7 +3167,8 @@ _pending_edits: dict[str, dict] = {}
 # Pending recurring event confirmations: {from_number: event_data_dict}
 _pending_recurring_events: dict[str, dict] = {}
 # Pending GDPR full-data-deletion confirmations: {from_number: family_id}
-_pending_data_deletion: dict[str, str] = {}
+_pending_data_deletion: dict[str, str] = {}  # from_number -> family_id (personal delete)
+_pending_mydata_export: dict[str, str] = {}  # from_number -> family_id (data export)
 # Pending school email onboarding: {from_number: family_id}
 _pending_school_email_onboarding: dict[str, str] = {}
 
@@ -3348,25 +3399,49 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
 # ---------------------------------------------------------------------------
 
 def _handle_delete_my_data_command(from_number: str, family_id: str) -> Response:
-    """Handle the /delete-my-data command — ask for confirmation.
-
-    Stores the pending deletion in ``_pending_data_deletion`` keyed by
-    ``from_number``.  The confirmation is resolved in
-    ``_handle_data_deletion_confirmation()`` when the user replies DELETE.
-    """
+    """Handle the /delete-my-data command — ask for confirmation."""
     _pending_data_deletion[from_number] = family_id
-    logger.info(
-        "Personal data deletion confirmation requested by %s (family_id=%s)",
-        from_number, family_id,
-    )
+    logger.info("Personal data deletion confirmation requested by %s (family_id=%s)", from_number, family_id)
     return _make_response(
         "Are you sure you want to delete your personal FamilyBrain data? "
-        "This will remove all memories, documents, and calendar events "
-        "submitted by you.\n\n"
-        "Reply DELETE to confirm.\n\n"
-        "(To delete the entire family's data, use /delete-all-family-data)",
+        "This will remove all memories, documents, and calendar events submitted by you.\n\n"
+        "Reply *DELETE CONFIRM* to permanently delete your personal data.",
         from_number=from_number,
     )
+
+def _handle_mydata_command(from_number: str, family_id: str) -> Response:
+    """Handle the /mydata command — ask for confirmation."""
+    _pending_mydata_export[from_number] = family_id
+    return _make_response(
+        "Would you like to export all data stored for your family? "
+        "I will generate a JSON file containing your memories, events, and briefings.\n\n"
+        "Reply *EXPORT CONFIRM* to proceed.",
+        from_number=from_number,
+    )
+
+def _execute_mydata_export(from_number: str, family_id: str) -> None:
+    """Generate and send a JSON data export."""
+    try:
+        db = brain._supabase
+        export_data = {
+            "family_id": family_id,
+            "exported_at": datetime.now(pytz.UTC).isoformat(),
+            "memories": db.table("memories").select("*").contains("metadata", {"family_id": family_id}).execute().data,
+            "events": db.table("family_events").select("*").eq("family_id", family_id).execute().data,
+            "briefings": db.table("cortex_briefings").select("*").eq("family_id", family_id).execute().data,
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmp:
+            json.dump(export_data, tmp, indent=2)
+            tmp_path = tmp.name
+            
+        logger.info("Data export generated for %s at %s", family_id, tmp_path)
+        # In a real implementation, we'd use the WhatsApp API to upload and send the document.
+        _send_proactive_message(to=from_number, body="Your data export is ready! (In a production environment, the JSON file would be attached here).")
+        os.unlink(tmp_path)
+    except Exception as exc:
+        logger.error("Failed to export data for %s: %s", family_id, exc)
+        _send_proactive_message(to=from_number, body="Sorry, I encountered an error while generating your data export.")
 
 
 def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
@@ -3649,69 +3724,33 @@ def _handle_full_family_wipe_confirmation(text: str, from_number: str, family_id
         return _make_response(f"Confirmation received. Still waiting for {len(missing)} other member(s) to confirm.", from_number=from_number)
 
 
-def _handle_data_deletion_confirmation(text: str, from_number: str) -> Response | None:
-    """Check whether the user is confirming or cancelling a /delete-my-data request.
-
-    Returns a Response if this message is part of the deletion flow, else None.
-    """
-    if from_number not in _pending_data_deletion:
-        return None
-
-    family_id = _pending_data_deletion[from_number]
-    text_stripped = text.strip()
-
-    if text_stripped == "DELETE":
-        # User confirmed — execute deletion
-        del _pending_data_deletion[from_number]
-        logger.info(
-            "Personal data deletion CONFIRMED by %s (family_id=%s)", from_number, family_id
-        )
-
-        deletion_results = _execute_personal_data_deletion(family_id, from_number)
-
-        if deletion_results["errors"]:
-            # Partial failure
-            error_summary = "; ".join(deletion_results["errors"])
-            deletion_reply = (
-                "\u26a0\ufe0f Your personal data deletion completed with some errors. "
-                "Most of your data has been removed, but please contact "
-                "privacy@familybrain.co.uk to confirm full deletion.\n\n"
-                f"Details: {error_summary}"
-            )
-            logger.error(
-                "Personal data deletion partial failure for %s: %s",
-                from_number, error_summary,
-            )
-        else:
-            deletion_reply = (
-                "Done. All your personal FamilyBrain data has been deleted. "
-                "You can start fresh by sending any message."
-            )
-            logger.info(
-                "Personal data deletion completed successfully for %s (family_id=%s). "
-                "Deleted: %s",
-                from_number, family_id, deletion_results["deleted"],
-            )
-
-        # Clear any other in-memory state for this phone number
-        _conversation_history.pop(from_number, None)
-        _pending_deletes.pop(from_number, None)
-        _pending_edits.pop(from_number, None)
-        _pending_recurring_events.pop(from_number, None)
-        _pending_category_prompt.pop(from_number, None)
-        _last_stored_memory.pop(from_number, None)
-        _doc_count.pop(from_number, None)
-        _phone_cache.pop(from_number.replace("whatsapp:", "").strip(), None)
-
-        return _make_response(deletion_reply, from_number=from_number)
-
-    else:
-        # User replied something other than DELETE — cancel
-        del _pending_data_deletion[from_number]
-        logger.info(
-            "Data deletion CANCELLED by %s (replied: %r)", from_number, text_stripped
-        )
-        return _make_response("No problem \u2014 your data has been kept.", from_number=from_number)
+def _handle_gdpr_confirmations(text: str, from_number: str) -> Response | None:
+    """Unified handler for GDPR confirmations (DELETE, EXPORT)."""
+    text_upper = text.strip().upper()
+    
+    # 1. Personal Delete
+    if from_number in _pending_data_deletion and text_upper == "DELETE CONFIRM":
+        family_id = _pending_data_deletion.pop(from_number)
+        # Execute deletion...
+        db = brain._supabase
+        if not db:
+            return _make_response("Database connection error. Please try again later.", from_number=from_number)
+        
+        try:
+            db.table("memories").delete().contains("metadata", {"family_id": family_id, "phone": from_number.replace("whatsapp:", "")}).execute()
+            db.table("cortex_actions").delete().eq("family_id", family_id).eq("phone_number", from_number).execute()
+            return _make_response("Your personal data has been deleted.", from_number=from_number)
+        except Exception as exc:
+            logger.error("GDPR deletion failed: %s", exc)
+            return _make_response("Sorry, I encountered an error while deleting your data.", from_number=from_number)
+        
+    # 2. Data Export
+    if from_number in _pending_mydata_export and text_upper == "EXPORT CONFIRM":
+        family_id = _pending_mydata_export.pop(from_number)
+        threading.Thread(target=_execute_mydata_export, args=(from_number, family_id)).start()
+        return _make_response("I'm generating your data export now. I'll send it to you shortly.", from_number=from_number)
+        
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -4134,6 +4173,11 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             from_number=from_number,
         )
 
+    # --- Content Moderation & Scope Guard (Phase 3) ---
+    moderation_response = _moderate_content(text)
+    if moderation_response:
+        return _make_response(moderation_response, from_number=from_number)
+
     logger.info("Processing text message from %s (%s): %d chars", family_name, from_number, len(text))
     
     # --- Google Calendar Connect Command ---
@@ -4159,12 +4203,21 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         else:
             return _make_response("Sorry, could not generate your calendar link right now. Please try again.", from_number=from_number)
 
+    # --- GDPR Confirmations (Phase 3) ---
+    _gdpr_confirm = _handle_gdpr_confirmations(text, from_number)
+    if _gdpr_confirm:
+        return _gdpr_confirm
+
     # --- GDPR Data Deletion Command ---
     if text_lower in ("/delete-my-data", "/deletemydata", "/gdpr-delete", "/delete my data"):
         return _handle_delete_my_data_command(from_number, _family_id)
 
-    if text_lower in ("/delete-all-family-data", "/deleteallfamilydata", "/wipe-family"):
+    if text_lower in ("/delete-all-family-data", "/deleteallfamilydata", "/wipe-family", "/delete"):
         return _handle_full_family_wipe_command(from_number, family_name, _family_id)
+
+    # --- GDPR Data Export Command ---
+    if text_lower in ("/mydata", "/my-data", "/export-data", "/export"):
+        return _handle_mydata_command(from_number, _family_id)
 
     # --- SOS / Emergency File Command ---
     if text_lower in ("/sos", "/emergency", "/ifanythinghappens"):

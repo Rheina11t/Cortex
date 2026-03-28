@@ -696,6 +696,7 @@ def _handle_checkout_completed(session: dict[str, Any]) -> None:
             "subscription_started_at": now,
             "status": "active",
             "created_at": now,
+            "consent_given_at": now,  # GDPR consent tracking (Phase 3)
         }
         if ref_code:
             families_row["referred_by"] = ref_code
