@@ -40,6 +40,13 @@ def security_log(
         phone:      Optional phone number associated with the event.
         severity:   Log severity – one of DEBUG, INFO, WARNING, ERROR, CRITICAL.
     """
+    # Phase 5 Item 29: Include correlation ID in security logs
+    try:
+        from . import correlation as _corr
+        cid = _corr.get_correlation_id()
+    except Exception:
+        cid = None
+
     entry: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "event": "security",
@@ -47,6 +54,8 @@ def security_log(
         "severity": severity,
         "details": details,
     }
+    if cid:
+        entry["correlation_id"] = cid
     if phone:
         entry["phone"] = phone
 

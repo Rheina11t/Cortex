@@ -40,6 +40,11 @@ from typing import Any, Optional
 import stripe
 from flask import Flask, Response, jsonify, redirect, request
 from supabase import create_client
+
+try:
+    from .security_logger import security_log
+except ImportError:
+    def security_log(*a, **kw): pass  # fallback for standalone execution
 # Twilio import is now handled by meta_whatsapp transport layer
 try:
     from . import meta_whatsapp as _meta_wa
@@ -268,7 +273,7 @@ def signup() -> Response:
         return jsonify({"checkout_url": session.url, "family_id": family_id})
     except stripe.StripeError as exc:
         logger.error("Stripe error creating checkout session: %s", exc)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Payment service error. Please try again."}), 500
 
 
 @app.route("/signup/return", methods=["GET"])
@@ -292,32 +297,57 @@ def signup_return() -> Response:
     return redirect(ONBOARDING_BASE_URL)
 
 
+# Phase 5: Event type allowlist for onboarding webhook
+_ONBOARDING_ALLOWED_EVENTS = frozenset({
+    "checkout.session.completed",
+    "customer.subscription.deleted",
+})
+
+
+def _safe_error_response(msg: str = "Internal server error", status: int = 500) -> Response:
+    """Return a generic error response that never leaks internal details."""
+    return Response(msg, status=status, content_type="text/plain")
+
+
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook() -> Response:
     """
-    Stripe webhook handler.
-    Listens for checkout.session.completed and customer.subscription.deleted events.
+    Stripe webhook handler (hardened — Phase 5 gap analysis).
+    Fails closed: rejects ALL webhooks if STRIPE_WEBHOOK_SECRET is not configured.
     """
+    # ── Fail closed: never process unsigned webhooks ──
+    if not STRIPE_WEBHOOK_SECRET:
+        logger.error("STRIPE_WEBHOOK_SECRET not set — rejecting webhook (fail closed)")
+        security_log("webhook_secret_missing", {"service": "onboarding"}, severity="CRITICAL")
+        return _safe_error_response("Webhook endpoint not configured", 503)
+
     payload = request.get_data()
     sig_header = request.headers.get("Stripe-Signature", "")
 
-    if not STRIPE_WEBHOOK_SECRET:
-        logger.warning("STRIPE_WEBHOOK_SECRET not set — skipping signature verification")
-        event_data = json.loads(payload)
-    else:
-        try:
-            event_data = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-        except stripe.SignatureVerificationError as exc:
-            logger.error("Stripe webhook signature verification failed: %s", exc)
-            return Response("Invalid signature", status=400)
+    try:
+        event_data = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except stripe.SignatureVerificationError:
+        security_log("stripe_signature_failed", {"service": "onboarding"}, severity="WARNING")
+        return _safe_error_response("Invalid signature", 400)
+    except Exception:
+        return _safe_error_response("Bad request", 400)
 
     event_type = event_data.get("type", "")
     logger.info("Stripe webhook received: %s", event_type)
 
-    if event_type == "checkout.session.completed":
-        _handle_checkout_completed(event_data["data"]["object"])
-    elif event_type == "customer.subscription.deleted":
-        _handle_subscription_cancelled(event_data["data"]["object"])
+    # ── Event type allowlist ──
+    if event_type not in _ONBOARDING_ALLOWED_EVENTS:
+        logger.info("Ignoring unhandled Stripe event type: %s", event_type)
+        return Response("ok", status=200)
+
+    try:
+        if event_type == "checkout.session.completed":
+            _handle_checkout_completed(event_data["data"]["object"])
+        elif event_type == "customer.subscription.deleted":
+            _handle_subscription_cancelled(event_data["data"]["object"])
+    except Exception:
+        logger.exception("Error processing Stripe webhook event %s", event_type)
+        return _safe_error_response("Processing error", 500)
 
     return Response("ok", status=200)
 

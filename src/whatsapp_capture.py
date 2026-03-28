@@ -69,6 +69,10 @@ from . import family_invites
 from . import security_logger
 from . import validators
 from . import audit_log
+from . import token_budget
+from . import db_client
+from . import correlation
+from . import entitlements
 import threading
 import bcrypt
 
@@ -89,9 +93,33 @@ else:
     logger.info("WhatsApp transport: Twilio")
 
 # ---------------------------------------------------------------------------
-# Conversation history
+# Conversation history (Phase 5: capped + auto-expiry)
 # ---------------------------------------------------------------------------
 _conversation_history: dict[str, list[dict]] = {}
+_conversation_timestamps: dict[str, float] = {}  # last activity per phone
+_CONVERSATION_MAX_TURNS = 6  # max messages to keep (3 user + 3 assistant)
+_CONVERSATION_TTL_SECONDS = 1800  # 30 minutes — conversations expire after inactivity
+
+
+def _get_conversation_history(phone: str) -> list[dict]:
+    """Return conversation history for a phone, clearing if expired."""
+    now = _time_mod.time()
+    last_active = _conversation_timestamps.get(phone, 0)
+    if now - last_active > _CONVERSATION_TTL_SECONDS:
+        _conversation_history.pop(phone, None)
+        _conversation_timestamps.pop(phone, None)
+        return []
+    return _conversation_history.get(phone, [])
+
+
+def _update_conversation_history(phone: str, user_msg: str, assistant_msg: str) -> None:
+    """Append a turn to conversation history, enforcing the cap."""
+    if phone not in _conversation_history:
+        _conversation_history[phone] = []
+    _conversation_history[phone].append({"role": "user", "content": user_msg})
+    _conversation_history[phone].append({"role": "assistant", "content": assistant_msg})
+    _conversation_history[phone] = _conversation_history[phone][-_CONVERSATION_MAX_TURNS:]
+    _conversation_timestamps[phone] = _time_mod.time()
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +484,77 @@ def _detect_event(text: str, sender_name: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def _validate_llm_output_for_db(data: dict[str, Any], schema: str = "event") -> dict[str, Any]:
+    """Validate and sanitise LLM-generated data before writing to the database.
+
+    Phase 5 gap analysis: prevents LLM hallucinations, injections, or
+    malformed data from being persisted.  Returns a sanitised copy.
+    """
+    import re as _val_re
+    clean = {}
+
+    if schema == "event":
+        # event_name: max 200 chars, strip control chars
+        name = str(data.get("event_name", "Untitled event"))[:200]
+        name = _val_re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', name)
+        clean["event_name"] = name
+
+        # event_date: must be YYYY-MM-DD
+        date_str = str(data.get("event_date", ""))
+        if not _val_re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+            raise ValueError(f"Invalid event_date format: {date_str}")
+        clean["event_date"] = date_str
+
+        # event_time: must be HH:MM or HH:MM:SS or empty
+        time_str = str(data.get("event_time", "") or "")
+        if time_str and not _val_re.match(r'^\d{2}:\d{2}(:\d{2})?$', time_str):
+            time_str = ""  # discard malformed time rather than reject
+        clean["event_time"] = time_str or None
+
+        # family_member: max 100 chars, alphanumeric + spaces only
+        member = str(data.get("family_member", ""))[:100]
+        member = _val_re.sub(r'[^\w\s\-\']', '', member)
+        clean["family_member"] = member or "family"
+
+        # location: max 300 chars
+        clean["location"] = str(data.get("location", ""))[:300]
+
+        # end_time: same validation as event_time
+        end_str = str(data.get("end_time", "") or "")
+        if end_str and not _val_re.match(r'^\d{2}:\d{2}(:\d{2})?$', end_str):
+            end_str = ""
+        clean["end_time"] = end_str or None
+
+        # Boolean fields
+        clean["is_recurring"] = bool(data.get("is_recurring", False))
+
+        # Recurrence fields (only if recurring)
+        if clean["is_recurring"]:
+            rule = str(data.get("recurrence_rule", "WEEKLY"))[:20]
+            if rule.upper() not in ("DAILY", "WEEKLY", "BIWEEKLY", "MONTHLY", "YEARLY"):
+                rule = "WEEKLY"
+            clean["recurrence_rule"] = rule.upper()
+            clean["recurrence_day"] = str(data.get("recurrence_day", ""))[:20]
+            rec_end = str(data.get("recurrence_end", "") or "")
+            if rec_end and not _val_re.match(r'^\d{4}-\d{2}-\d{2}$', rec_end):
+                rec_end = ""
+            clean["recurrence_end"] = rec_end or None
+            clean["recurrence_count"] = data.get("recurrence_count")
+
+    elif schema == "memory":
+        # content: max 50000 chars, strip null bytes
+        content = str(data.get("content", ""))[:50000]
+        content = content.replace("\x00", "")
+        clean["content"] = content
+
+        # category: validate against allowlist
+        clean["category"] = validators.validate_category(
+            str(data.get("category", "general"))
+        )
+
+    return clean
+
+
 def _check_conflicts_and_store_event(
     event_data: dict[str, Any],
     sender_name: str,
@@ -465,10 +564,17 @@ def _check_conflicts_and_store_event(
     try:
         db, _ = brain._require_init()
 
-        event_date = event_data.get("event_date")
-        event_time = event_data.get("event_time")
-        family_member = event_data.get("family_member", sender_name)
-        event_name = event_data.get("event_name", "Untitled event")
+        # Phase 5: Validate LLM output before DB write
+        try:
+            validated = _validate_llm_output_for_db(event_data, schema="event")
+        except ValueError as ve:
+            logger.warning("LLM output validation failed for event: %s", ve)
+            return None, None
+
+        event_date = validated.get("event_date") or event_data.get("event_date")
+        event_time = validated.get("event_time") or event_data.get("event_time")
+        family_member = validated.get("family_member") or event_data.get("family_member", sender_name)
+        event_name = validated.get("event_name") or event_data.get("event_name", "Untitled event")
 
         # Check for conflicts — direct date-based query (no RPC needed)
         conflict_msg = None
@@ -1175,6 +1281,57 @@ def safe_error_response(e: Exception, context: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# IP-based rate limiting (Phase 5 gap analysis)
+# ---------------------------------------------------------------------------
+class _IPRateLimiter:
+    """In-memory sliding-window rate limiter keyed by client IP address."""
+
+    def __init__(self):
+        self._ip_timestamps: dict[str, list[float]] = collections.defaultdict(list)
+        self._lock = threading.Lock()
+        # Per-endpoint limits: (requests, window_seconds)
+        self._limits = {
+            "whatsapp": (100, 60),
+            "stripe": (50, 60),
+            "default": (200, 60),
+        }
+
+    def _classify_endpoint(self, path: str) -> str:
+        if "/whatsapp" in path or "/webhook" == path:
+            return "whatsapp"
+        if "/stripe" in path:
+            return "stripe"
+        return "default"
+
+    def _get_client_ip(self) -> str:
+        """Extract client IP from X-Forwarded-For (Railway sets this).
+        Only trust the FIRST IP to prevent spoofing via appended headers."""
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            # First IP is the real client; subsequent are proxies
+            return xff.split(",")[0].strip()
+        return request.remote_addr or "unknown"
+
+    def check(self, ip: str, path: str) -> tuple[bool, str]:
+        """Return (allowed, category).  *allowed* is True when within limits."""
+        category = self._classify_endpoint(path)
+        max_requests, window = self._limits[category]
+        now = _time_mod.time()
+        cutoff = now - window
+        with self._lock:
+            ts = self._ip_timestamps[ip]
+            ts = [t for t in ts if t > cutoff]
+            self._ip_timestamps[ip] = ts
+            if len(ts) >= max_requests:
+                return False, category
+            ts.append(now)
+            return True, category
+
+
+_ip_rate_limiter = _IPRateLimiter()
+
+
+# ---------------------------------------------------------------------------
 # Flask application
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
@@ -1200,6 +1357,31 @@ def _handle_exception(e):
         status=500,
         mimetype="application/json",
     )
+
+# ---------------------------------------------------------------------------
+# IP-based rate limiting — before_request hook (Phase 5 gap analysis)
+# ---------------------------------------------------------------------------
+@app.before_request
+def _enforce_ip_rate_limit():
+    """Enforce per-IP rate limits on all endpoints.
+    Exempt /health from rate limiting (uptime monitors hit it frequently)."""
+    if request.path in ("/health", "/whatsapp/health"):
+        return None
+    client_ip = _ip_rate_limiter._get_client_ip()
+    allowed, category = _ip_rate_limiter.check(client_ip, request.path)
+    if not allowed:
+        security_logger.security_log(
+            "ip_rate_limit_hit",
+            {"ip": client_ip, "path": request.path, "category": category},
+            severity="WARNING",
+        )
+        return Response(
+            json.dumps({"error": "Rate limit exceeded. Please try again later."}),
+            status=429,
+            mimetype="application/json",
+        )
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Register Stripe billing routes (/join, /subscribe, /stripe/*)
@@ -2550,6 +2732,10 @@ def _handle_meta_webhook() -> Response:
 
     Security: verifies the X-Hub-Signature-256 header before processing.
     """
+    # Phase 5 Item 29: Generate correlation ID for this request
+    cid = correlation.set_correlation_id()
+    logger.info("Meta webhook received [cid=%s]", cid)
+
     # ── Security: verify Meta webhook signature ──────────────────────────
     if not _verify_meta_signature(request):
         logger.warning(
@@ -2652,6 +2838,10 @@ def _handle_meta_webhook() -> Response:
 
 def _handle_twilio_webhook() -> Response:
     """Process an incoming Twilio webhook POST (legacy path)."""
+    # Phase 5 Item 29: Generate correlation ID for this request
+    cid = correlation.set_correlation_id()
+    logger.info("Twilio webhook received [cid=%s]", cid)
+
     from_number: str = request.values.get("From", "").strip()
     message_body: str = request.values.get("Body", "").strip()
     num_media: int = int(request.values.get("NumMedia", "0"))
@@ -2892,6 +3082,22 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
     family_id = _get_family_id_for_phone(from_number)
     reply_text = ""
 
+    # Phase 5: Token budget check before LLM calls
+    if family_id:
+        budget_ok, budget_reason = token_budget.check_budget(family_id)
+        if not budget_ok:
+            logger.warning("Token budget exceeded for family %s: %s", family_id, budget_reason)
+            security_logger.security_log(
+                "token_budget_exceeded",
+                {"family_id": family_id, "reason": budget_reason},
+                phone=from_number,
+            )
+            return _make_response(
+                "You've reached your daily AI usage limit. "
+                "This resets at midnight UTC. Try again tomorrow!",
+                from_number=from_number,
+            )
+
     try:
         # Step 1: Expand query with synonyms and perform semantic search
         synonyms = []
@@ -2996,6 +3202,9 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
 
             memories_text = "\n".join(_fmt_memory_line(r) for r in results)
 
+            # Phase 5 Item 17: Redact PII from memory context before sending to LLM
+            memories_text = validators.redact_for_llm(memories_text)
+
             # 3a. Check if the answer likely involves a business/location and is missing contact details
             web_context = ""
             contact_keywords = ("phone", "number", "call", "contact", "email", "address", "where", "garage", "book", "appointment", "them", "their")
@@ -3092,12 +3301,25 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 " Never mention memory IDs in your answer."
             )
             
+            # Phase 5 Item 15: Strict system/user prompt separation
+            # System prompt is ALWAYS in its own message — never concatenated with user input
             messages = [{"role": "system", "content": prompt}]
+            # Context goes in a separate system message to maintain boundary
+            context_msg = f"Stored memories:\n{memories_text}"
+            if web_context:
+                context_msg += web_context
+            messages.append({"role": "system", "content": context_msg})
             if conversation_history:
                 messages.extend(conversation_history)
-            messages.append({"role": "user", "content": f"Question: {_sanitise_llm_input(text)}\n\nStored memories:\n{memories_text}{web_context}"})
+            # User input is ALWAYS in its own user message — never mixed with system content
+            messages.append({"role": "user", "content": f"Question: {_sanitise_llm_input(text)}"})
 
             answer = brain.get_llm_reply(messages=messages)
+            # Phase 5: Record token usage (estimate based on message lengths)
+            if family_id:
+                _est_prompt = sum(len(m.get("content", "")) // 4 for m in messages)
+                _est_completion = len(answer) // 4 if isinstance(answer, str) else 0
+                token_budget.record_usage(family_id, prompt_tokens=_est_prompt, completion_tokens=_est_completion)
             # Strip any <thinking>...</thinking> chain-of-thought blocks before delivery
             answer_clean = _sanitise_llm_output(_strip_thinking_tags(answer))
             reply_text = answer_clean[:3800]

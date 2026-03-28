@@ -98,3 +98,46 @@ def sanitise_string(text: str, max_length: int = 10000) -> str:
         return ""
     text = text.strip().replace("\x00", "")
     return text[:max_length]
+
+
+# ---------------------------------------------------------------------------
+# Data minimisation for LLM context (Phase 5 gap analysis, Item 17)
+# ---------------------------------------------------------------------------
+# Patterns for PII that should be redacted before sending to the LLM
+_SORT_CODE_PATTERN = re.compile(r'\b(\d{2})[-\s]?(\d{2})[-\s]?(\d{2})\b')
+_NI_NUMBER_PATTERN = re.compile(
+    r'\b([A-CEGHJ-PR-TW-Z]{2})\s*(\d{2})\s*(\d{2})\s*(\d{2})\s*([A-D])\b',
+    re.IGNORECASE,
+)
+_FULL_DOB_PATTERN = re.compile(
+    r'\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})\b'
+)
+
+
+def redact_for_llm(text: str) -> str:
+    """Redact sensitive PII from text before sending to the LLM.
+
+    Redacts:
+    - Sort codes (keep last pair): 12-34-56 -> **-**-56
+    - Full NI numbers (keep last 3 chars): AB123456C -> *****56C
+    - Full dates of birth (keep year): 15/03/1985 -> **/**/1985
+    """
+    if not isinstance(text, str):
+        return ""
+
+    # Sort codes: XX-XX-XX -> **-**-XX (keep last pair)
+    text = _SORT_CODE_PATTERN.sub(
+        lambda m: f"**-**-{m.group(3)}", text
+    )
+
+    # NI numbers: AB123456C -> *****56C (keep last 3)
+    text = _NI_NUMBER_PATTERN.sub(
+        lambda m: f"*****{m.group(3)}{m.group(4)}{m.group(5)}", text
+    )
+
+    # Full DOB: DD/MM/YYYY -> **/****/YYYY (keep year)
+    text = _FULL_DOB_PATTERN.sub(
+        lambda m: f"**/**/{ m.group(3)}", text
+    )
+
+    return text
