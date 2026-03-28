@@ -68,7 +68,9 @@ from . import meta_whatsapp
 from . import family_invites
 from . import security_logger
 from . import validators
+from . import audit_log
 import threading
+import bcrypt
 
 logger = logging.getLogger("open_brain.whatsapp")
 
@@ -117,22 +119,14 @@ else:
 # Cache for DB-based phone -> (family_name, family_id) lookups
 _phone_cache: dict[str, tuple[str, str]] = {}
 
+# Pending PIN verification for sensitive commands (Phase 4)
+# {phone_number: {"command": "/sos", "family_id": "...", "timestamp": ...}}
+_pending_pin_verification: dict[str, dict[str, Any]] = {}
+
 
 def log_action(family_id: str, action_type: str, subject: str, detail: Optional[dict] = None, phone_number: Optional[str] = None) -> None:
-    """Log a significant action to the cortex_actions table."""
-    try:
-        db = brain._supabase
-        if not db:
-            return
-        db.table("cortex_actions").insert({
-            "family_id": family_id,
-            "action_type": action_type,
-            "subject": subject,
-            "detail": detail or {},
-            "phone_number": phone_number
-        }).execute()
-    except Exception as exc:
-        logger.warning("Failed to log action %s for family %s: %s", action_type, family_id, exc)
+    """Legacy wrapper for audit_log.audit_log (Phase 4)."""
+    audit_log.audit_log(family_id, action_type, subject, detail, phone_number)
 
 def get_recent_actions(family_id: str, action_type: Optional[str] = None, hours: int = 24, subject_contains: Optional[str] = None) -> list[dict]:
     """Query cortex_actions for recent entries."""
@@ -1268,9 +1262,53 @@ def _empty_response() -> Response:
 
 
 @app.route("/whatsapp/health", methods=["GET"])
-def health_check() -> dict[str, str]:
-    """Health check endpoint — returns {"status": "ok"}."""
-    return {"status": "ok"}
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Comprehensive health check endpoint for uptime monitoring.
+    Checks Supabase connectivity and whether critical secrets are set.
+    Returns JSON: {status: ok|degraded|down, checks: {...}, timestamp: ...}
+    """
+    checks = {}
+    # 1. Supabase connectivity
+    try:
+        db = brain._supabase
+        if db:
+            db.table("families").select("family_id").limit(1).execute()
+            checks["supabase"] = "ok"
+        else:
+            checks["supabase"] = "not_initialized"
+    except Exception as exc:
+        checks["supabase"] = "error"
+        logger.warning("Health check: Supabase connectivity failed: %s", exc)
+
+    # 2. Critical secrets presence (never expose values)
+    checks["STRIPE_WEBHOOK_SECRET"] = "set" if os.environ.get("STRIPE_WEBHOOK_SECRET") else "missing"
+    checks["META_APP_SECRET"] = "set" if os.environ.get("META_APP_SECRET") else "missing"
+    checks["OPENAI_API_KEY"] = "set" if os.environ.get("OPENAI_API_KEY") else "missing"
+
+    # Determine overall status
+    critical_ok = checks["supabase"] == "ok"
+    secrets_ok = all(
+        checks[k] == "set"
+        for k in ("STRIPE_WEBHOOK_SECRET", "META_APP_SECRET", "OPENAI_API_KEY")
+    )
+
+    if critical_ok and secrets_ok:
+        status = "ok"
+    elif critical_ok:
+        status = "degraded"
+    else:
+        status = "down"
+
+    return Response(
+        json.dumps({
+            "status": status,
+            "checks": checks,
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
+        }),
+        status=200 if status != "down" else 503,
+        mimetype="application/json",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3398,8 +3436,14 @@ def _handle_memory_management(text: str, family_name: str, from_number: str) -> 
 # GDPR data deletion handler  (/delete-my-data)
 # ---------------------------------------------------------------------------
 
-def _handle_delete_my_data_command(from_number: str, family_id: str) -> Response:
+def _handle_delete_my_data_command(from_number: str, family_id: str, pin_verified: bool = False) -> Response:
     """Handle the /delete-my-data command — ask for confirmation."""
+    # Phase 4: PIN protection
+    if not pin_verified:
+        _pin_resp = _check_pin_required(from_number, family_id, "/delete-my-data")
+        if _pin_resp:
+            return _pin_resp
+
     _pending_data_deletion[from_number] = family_id
     logger.info("Personal data deletion confirmation requested by %s (family_id=%s)", from_number, family_id)
     return _make_response(
@@ -3409,8 +3453,14 @@ def _handle_delete_my_data_command(from_number: str, family_id: str) -> Response
         from_number=from_number,
     )
 
-def _handle_mydata_command(from_number: str, family_id: str) -> Response:
+def _handle_mydata_command(from_number: str, family_id: str, pin_verified: bool = False) -> Response:
     """Handle the /mydata command — ask for confirmation."""
+    # Phase 4: PIN protection
+    if not pin_verified:
+        _pin_resp = _check_pin_required(from_number, family_id, "/mydata")
+        if _pin_resp:
+            return _pin_resp
+
     _pending_mydata_export[from_number] = family_id
     return _make_response(
         "Would you like to export all data stored for your family? "
@@ -3608,12 +3658,18 @@ def _execute_personal_data_deletion(family_id: str, from_number: str) -> dict[st
     return results
 
 
-def _handle_full_family_wipe_command(from_number: str, family_name: str, family_id: str) -> Response:
+def _handle_full_family_wipe_command(from_number: str, family_name: str, family_id: str, pin_verified: bool = False) -> Response:
     """Handle the /delete-all-family-data command (Tier 2 deletion).
     
     Creates a pending delete_requests record and notifies all adult members
     to confirm.
     """
+    # Phase 4: PIN protection
+    if not pin_verified:
+        _pin_resp = _check_pin_required(from_number, family_id, "/delete")
+        if _pin_resp:
+            return _pin_resp
+
     db = brain._supabase
     if not db:
         return _make_response("Database connection error. Please try again later.", from_number=from_number)
@@ -4203,10 +4259,54 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
         else:
             return _make_response("Sorry, could not generate your calendar link right now. Please try again.", from_number=from_number)
 
+    # --- PIN Verification (Phase 4) ---
+    if from_number in _pending_pin_verification:
+        _pending = _pending_pin_verification[from_number]
+        # Check if it's a 4-6 digit PIN
+        if re.match(r'^\d{4,6}$', text.strip()):
+            _pin = text.strip()
+            # Verify PIN against DB
+            try:
+                db = brain._supabase
+                if db:
+                    _fam_res = db.table("families").select("sos_pin").eq("family_id", _pending["family_id"]).execute()
+                    if _fam_res.data:
+                        _hashed = _fam_res.data[0].get("sos_pin")
+                        if _hashed and bcrypt.checkpw(_pin.encode(), _hashed.encode()):
+                            # PIN correct! Execute the pending command
+                            _cmd = _pending["command"]
+                            del _pending_pin_verification[from_number]
+                            if _cmd == "/sos":
+                                return _handle_sos_command(from_number, family_name, _family_id, pin_verified=True)
+                            elif _cmd == "/delete":
+                                return _handle_full_family_wipe_command(from_number, family_name, _family_id, pin_verified=True)
+                            elif _cmd == "/delete-my-data":
+                                return _handle_delete_my_data_command(from_number, _family_id, pin_verified=True)
+                            elif _cmd == "/mydata":
+                                return _handle_mydata_command(from_number, _family_id, pin_verified=True)
+                        else:
+                            return _make_response("❌ Incorrect PIN. Please try again or send 'cancel'.", from_number=from_number)
+            except Exception as exc:
+                logger.error("PIN verification failed: %s", exc)
+                return _make_response("Sorry, PIN verification failed. Please try again later.", from_number=from_number)
+        elif text_lower == "cancel":
+            del _pending_pin_verification[from_number]
+            return _make_response("OK, command cancelled.", from_number=from_number)
+
     # --- GDPR Confirmations (Phase 3) ---
     _gdpr_confirm = _handle_gdpr_confirmations(text, from_number)
     if _gdpr_confirm:
         return _gdpr_confirm
+
+    # --- PIN Management Commands (Phase 4) ---
+    if text_lower.startswith("/setpin"):
+        return _handle_setpin_command(text, from_number, _family_id)
+    if text_lower == "/removepin":
+        return _handle_removepin_command(from_number, _family_id)
+
+    # --- Audit Log Command (Phase 4) ---
+    if text_lower in ("/auditlog", "/audit-log", "/history", "/logs"):
+        return _handle_auditlog_command(from_number, _family_id)
 
     # --- GDPR Data Deletion Command ---
     if text_lower in ("/delete-my-data", "/deletemydata", "/gdpr-delete", "/delete my data"):
@@ -4398,6 +4498,8 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/graph* \u2014 View your family's knowledge graph (people, places, relationships)\n"
             "*/delete-my-data* \u2014 Delete all data submitted by your number\n"
             "*/delete-all-family-data* \u2014 Request a full wipe of all family data (requires confirmation from all members)\n"
+            "*/setpin [4-6 digits]* \u2014 Protect sensitive commands with a PIN\n"
+            "*/removepin* \u2014 Remove PIN protection\n"
             "*/help* \u2014 Show this list of commands"
             + _email_line + "\n\n"
             "You don't need commands for most things! Just send me photos, documents, voice notes, or ask me questions normally."
@@ -5304,6 +5406,75 @@ def _handle_binder_category_view(from_number: str, family_id: str, cat_num: str)
 
 
 # ---------------------------------------------------------------------------
+# PIN Management (Phase 4)
+# ---------------------------------------------------------------------------
+def _check_pin_required(from_number: str, family_id: str, command: str) -> Optional[Response]:
+    """Check if a PIN is required for a command. If so, return a prompt response."""
+    try:
+        db = brain._supabase
+        if not db:
+            return None
+        res = db.table("families").select("sos_pin").eq("family_id", family_id).execute()
+        if res.data and res.data[0].get("sos_pin"):
+            _pending_pin_verification[from_number] = {
+                "command": command,
+                "family_id": family_id,
+                "timestamp": _time_mod.time()
+            }
+            return _make_response("🔐 This command is PIN-protected. Please reply with your 4-6 digit PIN to proceed (or 'cancel').", from_number=from_number)
+    except Exception as exc:
+        logger.warning("Failed to check PIN requirement: %s", exc)
+    return None
+
+def _handle_setpin_command(text: str, from_number: str, family_id: str) -> Response:
+    """Handle /setpin [4-6 digits] command."""
+    match = re.match(r'^/setpin\s+(\d{4,6})$', text.strip())
+    if not match:
+        return _make_response("Usage: */setpin [4-6 digits]*\nExample: /setpin 1234", from_number=from_number)
+    
+    pin = match.group(1)
+    hashed = bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
+    
+    try:
+        db = brain._supabase
+        if db:
+            db.table("families").update({"sos_pin": hashed}).eq("family_id", family_id).execute()
+            audit_log.audit_log(family_id, "pin_set", "PIN protection enabled", phone_number=from_number)
+            return _make_response("✅ PIN set successfully. Your /sos, /delete, and /mydata commands are now protected.", from_number=from_number)
+    except Exception as exc:
+        logger.error("Failed to set PIN: %s", exc)
+        return _make_response("Sorry, failed to set PIN. Please try again later.", from_number=from_number)
+    return _make_response("Error setting PIN.", from_number=from_number)
+
+def _handle_removepin_command(from_number: str, family_id: str) -> Response:
+    """Handle /removepin command."""
+    try:
+        db = brain._supabase
+        if db:
+            db.table("families").update({"sos_pin": None}).eq("family_id", family_id).execute()
+            audit_log.audit_log(family_id, "pin_removed", "PIN protection disabled", phone_number=from_number)
+            return _make_response("✅ PIN removed. Sensitive commands are no longer protected.", from_number=from_number)
+    except Exception as exc:
+        logger.error("Failed to remove PIN: %s", exc)
+        return _make_response("Sorry, failed to remove PIN.", from_number=from_number)
+    return _make_response("Error removing PIN.", from_number=from_number)
+
+def _handle_auditlog_command(from_number: str, family_id: str) -> Response:
+    """Handle /auditlog command — show recent family activity."""
+    logs = audit_log.get_audit_trail(family_id, limit=10)
+    if not logs:
+        return _make_response("No recent activity found for your family.", from_number=from_number)
+    
+    lines = ["📜 *Recent Family Activity*\n"]
+    for log in logs:
+        dt = datetime.fromisoformat(log["created_at"].replace("Z", "+00:00"))
+        time_str = dt.strftime("%d %b, %H:%M")
+        subject = log["subject"]
+        lines.append(f"• _{time_str}_: {subject}")
+    
+    return _make_response("\n".join(lines), from_number=from_number)
+
+# ---------------------------------------------------------------------------
 # Emergency file helpers: progress tracking and /sos command
 # ---------------------------------------------------------------------------
 
@@ -5331,15 +5502,23 @@ def _send_emergency_progress_update(from_number: str, family_id: str) -> None:
         logger.warning("Failed to send emergency progress update: %s", exc)
 
 
-def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> Response:
+def _handle_sos_command(from_number: str, family_name: str, family_id: str, pin_verified: bool = False) -> Response:
     """Handle /sos, /emergency, /ifanythinghappens — generate and send the emergency PDF."""
-    # Send an immediate "working on it" acknowledgement
-    _send_proactive_message(to=from_number, body="\u23f3 Generating your family emergency file... This may take a moment.")
+    # Phase 4: PIN protection
+    if not pin_verified:
+        _pin_resp = _check_pin_required(from_number, family_id, "/sos")
+        if _pin_resp:
+            return _pin_resp
 
+    # Step 0: Immediate acknowledgement
+    _send_proactive_message(to=from_number, body="⏳ Generating your family emergency file... This may take a moment.")
+    audit_log.audit_log(family_id, "sos_requested", "Emergency PDF generation started", phone_number=from_number)
     try:
         # Step 1: Generate the PDF
         from .emergency_pdf import generate_emergency_pdf, CATEGORIES
-        pdf_bytes = generate_emergency_pdf(family_id)
+        # Password is the last 4 digits of the requesting phone number (Phase 4)
+        pdf_password = from_number.replace("whatsapp:", "").strip()[-4:]
+        pdf_bytes = generate_emergency_pdf(family_id, password=pdf_password)
 
         # Check if PDF has meaningful content (memories + death_binder_entries)
         covered_cats = _get_binder_covered_categories(family_id)
@@ -5431,7 +5610,7 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
                     meta_whatsapp.send_document_message(
                         to=from_number.replace("whatsapp:", ""),
                         document_url=signed_url,
-                        caption="Your family emergency file is attached.",
+                        caption="Your family emergency file is attached. It's password-protected — the password is the last 4 digits of your phone number.",
                         filename=f"emergency_{datetime.now().strftime('%Y%m%d')}.pdf",
                     )
                 else:
@@ -5442,7 +5621,7 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
                         from_=_s.twilio_whatsapp_from,
                         to=from_number,
                         media_url=[signed_url],
-                        body="Your family emergency file is attached.",
+                        body="Your family emergency file is attached. It's password-protected — the password is the last 4 digits of your phone number.",
                     )
                 logger.info("Emergency PDF sent to %s", from_number)
             except Exception as exc:
@@ -5450,7 +5629,7 @@ def _handle_sos_command(from_number: str, family_name: str, family_id: str) -> R
                 # Fallback: send just the URL as text
                 _send_proactive_message(
                     to=from_number,
-                    body=f"Your family emergency file is ready. Download it here (valid 24h): {signed_url}",
+                    body=f"Your family emergency file is ready. Download it here (valid 24h): {signed_url}\n\nIt's password-protected — the password is the last 4 digits of your phone number.",
                 )
         else:
             # No signed URL — inform the user

@@ -334,7 +334,7 @@ def _kv_table(rows: List[tuple], col_widths=None) -> Table:
 # Main PDF generator
 # ---------------------------------------------------------------------------
 
-def generate_emergency_pdf(family_id: str) -> bytes:
+def generate_emergency_pdf(family_id: str, password: Optional[str] = None) -> bytes:
     """Generate the 'If Anything Happens' PDF for a family."""
     logger.info("Generating emergency PDF for family_id=%s", family_id)
 
@@ -937,5 +937,26 @@ def generate_emergency_pdf(family_id: str) -> bytes:
     doc.build(elements, onFirstPage=_create_footer, onLaterPages=_create_footer)
     pdf_bytes = buffer.getvalue()
     buffer.close()
-    logger.info("Successfully generated emergency PDF (%d bytes)", len(pdf_bytes))
+
+    # Apply password protection if provided (Phase 4)
+    if password:
+        try:
+            from pypdf import PdfReader, PdfWriter
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            writer = PdfWriter()
+            for page in reader.pages:
+                writer.add_page(page)
+            writer.encrypt(password)
+            
+            out_buffer = io.BytesIO()
+            writer.write(out_buffer)
+            pdf_bytes = out_buffer.getvalue()
+            out_buffer.close()
+            logger.info("Successfully generated password-protected emergency PDF (%d bytes)", len(pdf_bytes))
+        except Exception as exc:
+            logger.error("Failed to encrypt emergency PDF: %s", exc)
+            # Fall back to unencrypted PDF if encryption fails
+    else:
+        logger.info("Successfully generated emergency PDF (%d bytes)", len(pdf_bytes))
+        
     return pdf_bytes
