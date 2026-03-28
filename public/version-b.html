@@ -1761,6 +1761,233 @@ p { color: #2C2C2C; }
   .conv-wa-phone { max-width: 100%; }
 }
 
+/* ========== MOBILE OPTIMISATION FIXES ========== */
+/* Targeted fixes — does NOT change any desktop layout, colours, fonts, or content.
+   Addresses: section 05 overlap, touch targets, phone mockup scaling,
+   trust section, padding, font sizing, and horizontal-scroll prevention. */
+
+/* --- Base mobile hardening --- */
+html { height: 100%; }
+body { min-height: 100%; overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
+
+/* Prevent hero aurora from causing horizontal scroll */
+.hero-phone-wrap { contain: paint; }
+
+/* --- 1024px tweaks --- */
+@media (max-width: 1024px) {
+  /* Step 05 inner grid: stack to single column */
+  .sos-step-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .sos-step-grid .wa-phone {
+    max-width: 380px;
+    margin: 0 auto;
+  }
+  .sos-step-grid .sos-pdf-preview {
+    max-width: 380px;
+    margin: 0 auto;
+  }
+}
+
+/* --- 768px: primary mobile breakpoint --- */
+@media (max-width: 768px) {
+  /* Section 05 step card: reduce padding on mobile */
+  .step[style*="padding:40px"] {
+    padding: 24px 18px !important;
+  }
+  /* Ensure step 05 max-width doesn't overflow */
+  .step[style*="max-width:760px"] {
+    max-width: 100% !important;
+  }
+
+  /* Trust section (Phase 3) — override inline font-size on h2 */
+  .trust .section-header h2 {
+    font-size: 1.75rem !important;
+  }
+  .trust .section-header {
+    margin-bottom: 36px !important;
+  }
+  /* Trust grid: force single column on mobile */
+  .trust-grid {
+    grid-template-columns: 1fr !important;
+    gap: 28px !important;
+  }
+
+  /* Graph demo phone: reduce min-height to avoid excessive vertical space */
+  .gd-phone {
+    min-height: auto;
+    max-width: 100%;
+  }
+  .gd-chat {
+    height: 360px;
+    min-height: 360px;
+    max-height: 360px;
+  }
+  .graph-demo-copy h2 {
+    font-size: 1.85rem;
+  }
+
+  /* Advisor mockup: fluid width */
+  .advisor-mockup .wa-phone {
+    max-width: 100%;
+  }
+
+  /* Emergency mockup: fluid width */
+  .emergency-mockup .wa-phone {
+    max-width: 100%;
+  }
+
+  /* Conversation demo: ensure CTA button is appropriately sized */
+  .conv-demo-content .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Demo section wa-chat: reduce height on mobile */
+  .demo .wa-chat {
+    min-height: 340px;
+  }
+
+  /* Step wa-phone cards: allow more width on mobile single-column */
+  .step .wa-phone {
+    max-width: 100%;
+  }
+
+  /* Reduce section padding further for tighter mobile spacing */
+  .section { padding: 60px 0; }
+
+  /* Hero: use dvh where supported for better mobile viewport handling */
+  @supports (min-height: 1dvh) {
+    .hero { min-height: auto; }
+  }
+
+  /* Pricing toggle: ensure adequate touch target */
+  .toggle-switch {
+    width: 52px;
+    height: 30px;
+    border-radius: 15px;
+  }
+  .toggle-switch::after {
+    width: 24px;
+    height: 24px;
+    top: 3px;
+    left: 3px;
+  }
+  .toggle-switch.active::after {
+    transform: translateX(22px);
+  }
+
+  /* Ensure all primary buttons meet 44px min touch target */
+  .btn {
+    min-height: 48px;
+    padding: 14px 24px;
+  }
+  .nav-cta {
+    min-height: 44px;
+  }
+
+  /* Footer: stack vertically on mobile */
+  .footer-inner {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Final CTA: reduce padding */
+  .final-cta {
+    padding: 72px 0;
+  }
+  .final-cta .btn-primary {
+    width: 100%;
+    max-width: 360px;
+  }
+
+  /* Emergency section: reduce gap */
+  .emergency-inner {
+    gap: 36px;
+  }
+
+  /* SOS PDF preview: fluid width */
+  .sos-pdf-preview {
+    max-width: 100%;
+  }
+
+  /* Hamburger menu: ensure 44px touch target */
+  .nav-hamburger {
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Footer links: ensure adequate touch target with padding */
+  .footer-links a {
+    display: inline-block;
+    padding: 10px 0;
+    min-height: 44px;
+    line-height: 24px;
+  }
+
+  /* Hero link: increase touch target */
+  .hero-link {
+    display: inline-block;
+    padding: 10px 0;
+    min-height: 44px;
+  }
+}
+
+/* --- 480px: small phone breakpoint --- */
+@media (max-width: 480px) {
+  /* Section 05 step card: further reduce padding */
+  .step[style*="padding:40px"] {
+    padding: 18px 14px !important;
+  }
+
+  /* Trust section h2: smaller on very small screens */
+  .trust .section-header h2 {
+    font-size: 1.5rem !important;
+  }
+
+  /* Graph demo chat: further reduce */
+  .gd-chat {
+    height: 300px;
+    min-height: 300px;
+    max-height: 300px;
+  }
+
+  /* Hero phone chat: reduce height */
+  .hero-phone-chat {
+    height: 300px;
+    min-height: 300px;
+    max-height: 300px;
+  }
+
+  /* Reduce section padding on small phones */
+  .section { padding: 48px 0; }
+
+  /* Advisor bullets: left-align on small screens */
+  .advisor-bullets { align-items: flex-start; }
+  .advisor-content { text-align: left; }
+
+  /* Emergency content: left-align on small screens */
+  .emergency-content { text-align: left; }
+
+  /* Demo tabs: smaller padding for touch fit */
+  .demo-tab {
+    padding: 10px 16px;
+    font-size: 0.82rem;
+  }
+
+  /* Conversation demo: full-width CTA */
+  .conv-demo-content .btn {
+    width: 100%;
+  }
+
+  /* Final CTA button: full width */
+  .final-cta .btn-primary {
+    max-width: 100%;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -2008,7 +2235,7 @@ p { color: #2C2C2C; }
         <h3>Your family emergency file — always ready</h3>
         <p style="margin-bottom:12px;">As you add documents, FamilyBrain quietly builds your family emergency file in the background. When you need it, just type <span class="sos-command">/sos</span> in WhatsApp. You'll get a complete PDF covering legal documents, insurance, pensions, bank details, property, and more — ready to share with a trusted person.</p>
         <p style="font-style:italic; color:#7A7A7A; font-size:0.9rem; margin-bottom:28px;">&ldquo;If anything ever happened to you, would your family know where everything is? Because the best time to organise it is before you need it.&rdquo;</p>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start;">
+        <div class="sos-step-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start;">
           <div class="wa-phone">
             <div class="wa-header">
               <div class="wa-avatar">FB</div>
