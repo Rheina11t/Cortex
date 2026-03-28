@@ -1493,6 +1493,44 @@ def health_check():
     )
 
 
+@app.route("/whatsapp/trigger-reminders", methods=["POST"])
+def trigger_reminders():
+    """Railway cron trigger endpoint for the daily reminder job.
+
+    Requires header: X-Cron-Secret matching the CRON_SECRET environment variable.
+    This allows Railway's built-in cron scheduler to trigger reminders externally
+    as a backup to the APScheduler job running inside the Flask process.
+
+    Example Railway cron config:
+        Schedule: 0 8 * * *
+        Method: POST
+        URL: https://<your-domain>/whatsapp/trigger-reminders
+        Headers: X-Cron-Secret: <CRON_SECRET>
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    if not cron_secret:
+        logger.error("trigger-reminders: CRON_SECRET env var not set — endpoint disabled")
+        return Response(json.dumps({"error": "endpoint not configured"}), status=503, mimetype="application/json")
+
+    provided = request.headers.get("X-Cron-Secret", "")
+    if not hmac.compare_digest(provided, cron_secret):
+        security_logger.security_log(
+            "cron_auth_failed",
+            {"endpoint": "/whatsapp/trigger-reminders", "ip": request.headers.get("X-Forwarded-For", request.remote_addr)},
+            severity="WARNING",
+        )
+        return Response(json.dumps({"error": "unauthorized"}), status=401, mimetype="application/json")
+
+    try:
+        from . import reminder_job as _reminder_job
+        summary = _reminder_job.run_daily_reminders()
+        logger.info("trigger-reminders: %s", summary)
+        return Response(json.dumps({"ok": True, "summary": summary}), status=200, mimetype="application/json")
+    except Exception as exc:
+        logger.error("trigger-reminders failed: %s", exc)
+        return Response(json.dumps({"error": "internal error"}), status=500, mimetype="application/json")
+
+
 # ---------------------------------------------------------------------------
 # Kitchen Calendar — helper and routes
 # ---------------------------------------------------------------------------
@@ -4526,6 +4564,10 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
     if text_lower == "/removepin":
         return _handle_removepin_command(from_number, _family_id)
 
+    # --- Reminder Preferences Command ---
+    if text_lower.startswith("/reminders"):
+        return _handle_reminders_command(text, from_number, _family_id)
+
     # --- Audit Log Command (Phase 4) ---
     if text_lower in ("/auditlog", "/audit-log", "/history", "/logs"):
         return _handle_auditlog_command(from_number, _family_id)
@@ -4722,6 +4764,8 @@ def _handle_text_message(text: str, family_name: str, from_number: str) -> Respo
             "*/delete-all-family-data* \u2014 Request a full wipe of all family data (requires confirmation from all members)\n"
             "*/setpin [4-6 digits]* \u2014 Protect sensitive commands with a PIN\n"
             "*/removepin* \u2014 Remove PIN protection\n"
+            "*/reminders on|off* \u2014 Enable or disable daily reminders\n"
+            "*/reminders time HH:MM* \u2014 Set your preferred reminder time (e.g. /reminders time 7:30)\n"
             "*/help* \u2014 Show this list of commands"
             + _email_line + "\n\n"
             "You don't need commands for most things! Just send me photos, documents, voice notes, or ask me questions normally."
@@ -5681,6 +5725,113 @@ def _handle_removepin_command(from_number: str, family_id: str) -> Response:
         return _make_response("Sorry, failed to remove PIN.", from_number=from_number)
     return _make_response("Error removing PIN.", from_number=from_number)
 
+def _handle_reminders_command(text: str, from_number: str, family_id: str) -> Response:
+    """
+    Handle /reminders commands:
+      /reminders on       — enable daily reminders
+      /reminders off      — disable daily reminders
+      /reminders time HH:MM — set preferred reminder time
+      /reminders          — show current settings
+    """
+    from . import reminder_job as _rj
+    db = brain._supabase
+    if not db:
+        return _make_response("Sorry, could not update reminder settings right now.", from_number=from_number)
+
+    parts = text.strip().lower().split()
+    # /reminders with no subcommand — show status
+    if len(parts) == 1:
+        try:
+            res = db.table("families").select("reminders_enabled, reminder_time").eq("family_id", family_id).limit(1).execute()
+            if res.data:
+                enabled = res.data[0].get("reminders_enabled", True)
+                rtime = res.data[0].get("reminder_time") or "08:00"
+                status = "on ✅" if enabled else "off ❌"
+                return _make_response(
+                    f"🔔 *Daily Reminders*\n"
+                    f"Status: {status}\n"
+                    f"Time: {rtime} (London time)\n\n"
+                    f"Commands:\n"
+                    f"• */reminders on* — enable\n"
+                    f"• */reminders off* — disable\n"
+                    f"• */reminders time 7:30* — change time",
+                    from_number=from_number,
+                )
+        except Exception as exc:
+            logger.warning("Failed to read reminder prefs: %s", exc)
+        return _make_response("Could not retrieve reminder settings.", from_number=from_number)
+
+    sub = parts[1] if len(parts) > 1 else ""
+
+    # /reminders on
+    if sub == "on":
+        ok = _rj.update_reminder_preferences(db, family_id, enabled=True)
+        if ok:
+            audit_log.audit_log(family_id, "reminders_enabled", "Daily reminders enabled", phone_number=from_number)
+            return _make_response(
+                "✅ Daily reminders enabled. I'll send you a morning nudge for upcoming events and bookings.\n\n"
+                "Use */reminders time HH:MM* to set your preferred time (default: 08:00).",
+                from_number=from_number,
+            )
+        return _make_response("Sorry, failed to enable reminders.", from_number=from_number)
+
+    # /reminders off
+    if sub == "off":
+        ok = _rj.update_reminder_preferences(db, family_id, enabled=False)
+        if ok:
+            audit_log.audit_log(family_id, "reminders_disabled", "Daily reminders disabled", phone_number=from_number)
+            return _make_response(
+                "🔕 Daily reminders disabled. You won't receive morning nudges.\n\n"
+                "Send */reminders on* to re-enable anytime.",
+                from_number=from_number,
+            )
+        return _make_response("Sorry, failed to disable reminders.", from_number=from_number)
+
+    # /reminders time HH:MM
+    if sub == "time" and len(parts) >= 3:
+        time_str = parts[2]
+        # Validate HH:MM format
+        time_match = re.match(r'^(\d{1,2}):(\d{2})$', time_str)
+        if not time_match:
+            return _make_response(
+                "⚠️ Invalid time format. Use HH:MM — e.g. */reminders time 7:30* or */reminders time 08:00*",
+                from_number=from_number,
+            )
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2))
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return _make_response("⚠️ Time must be between 00:00 and 23:59.", from_number=from_number)
+        if hour < 7 or hour >= 21:
+            return _make_response(
+                "⚠️ Reminder time must be between 07:00 and 21:00 (quiet hours apply).",
+                from_number=from_number,
+            )
+        normalised = f"{hour:02d}:{minute:02d}"
+        ok = _rj.update_reminder_preferences(db, family_id, reminder_time=normalised)
+        if ok:
+            audit_log.audit_log(
+                family_id, "reminder_time_changed",
+                f"Reminder time set to {normalised}",
+                phone_number=from_number,
+            )
+            return _make_response(
+                f"✅ Reminder time set to *{normalised}* (London time).\n"
+                f"I'll send your morning nudge at {normalised} each day.",
+                from_number=from_number,
+            )
+        return _make_response("Sorry, failed to update reminder time.", from_number=from_number)
+
+    # Unrecognised subcommand
+    return _make_response(
+        "Usage:\n"
+        "• */reminders on* — enable daily reminders\n"
+        "• */reminders off* — disable daily reminders\n"
+        "• */reminders time 7:30* — set preferred time\n"
+        "• */reminders* — show current settings",
+        from_number=from_number,
+    )
+
+
 def _handle_auditlog_command(from_number: str, family_id: str) -> Response:
     """Handle /auditlog command — show recent family activity."""
     logs = audit_log.get_audit_trail(family_id, limit=10)
@@ -6609,10 +6760,26 @@ def main() -> None:
             id="weekly_relation_inference",
         )
 
+        # Daily proactive reminders (runs at 08:00 Europe/London by default;
+        # per-family preferred times are respected inside run_daily_reminders)
+        try:
+            from . import reminder_job as _reminder_job
+            alert_scheduler.add_job(
+                lambda: _reminder_job.run_daily_reminders(scheduler=alert_scheduler),
+                trigger="cron",
+                hour=8,
+                minute=0,
+                timezone=pytz.timezone("Europe/London"),
+                id="daily_reminders",
+            )
+            logger.info("Reminder job scheduled: 08:00 Europe/London daily")
+        except Exception as exc:
+            logger.warning("Could not register reminder job: %s", exc)
         alert_scheduler.start()
         logger.info(
             "Schedulers started: daily expiry alerts (08:00), "
-            "Google Calendar sync (every 15 min)"
+            "Google Calendar sync (every 15 min), "
+            "daily reminders (08:00)"
         )
     except Exception as exc:
         logger.warning("Could not start schedulers: %s", exc)
