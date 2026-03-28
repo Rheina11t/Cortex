@@ -57,7 +57,8 @@ google-auth-oauthlib==1.2.1
 google-api-python-client==2.163.0
 
 # Web search for proactive contact detail lookup
-ddgs==6.3.7
+# NOTE: ddgs jumped from 5.x directly to 9.x — 6.x/7.x/8.x were never published to PyPI
+ddgs==9.12.0
 pytz==2024.2
 bcrypt==4.2.0
 
