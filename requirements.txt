@@ -66,7 +66,7 @@ bcrypt==4.2.0
 reportlab==4.2.5
 
 # PDF text extraction for school email attachments (pdfminer is more reliable than PyPDF2 for scanned/complex layouts)
-pdfminer.six==20231228
+pdfminer.six==20250327
 
 # Word document (.docx) text extraction for school email attachments
 python-docx==1.1.2
