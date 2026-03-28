@@ -21,12 +21,17 @@ import logging
 import os
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from flask import Blueprint, Response, redirect
+from . import security_logger
+from . import validators
 
 logger = logging.getLogger("familybrain.family_invites")
+
+# Invite tokens expire after this many days
+_INVITE_EXPIRY_DAYS = 7
 
 # ---------------------------------------------------------------------------
 # Config
@@ -69,15 +74,12 @@ def _get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 
-def _generate_token(length: int = 8) -> str:
-    """Generate a URL-safe alphanumeric token, e.g. 'aB3xZ9qR'.
+def _generate_token(length: int = 32) -> str:
+    """Generate a URL-safe token using secrets.token_urlsafe.
 
-    Uses secrets.choice for cryptographic randomness.
-    Length 8 gives ~47 bits of entropy — sufficient for invite tokens that
-    expire after use.
+    Length 32 gives ~192 bits of entropy — hardened in Phase 2.
     """
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+    return secrets.token_urlsafe(length)
 
 
 def _unique_token(db) -> str:
@@ -94,7 +96,7 @@ def _unique_token(db) -> str:
         if not existing.data:
             return token
     # Extremely unlikely to reach here, but fall back to a longer token
-    return _generate_token(12)
+    return _generate_token(48)
 
 
 def create_invite(
@@ -115,12 +117,14 @@ def create_invite(
     try:
         db = _get_supabase()
         token = _unique_token(db)
+        now = datetime.now(timezone.utc)
         db.table("family_invites").insert({
             "invite_token": token,
             "family_id": family_id,
             "invited_name": invited_name,
             "invited_by_phone": invited_by_phone,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": now.isoformat(),
+            "expires_at": (now + timedelta(days=_INVITE_EXPIRY_DAYS)).isoformat(),
         }).execute()
         logger.info(
             "Created invite token=%s family=%s name=%s by=%s",
@@ -265,10 +269,14 @@ def join_via_token(token: str) -> Response:
 
     Invalid / used token → friendly HTML error page.
     """
-    # Sanitise token — only allow alphanumeric characters
-    import re
-    if not re.match(r'^[A-Za-z0-9]{4,20}$', token):
+    # Sanitise token — validate format using centralised validator
+    validated_token = validators.validate_invite_token(token)
+    if validated_token is None:
         logger.warning("Invalid token format: %r", token)
+        security_logger.security_log(
+            "invalid_token",
+            {"reason": "format_validation_failed", "token_preview": token[:8]},
+        )
         return Response(
             _JOIN_ERROR_HTML.format(
                 title="Invalid invite link",
@@ -277,11 +285,16 @@ def join_via_token(token: str) -> Response:
             status=400,
             mimetype="text/html",
         )
+    token = validated_token
 
     invite = get_invite(token)
 
     if invite is None:
         logger.warning("Token not found: %s", token)
+        security_logger.security_log(
+            "token_not_found",
+            {"token_preview": token[:8]},
+        )
         return Response(
             _JOIN_ERROR_HTML.format(
                 title="Invite not found",
@@ -293,6 +306,10 @@ def join_via_token(token: str) -> Response:
 
     if invite.get("used_at"):
         logger.info("Token already used: %s", token)
+        security_logger.security_log(
+            "used_token",
+            {"token_preview": token[:8], "family_id": invite.get("family_id")},
+        )
         return Response(
             _JOIN_ERROR_HTML.format(
                 title="Invite already used",
@@ -301,6 +318,28 @@ def join_via_token(token: str) -> Response:
             status=410,
             mimetype="text/html",
         )
+
+    # --- Expiry check (Phase 2 hardening) ---
+    expires_at_str = invite.get("expires_at")
+    if expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires_at:
+                logger.info("Token expired: %s (expired at %s)", token, expires_at_str)
+                security_logger.security_log(
+                    "expired_token",
+                    {"token_preview": token[:8], "expired_at": expires_at_str},
+                )
+                return Response(
+                    _JOIN_ERROR_HTML.format(
+                        title="Invite expired",
+                        message="This invite link has expired. Invite links are valid for 7 days. Ask your family member to send a new one.",
+                    ),
+                    status=410,
+                    mimetype="text/html",
+                )
+        except (ValueError, TypeError):
+            pass  # If we can't parse the date, allow the invite through
 
     # Build WhatsApp deep link
     wa_number = FAMILYBRAIN_WHATSAPP_NUMBER

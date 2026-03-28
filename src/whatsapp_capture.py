@@ -58,12 +58,16 @@ except ImportError:
     MessagingResponse = None  # type: ignore
     _TWILIO_AVAILABLE = False
 
+import collections
+import time as _time_mod
 from .config import get_settings, logger as root_logger
 from . import brain
 from . import entity_graph
 from . import stripe_billing
 from . import meta_whatsapp
 from . import family_invites
+from . import security_logger
+from . import validators
 import threading
 
 logger = logging.getLogger("open_brain.whatsapp")
@@ -445,7 +449,7 @@ def _detect_event(text: str, sender_name: str) -> Optional[dict[str, Any]]:
             temperature=0.0,
             messages=[
                 {"role": "system", "content": _get_event_detection_prompt()},
-                {"role": "user", "content": f"Sender: {sender_name}\n\nMessage: {text}"},
+                {"role": "user", "content": f"Sender: {sender_name}\n\nMessage: {_sanitise_llm_input(text)}"},
             ],
             response_format={"type": "json_object"},
         )
@@ -574,6 +578,7 @@ def _check_conflicts_and_store_event(
 # ---------------------------------------------------------------------------
 def _extract_document_metadata(text: str) -> dict[str, Any]:
     """Use the LLM to classify a document and extract structured metadata."""
+    text = _sanitise_llm_input(text)  # Phase 2: prompt injection defence
     if settings.llm_backend == "anthropic" and brain._anthropic_client:
         return _extract_doc_meta_anthropic(text)
     return _extract_doc_meta_openai(text)
@@ -964,15 +969,193 @@ def _validate_twilio_request(f: Callable) -> Callable:
                 "Rejected request with invalid Twilio signature from %s",
                 request.remote_addr,
             )
+            security_logger.security_log(
+                "webhook_signature_failed",
+                {"transport": "twilio", "remote_addr": request.remote_addr},
+            )
             return Response("Forbidden", status=403)
         return f(*args, **kwargs)
     return decorated
 
 
 # ---------------------------------------------------------------------------
+# Prompt injection defences (Phase 2 security hardening)
+# ---------------------------------------------------------------------------
+_JAILBREAK_PATTERNS = [
+    re.compile(r"ignore\s+previous\s+instructions", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now", re.IGNORECASE),
+    re.compile(r"pretend\s+you\s+are", re.IGNORECASE),
+    re.compile(r"\bDAN\b"),  # "Do Anything Now" jailbreak
+    re.compile(r"\bact\s+as\b", re.IGNORECASE),
+    re.compile(r"forget\s+your\s+instructions", re.IGNORECASE),
+    re.compile(r"repeat\s+your\s+instructions", re.IGNORECASE),
+    re.compile(r"what\s+is\s+your\s+system\s+prompt", re.IGNORECASE),
+]
+
+_SENSITIVE_OUTPUT_PATTERNS = [
+    re.compile(r"sk-[a-zA-Z0-9]{20,}"),           # OpenAI API keys
+    re.compile(r"whsec_[a-zA-Z0-9]+"),             # Stripe webhook secrets
+    re.compile(r"eyJ[a-zA-Z0-9_-]{30,}\.[a-zA-Z0-9_-]+"),  # JWT / Supabase keys
+    re.compile(r"xoxb-[a-zA-Z0-9-]+"),             # Slack bot tokens
+    re.compile(r"SUPABASE_SERVICE_KEY", re.IGNORECASE),
+    re.compile(r"OPENAI_API_KEY", re.IGNORECASE),
+]
+
+
+def _sanitise_llm_input(text: str) -> str:
+    """Detect and neutralise prompt injection / jailbreak attempts.
+
+    Returns the (possibly sanitised) text.  Logs a warning and emits a
+    structured security event when a pattern is detected.
+    """
+    for pattern in _JAILBREAK_PATTERNS:
+        if pattern.search(text):
+            sanitised = pattern.sub("[blocked]", text)
+            logger.warning("Prompt injection detected and blocked: %r", pattern.pattern)
+            security_logger.security_log(
+                "prompt_injection_blocked",
+                {"pattern": pattern.pattern, "input_length": len(text)},
+            )
+            text = sanitised
+    return text
+
+
+def _sanitise_llm_output(text: str) -> str:
+    """Filter LLM output for leaked secrets or system prompt content.
+
+    Returns a safe fallback if sensitive content is detected.
+    """
+    if not text:
+        return text
+    for pattern in _SENSITIVE_OUTPUT_PATTERNS:
+        if pattern.search(text):
+            logger.warning("LLM output filter triggered: %r", pattern.pattern)
+            security_logger.security_log(
+                "output_filter_triggered",
+                {"pattern": pattern.pattern, "output_length": len(text)},
+            )
+            return "I can help you with that! Could you rephrase your question?"
+    # Check for system prompt leakage
+    text_lower = text.lower()
+    if "system prompt" in text_lower and any(
+        phrase in text_lower
+        for phrase in ["you are family brain", "you are a", "your instructions"]
+    ):
+        logger.warning("LLM output appears to contain system prompt leakage")
+        security_logger.security_log(
+            "output_filter_triggered",
+            {"reason": "system_prompt_leakage", "output_length": len(text)},
+        )
+        return "I can help you with that! Could you rephrase your question?"
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Per-phone rate limiting (Phase 2 security hardening)
+# ---------------------------------------------------------------------------
+class _RateLimiter:
+    """In-memory sliding-window rate limiter with per-phone and global limits."""
+
+    def __init__(
+        self,
+        per_phone_per_minute: int = 30,
+        per_phone_per_hour: int = 200,
+        global_per_minute: int = 1000,
+    ):
+        self._per_phone_per_minute = per_phone_per_minute
+        self._per_phone_per_hour = per_phone_per_hour
+        self._global_per_minute = global_per_minute
+        self._phone_timestamps: dict[str, list[float]] = collections.defaultdict(list)
+        self._global_timestamps: list[float] = []
+        self._lock = threading.Lock()
+
+    def _cleanup(self, timestamps: list[float], window: float) -> list[float]:
+        """Remove timestamps older than *window* seconds."""
+        cutoff = _time_mod.time() - window
+        return [t for t in timestamps if t > cutoff]
+
+    def check(self, phone: str) -> tuple[bool, str]:
+        """Return (allowed, reason).  *allowed* is True when within limits."""
+        now = _time_mod.time()
+        with self._lock:
+            # --- Global limit ---
+            self._global_timestamps = self._cleanup(self._global_timestamps, 60)
+            if len(self._global_timestamps) >= self._global_per_minute:
+                return False, "global_rate_limit"
+            # --- Per-phone limits ---
+            ts = self._phone_timestamps[phone]
+            ts = self._cleanup(ts, 3600)  # keep 1 hour of data
+            self._phone_timestamps[phone] = ts
+            recent_minute = [t for t in ts if t > now - 60]
+            if len(recent_minute) >= self._per_phone_per_minute:
+                return False, "per_phone_minute_limit"
+            if len(ts) >= self._per_phone_per_hour:
+                return False, "per_phone_hour_limit"
+            # Record this request
+            ts.append(now)
+            self._global_timestamps.append(now)
+            return True, ""
+
+
+_rate_limiter = _RateLimiter()
+
+
+def _check_rate_limit(phone: str) -> tuple[bool, str]:
+    """Check rate limits for a phone number.  Returns (allowed, reason)."""
+    allowed, reason = _rate_limiter.check(phone)
+    if not allowed:
+        logger.warning("Rate limit hit for %s: %s", phone, reason)
+        security_logger.security_log(
+            "rate_limit_hit",
+            {"reason": reason},
+            phone=phone,
+        )
+    return allowed, reason
+
+
+# ---------------------------------------------------------------------------
+# Error sanitisation helper (Phase 2 security hardening)
+# ---------------------------------------------------------------------------
+def safe_error_response(e: Exception, context: str = "") -> str:
+    """Log the full error but return a generic safe string.
+
+    NEVER includes the actual exception message in the return value.
+    """
+    logger.error(
+        "Error in %s: %s",
+        context or "unknown context",
+        e,
+        exc_info=True,
+    )
+    return "Something went wrong. Please try again in a moment."
+
+
+# ---------------------------------------------------------------------------
 # Flask application
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+
+
+@app.errorhandler(500)
+def _handle_500(e):
+    """Return a generic error for 500 responses — never leak internals."""
+    logger.error("Internal server error: %s", e, exc_info=True)
+    return Response(
+        json.dumps({"error": "An internal error occurred. Please try again later."}),
+        status=500,
+        mimetype="application/json",
+    )
+
+
+@app.errorhandler(Exception)
+def _handle_exception(e):
+    """Catch-all error handler — never leak internals."""
+    logger.error("Unhandled exception: %s", e, exc_info=True)
+    return Response(
+        json.dumps({"error": "An internal error occurred. Please try again later."}),
+        status=500,
+        mimetype="application/json",
+    )
 
 # ---------------------------------------------------------------------------
 # Register Stripe billing routes (/join, /subscribe, /stripe/*)
@@ -2285,6 +2468,10 @@ def _handle_meta_webhook() -> Response:
             "Rejected Meta webhook: invalid signature from %s",
             request.remote_addr,
         )
+        security_logger.security_log(
+            "webhook_signature_failed",
+            {"transport": "meta", "remote_addr": request.remote_addr},
+        )
         return Response("Forbidden", status=403)
 
     try:
@@ -2304,6 +2491,18 @@ def _handle_meta_webhook() -> Response:
     media_id = parsed["media_id"]
     media_mime_type = parsed["media_mime_type"]
     meta_message_id = parsed["message_id"]
+
+    # --- Input validation (Phase 2) ---
+    message_body = validators.sanitise_string(message_body)
+
+    # --- Rate limiting (Phase 2) ---
+    allowed, _rl_reason = _check_rate_limit(from_number)
+    if not allowed:
+        meta_whatsapp.send_text_message(
+            from_number,
+            "You\u2019re sending messages too quickly \u2014 please wait a moment \U0001f64f",
+        )
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
 
     logger.info(
         "Incoming Meta WhatsApp message from=%s, body_len=%d, num_media=%d",
@@ -2368,6 +2567,17 @@ def _handle_twilio_webhook() -> Response:
     from_number: str = request.values.get("From", "").strip()
     message_body: str = request.values.get("Body", "").strip()
     num_media: int = int(request.values.get("NumMedia", "0"))
+
+    # --- Input validation (Phase 2) ---
+    message_body = validators.sanitise_string(message_body)
+
+    # --- Rate limiting (Phase 2) ---
+    allowed, _rl_reason = _check_rate_limit(from_number)
+    if not allowed:
+        return _make_response(
+            "You\u2019re sending messages too quickly \u2014 please wait a moment \U0001f64f",
+            from_number=from_number,
+        )
 
     logger.info(
         "Incoming WhatsApp message from=%s, body_len=%d, num_media=%d",
@@ -2512,7 +2722,7 @@ def _is_query(text: str, from_number: str) -> bool:
                     "role": "system",
                     "content": "Is this message a QUESTION/QUERY asking for information, or is it a STATEMENT providing information to store? Reply with only 'query' or 'store'."
                 },
-                {"role": "user", "content": text},
+                {"role": "user", "content": _sanitise_llm_input(text)},
             ],
         )
         reply = response.choices[0].message.content or ""
@@ -2797,11 +3007,11 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
             messages = [{"role": "system", "content": prompt}]
             if conversation_history:
                 messages.extend(conversation_history)
-            messages.append({"role": "user", "content": f"Question: {text}\n\nStored memories:\n{memories_text}{web_context}"})
+            messages.append({"role": "user", "content": f"Question: {_sanitise_llm_input(text)}\n\nStored memories:\n{memories_text}{web_context}"})
 
             answer = brain.get_llm_reply(messages=messages)
             # Strip any <thinking>...</thinking> chain-of-thought blocks before delivery
-            answer_clean = _strip_thinking_tags(answer)
+            answer_clean = _sanitise_llm_output(_strip_thinking_tags(answer))
             reply_text = answer_clean[:3800]
 
             # Update conversation history (store cleaned answer so follow-up context is also clean)
@@ -2877,7 +3087,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                     logger.warning("Web fallback enrichment failed: %s", exc)
 
             if web_fallback_answer:
-                web_fallback_clean = _strip_thinking_tags(web_fallback_answer)
+                web_fallback_clean = _sanitise_llm_output(_strip_thinking_tags(web_fallback_answer))
                 reply_text = web_fallback_clean[:3800]
                 # Update conversation history
                 if from_number not in _conversation_history:
@@ -2892,8 +3102,7 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
         log_action(family_id, 'query_answered', subject=text[:50], detail={'sources': len(results)}, phone_number=from_number)
 
     except Exception as exc:
-        logger.error("Failed to answer query: %s\n%s", exc, traceback.format_exc())
-        reply_text = f"⚠️ Failed to answer query: {exc}"
+        reply_text = safe_error_response(exc, context="query_handler")
 
     return _make_response(reply_text, from_number=from_number)
 
@@ -3190,9 +3399,8 @@ def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
         results["deleted"]["memories"] = count
         logger.info("Full data deletion: removed %d memories for family_id=%s", count, family_id)
     except Exception as exc:
-        msg = f"memories: {exc}"
-        results["errors"].append(msg)
-        logger.error("Full data deletion error — %s", msg)
+        logger.error("Full data deletion error — memories: %s", exc)
+        results["errors"].append("memories: deletion failed")
 
     # 2. Delete all family_events for this family
     try:
@@ -3206,9 +3414,8 @@ def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
         results["deleted"]["family_events"] = count
         logger.info("Full data deletion: removed %d family_events for family_id=%s", count, family_id)
     except Exception as exc:
-        msg = f"family_events: {exc}"
-        results["errors"].append(msg)
-        logger.error("Full data deletion error — %s", msg)
+        logger.error("Full data deletion error — family_events: %s", exc)
+        results["errors"].append("family_events: deletion failed")
 
     # 3. Delete all cortex_briefings for this family
     try:
@@ -3222,9 +3429,8 @@ def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
         results["deleted"]["cortex_briefings"] = count
         logger.info("Full data deletion: removed %d cortex_briefings for family_id=%s", count, family_id)
     except Exception as exc:
-        msg = f"cortex_briefings: {exc}"
-        results["errors"].append(msg)
-        logger.error("Full data deletion error — %s", msg)
+        logger.error("Full data deletion error — cortex_briefings: %s", exc)
+        results["errors"].append("cortex_briefings: deletion failed")
 
     # 4. Delete all cortex_actions for this family
     try:
@@ -3238,9 +3444,8 @@ def _execute_family_data_deletion(family_id: str) -> dict[str, Any]:
         results["deleted"]["cortex_actions"] = count
         logger.info("Full data deletion: removed %d cortex_actions for family_id=%s", count, family_id)
     except Exception as exc:
-        msg = f"cortex_actions: {exc}"
-        results["errors"].append(msg)
-        logger.error("Full data deletion error — %s", msg)
+        logger.error("Full data deletion error — cortex_actions: %s", exc)
+        results["errors"].append("cortex_actions: deletion failed")
 
     # 5. Attempt to delete any emergency PDFs from Supabase Storage
     try:
@@ -3286,9 +3491,8 @@ def _execute_personal_data_deletion(family_id: str, from_number: str) -> dict[st
             "Personal data deletion: removed %d memories for %s", count, from_number
         )
     except Exception as exc:
-        msg = f"memories: {exc}"
-        results["errors"].append(msg)
-        logger.error("Personal data deletion error — %s", msg)
+        logger.error("Personal data deletion error — memories: %s", exc)
+        results["errors"].append("memories: deletion failed")
 
     # 2. Delete family_events associated with this user
     try:
@@ -3305,9 +3509,8 @@ def _execute_personal_data_deletion(family_id: str, from_number: str) -> dict[st
             "Personal data deletion: removed %d family_events for %s", count, user_name
         )
     except Exception as exc:
-        msg = f"family_events: {exc}"
-        results["errors"].append(msg)
-        logger.error("Personal data deletion error — %s", msg)
+        logger.error("Personal data deletion error — family_events: %s", exc)
+        results["errors"].append("family_events: deletion failed")
 
     # 3. Delete cortex_actions associated with this user
     try:
@@ -3324,9 +3527,8 @@ def _execute_personal_data_deletion(family_id: str, from_number: str) -> dict[st
             "Personal data deletion: removed %d cortex_actions for %s", count, from_number
         )
     except Exception as exc:
-        msg = f"cortex_actions: {exc}"
-        results["errors"].append(msg)
-        logger.error("Personal data deletion error — %s", msg)
+        logger.error("Personal data deletion error — cortex_actions: %s", exc)
+        results["errors"].append("cortex_actions: deletion failed")
 
     return results
 
@@ -3923,6 +4125,8 @@ def _handle_join_invite_command(token: str, from_number: str) -> Response:
 # ---------------------------------------------------------------------------
 def _handle_text_message(text: str, family_name: str, from_number: str) -> Response:
     """Process a plain text WhatsApp message, routing to query or capture."""
+    # --- Input validation (Phase 2) ---
+    text = validators.sanitise_string(text)
     _family_id = _get_family_id_for_phone(from_number)
     if not text:
         return _make_response(
@@ -4748,8 +4952,7 @@ def _handle_media_message(
             _send_emergency_progress_update(from_number, _family_id)
 
     except Exception as exc:
-        logger.error("Failed to process media: %s\n%s", exc, traceback.format_exc())
-        _media_reply = f"\u26a0\ufe0f Failed to process media: {exc}"
+        _media_reply = safe_error_response(exc, context="media_processing")
 
     return _make_response(_media_reply or "", from_number=from_number)
 
@@ -4913,9 +5116,8 @@ def _handle_death_binder_command(
         return _make_response(reply, from_number=from_number)
 
     except Exception as exc:
-        logger.error("Failed to store death binder entry: %s", exc)
         return _make_response(
-            f"⚠️ Failed to save your entry: {exc}",
+            safe_error_response(exc, context="death_binder_save"),
             from_number=from_number,
         )
 

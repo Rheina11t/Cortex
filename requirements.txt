@@ -1,73 +1,72 @@
 # Family Brain – Python Dependencies
 # Install with: pip install -r requirements.txt
+# Pinned to exact versions for reproducibility and security (Phase 2 hardening)
 
 # Core database and AI clients
-supabase>=2.0.0
-openai>=1.12.0
+supabase==2.13.0
+openai==1.66.3
 
 # Anthropic Claude support (required when LLM_BACKEND=anthropic)
-anthropic>=0.25.0
+anthropic==0.49.0
 
 # MCP server framework (includes FastMCP and all transports)
-mcp[cli]>=1.2.0
+mcp[cli]==1.6.0
 
 # Telegram capture layer
-python-telegram-bot>=21.0.0
+python-telegram-bot==21.10
 
 # Configuration
-python-dotenv>=1.0.0
+python-dotenv==1.0.1
 
 # HTTP/SSE transport: production ASGI server
-uvicorn[standard]>=0.29.0
+uvicorn[standard]==0.34.0
 
-# Google Vision API (optional – for photo/document OCR)
-# Install only if using GOOGLE_VISION_KEY_PATH:
-# pip install google-cloud-vision
-google-cloud-vision>=3.5.0
+# Google Vision API (for photo/document OCR)
+google-cloud-vision==3.9.0
 
 # PDF text extraction (for document ingestion via Telegram)
-PyPDF2>=3.0.0
+PyPDF2==3.0.1
 
 # Date parsing for family scheduling, maintenance, and health tracking
-python-dateutil>=2.8.0
+python-dateutil==2.9.0.post0
 
 # Numerical computing (used for embedding similarity calculations)
-numpy>=1.24.0
+numpy==1.26.4
 
 # Scheduling (used for daily digest and panning for gold)
-APScheduler>=3.10.0
+APScheduler==3.10.4
 
 # Slack capture layer
-slack-bolt>=1.18.0
+slack-bolt==1.22.0
 
 # WhatsApp capture layer
 # Twilio SDK kept for USE_META_API=false fallback; remove once fully migrated to Meta Cloud API
-twilio>=9.0.0
-flask>=3.0.0
-requests>=2.31.0
+twilio==9.4.5
+flask==3.1.0
+requests==2.32.3
 
 # Stripe payment integration (onboarding backend)
-stripe>=8.0.0
+stripe==11.5.0
 
 # PDF text extraction (pdfplumber, used by WhatsApp and Telegram capture layers)
-pdfplumber>=0.10.0
+pdfplumber==0.11.6
 
 # Google Calendar integration
-google-auth>=2.0.0
-google-auth-oauthlib>=1.0.0
-google-api-python-client>=2.0.0
+google-auth==2.38.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.163.0
 
 # Web search for proactive contact detail lookup
-ddgs>=6.0.0
-pytz>=2024.1
+ddgs==6.3.7
+pytz==2024.2
 
 # PDF generation for 'If Anything Happens' emergency file feature
-reportlab>=4.0.0
+reportlab==4.2.5
 
 # PDF text extraction for school email attachments (pdfminer is more reliable than PyPDF2 for scanned/complex layouts)
-pdfminer.six>=20221105
+pdfminer.six==20231228
 
 # Word document (.docx) text extraction for school email attachments
-python-docx>=1.1.0
-pdf2image>=1.16.3
-pytesseract>=0.3.10
+python-docx==1.1.2
+pdf2image==1.17.0
+pytesseract==0.3.13

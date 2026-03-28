@@ -43,11 +43,23 @@ from typing import Any, Optional
 
 import stripe
 from flask import Blueprint, Response, jsonify, redirect, render_template_string, request
+from . import security_logger
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("familybrain.stripe_billing")
+
+# ---------------------------------------------------------------------------
+# Allowed Stripe webhook event types (Phase 2 security hardening)
+# ---------------------------------------------------------------------------
+_ALLOWED_EVENT_TYPES: frozenset[str] = frozenset({
+    "checkout.session.completed",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "invoice.payment_succeeded",
+    "invoice.payment_failed",
+})
 
 # ---------------------------------------------------------------------------
 # Config
@@ -472,9 +484,13 @@ def stripe_webhook() -> Response:
     Stripe webhook handler.
 
     Verifies the Stripe-Signature header using STRIPE_WEBHOOK_SECRET.
+    Phase 2 hardening: event type allowlisting + idempotency.
     Handles:
-      • checkout.session.completed      → provision family in Supabase + send welcome WhatsApp
-      • customer.subscription.deleted   → mark family as inactive
+      • checkout.session.completed        → provision family in Supabase + send welcome WhatsApp
+      • customer.subscription.updated     → (logged, future use)
+      • customer.subscription.deleted     → mark family as inactive
+      • invoice.payment_succeeded         → (logged, future use)
+      • invoice.payment_failed            → (logged, future use)
     """
     payload = request.get_data()
     sig_header = request.headers.get("Stripe-Signature", "")
@@ -485,27 +501,86 @@ def stripe_webhook() -> Response:
             "Set this env var to your Stripe webhook signing secret (whsec_...)."
         )
         return Response("Webhook secret not configured", status=500)
-    else:
-        try:
-            event_data = stripe.Webhook.construct_event(
-                payload, sig_header, STRIPE_WEBHOOK_SECRET
-            )
-        except stripe.SignatureVerificationError as exc:
-            logger.error("Stripe webhook signature verification failed: %s", exc)
-            return Response("Invalid signature", status=400)
-        except Exception as exc:
-            logger.error("Stripe webhook parse error: %s", exc)
-            return Response("Bad request", status=400)
+
+    try:
+        event_data = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except stripe.SignatureVerificationError as exc:
+        logger.error("Stripe webhook signature verification failed: %s", exc)
+        security_logger.security_log(
+            "stripe_webhook_failed",
+            {"reason": "signature_verification_failed", "error": str(exc)[:200]},
+        )
+        return Response("Invalid signature", status=400)
+    except Exception as exc:
+        logger.error("Stripe webhook parse error: %s", exc)
+        security_logger.security_log(
+            "stripe_webhook_failed",
+            {"reason": "parse_error", "error": str(exc)[:200]},
+        )
+        return Response("Bad request", status=400)
 
     event_type: str = event_data.get("type", "")
-    logger.info("Stripe webhook received: %s", event_type)
+    event_id: str = event_data.get("id", "")
+    logger.info("Stripe webhook received: %s (id=%s)", event_type, event_id)
 
+    # --- Event type allowlisting (Phase 2) ---
+    if event_type not in _ALLOWED_EVENT_TYPES:
+        logger.info("Ignoring unhandled Stripe event type: %s", event_type)
+        return Response("ok", status=200)
+
+    # --- Idempotency check (Phase 2) ---
+    if event_id and _is_event_already_processed(event_id):
+        logger.info("Skipping already-processed Stripe event: %s", event_id)
+        return Response("ok", status=200)
+
+    # --- Route to handler ---
     if event_type == "checkout.session.completed":
         _handle_checkout_completed(event_data["data"]["object"])
+    elif event_type == "customer.subscription.updated":
+        logger.info("Subscription updated event received (id=%s)", event_id)
     elif event_type == "customer.subscription.deleted":
         _handle_subscription_deleted(event_data["data"]["object"])
+    elif event_type == "invoice.payment_succeeded":
+        logger.info("Invoice payment succeeded (id=%s)", event_id)
+    elif event_type == "invoice.payment_failed":
+        logger.info("Invoice payment failed (id=%s)", event_id)
+
+    # --- Mark event as processed ---
+    if event_id:
+        _mark_event_processed(event_id, event_type)
 
     return Response("ok", status=200)
+
+
+def _is_event_already_processed(event_id: str) -> bool:
+    """Check if a Stripe event has already been processed (idempotency guard)."""
+    try:
+        sb = _get_supabase()
+        result = (
+            sb.table("processed_stripe_events")
+            .select("id")
+            .eq("event_id", event_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as exc:
+        logger.warning("Idempotency check failed for event %s: %s", event_id, exc)
+        return False  # Fail open: process the event rather than silently dropping it
+
+
+def _mark_event_processed(event_id: str, event_type: str) -> None:
+    """Record a Stripe event as processed in the idempotency table."""
+    try:
+        sb = _get_supabase()
+        sb.table("processed_stripe_events").insert({
+            "event_id": event_id,
+            "event_type": event_type,
+        }).execute()
+    except Exception as exc:
+        logger.warning("Failed to record processed event %s: %s", event_id, exc)
 
 
 # ---------------------------------------------------------------------------
