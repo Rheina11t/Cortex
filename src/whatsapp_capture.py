@@ -74,6 +74,8 @@ from . import db_client
 from . import correlation
 from . import entitlements
 from . import scenario_planner
+from . import memory_consolidation
+from . import confidence_scoring
 import threading
 import bcrypt
 
@@ -3462,11 +3464,58 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                     "Use these relationships to enrich your answer where relevant. "
                 )
 
+            # --- Entity profiles (memory consolidation) ---
+            # Extract entity names from the query for profile lookup.
+            # This supplements raw memories with concise consolidated profiles
+            # for entities that have 3+ stored memories, reducing context bloat.
+            entity_profiles_section = ""
+            try:
+                _query_words = [
+                    w.strip(".,!?;:'\"").capitalize()
+                    for w in text.split()
+                    if len(w) >= 3 and w[0].isupper()
+                ]
+                if _query_words and family_id:
+                    _profiles = memory_consolidation.get_entity_profiles(
+                        family_id, _query_words
+                    )
+                    _profiles_text = memory_consolidation.format_profiles_for_prompt(_profiles)
+                    if _profiles_text:
+                        entity_profiles_section = _profiles_text
+                        logger.debug(
+                            "Injecting %d entity profile(s) into context",
+                            len(_profiles),
+                        )
+            except Exception as _ep_exc:
+                logger.warning("Entity profile lookup failed (non-fatal): %s", _ep_exc)
+
+            # --- Confidence scoring ---
+            # Calculate retrieval quality from the memories and graph context
+            # so the LLM can ground its stated confidence in objective metrics.
+            confidence_injection = ""
+            try:
+                _rq_score = confidence_scoring.calculate_retrieval_quality(
+                    results, graph_context
+                )
+                confidence_injection = confidence_scoring.format_confidence_prompt_injection(
+                    _rq_score
+                )
+                logger.debug(
+                    "Retrieval quality: %s (sim=%.2f, count=%d)",
+                    _rq_score.overall_quality,
+                    _rq_score.avg_similarity,
+                    _rq_score.memory_count,
+                )
+            except Exception as _cs_exc:
+                logger.warning("Confidence scoring failed (non-fatal): %s", _cs_exc)
+
             prompt = (
                 _FAMILY_DIGITAL_TWIN_SYSTEM_PROMPT
                 + f"\n\nFamily: {family_name} household. The person asking is {family_name}."
                 + f" Today's date is {today_str}."
                 + (f"\n\n{graph_prompt_section}" if graph_prompt_section else "")
+                + (f"\n\n{entity_profiles_section}" if entity_profiles_section else "")
+                + (f"\n\n{confidence_injection}" if confidence_injection else "")
                 + "\n\nEach stored memory below is prefixed with a [stored: <timestamp>] label showing when it was saved."
                 " MEMORY FRESHNESS RULE (STRICT): If a memory uses relative time words such as 'tonight', 'today',"
                 " 'tomorrow', 'this week', 'next week', 'yesterday', or similar, you MUST check its [stored:]"
