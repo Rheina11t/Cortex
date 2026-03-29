@@ -6921,6 +6921,14 @@ def main() -> None:
             logger.info("Reminder job scheduled: 08:00 Europe/London daily")
         except Exception as exc:
             logger.warning("Could not register reminder job: %s", exc)
+
+        # Data Retention Job (runs monthly on the 1st at 02:00 Europe/London)
+        try:
+            from . import data_retention_job as _retention_job
+            _retention_job.register_retention_scheduler(alert_scheduler)
+        except Exception as exc:
+            logger.warning("Could not register data retention job: %s", exc)
+
         alert_scheduler.start()
         logger.info(
             "Schedulers started: daily expiry alerts (08:00), "
