@@ -405,21 +405,24 @@ def infer_relations(family_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 def get_entity_context(query: str, family_id: str) -> str:
-    """Find entities relevant to *query* and traverse their relations.
+    """Find entities relevant to *query* and traverse their 2-hop subgraph.
 
     Searches family_entities by name (case-insensitive substring match) and
-    aliases, then follows one hop of relations to build a context string like:
+    aliases, then calls the ``get_entity_subgraph`` RPC to walk up to 2 hops
+    of relations in a single database round-trip.
 
-        Izzy (person) -> attends -> St Joseph's School (organisation)
-        St Joseph's School (organisation) -> has event -> Sports Day (event)
+    Returns a context string grouped by hop distance::
 
-    Returns the context string to be injected into LLM prompts, or an empty
-    string if no relevant entities are found.
+        Direct relationships:
+          Izzy (person) -> attends -> St Joseph's School (organisation)
+        Extended relationships:
+          St Joseph's School (organisation) -> scheduled_for -> Sports Day (event)
+
+    Falls back to entity-name-only output if the RPC is unavailable.
     """
     db = _get_db()
 
-    # --- Step 1: Find matching entities ---
-    # Split query into significant words (3+ chars) for matching
+    # --- Step 1: Find matching entities (same logic as before) ---
     query_words = [w.strip(".,!?;:'\"") for w in query.split() if len(w) >= 3]
     if not query_words:
         return ""
@@ -448,87 +451,75 @@ def get_entity_context(query: str, family_id: str) -> str:
     if not matched_entity_ids:
         return ""
 
-    # --- Step 2: Traverse one hop of relations ---
-    context_lines: list[str] = []
-    visited_relations: set[str] = set()
+    # --- Step 2: 2-hop traversal via RPC ---
+    seed_ids = list(matched_entity_ids)
 
-    for eid in list(matched_entity_ids):
-        # Outgoing relations
-        out_res = db.table("family_entity_relations").select(
-            "id, to_entity_id, relation_type, confidence"
-        ).eq("from_entity_id", eid).eq("family_id", family_id).execute()
-
-        for rel in (out_res.data or []):
-            rel_key = rel["id"]
-            if rel_key in visited_relations:
-                continue
-            visited_relations.add(rel_key)
-
-            to_ent = matched_entities.get(rel["to_entity_id"])
-            if not to_ent:
-                # Fetch the target entity
-                to_res = db.table("family_entities").select(
-                    "id, name, entity_type"
-                ).eq("id", rel["to_entity_id"]).limit(1).execute()
-                if to_res.data:
-                    to_ent = to_res.data[0]
-                    matched_entities[to_ent["id"]] = to_ent
-
-            if to_ent:
-                from_ent = matched_entities.get(eid, {})
-                conf_str = f" [{rel['confidence']:.0%}]" if rel["confidence"] < 1.0 else ""
-                context_lines.append(
-                    f"{from_ent.get('name', '?')} ({from_ent.get('entity_type', '?')}) "
-                    f"-> {rel['relation_type']} -> "
-                    f"{to_ent['name']} ({to_ent.get('entity_type', '?')}){conf_str}"
-                )
-
-        # Incoming relations
-        in_res = db.table("family_entity_relations").select(
-            "id, from_entity_id, relation_type, confidence"
-        ).eq("to_entity_id", eid).eq("family_id", family_id).execute()
-
-        for rel in (in_res.data or []):
-            rel_key = rel["id"]
-            if rel_key in visited_relations:
-                continue
-            visited_relations.add(rel_key)
-
-            from_ent = matched_entities.get(rel["from_entity_id"])
-            if not from_ent:
-                from_res = db.table("family_entities").select(
-                    "id, name, entity_type"
-                ).eq("id", rel["from_entity_id"]).limit(1).execute()
-                if from_res.data:
-                    from_ent = from_res.data[0]
-                    matched_entities[from_ent["id"]] = from_ent
-
-            if from_ent:
-                to_ent = matched_entities.get(eid, {})
-                conf_str = f" [{rel['confidence']:.0%}]" if rel["confidence"] < 1.0 else ""
-                context_lines.append(
-                    f"{from_ent['name']} ({from_ent.get('entity_type', '?')}) "
-                    f"-> {rel['relation_type']} -> "
-                    f"{to_ent.get('name', '?')} ({to_ent.get('entity_type', '?')}){conf_str}"
-                )
-
-    if not context_lines:
-        # Still return entity names even without relations
+    try:
+        rpc_result = db.rpc(
+            "get_entity_subgraph",
+            {
+                "p_family_id": family_id,
+                "p_entity_ids": seed_ids,
+                "p_max_hops": 2,
+            },
+        ).execute()
+        rows = rpc_result.data or []
+    except Exception as exc:
+        logger.warning(
+            "get_entity_subgraph RPC failed (falling back to entity names): %s",
+            exc,
+        )
         entity_strs = [
             f"{e['name']} ({e['entity_type']})"
             for e in matched_entities.values()
         ]
         return "Known entities: " + ", ".join(entity_strs)
 
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    unique_lines: list[str] = []
-    for line in context_lines:
-        if line not in seen:
-            seen.add(line)
-            unique_lines.append(line)
+    if not rows:
+        entity_strs = [
+            f"{e['name']} ({e['entity_type']})"
+            for e in matched_entities.values()
+        ]
+        return "Known entities: " + ", ".join(entity_strs)
 
-    return "\n".join(unique_lines)
+    # --- Step 3: Format results grouped by hop distance ---
+    direct_lines: list[str] = []
+    extended_lines: list[str] = []
+    seen: set[str] = set()
+
+    for row in rows:
+        from_name = row.get("from_name", "?")
+        from_type = row.get("from_type", "?")
+        rel_type = row.get("relation_type", "relates_to")
+        to_name = row.get("to_name", "?")
+        to_type = row.get("to_type", "?")
+        hop = row.get("hop_distance", 1)
+        conf = row.get("confidence", 1.0)
+
+        conf_str = f" [{conf:.0%}]" if conf is not None and conf < 1.0 else ""
+        line = (
+            f"  {from_name} ({from_type}) -> {rel_type} -> "
+            f"{to_name} ({to_type}){conf_str}"
+        )
+
+        if line in seen:
+            continue
+        seen.add(line)
+
+        if hop <= 1:
+            direct_lines.append(line)
+        else:
+            extended_lines.append(line)
+
+    output_parts: list[str] = []
+    if direct_lines:
+        output_parts.append("Direct relationships:")
+        output_parts.extend(direct_lines)
+    if extended_lines:
+        output_parts.append("Extended relationships:")
+        output_parts.extend(extended_lines)
+
+    return "\n".join(output_parts) if output_parts else ""
 
 
 # ---------------------------------------------------------------------------
