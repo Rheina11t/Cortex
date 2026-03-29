@@ -73,6 +73,7 @@ from . import token_budget
 from . import db_client
 from . import correlation
 from . import entitlements
+from . import scenario_planner
 import threading
 import bcrypt
 
@@ -3135,6 +3136,31 @@ def _answer_query(text: str, from_number: str, conversation_history: list[dict] 
                 "This resets at midnight UTC. Try again tomorrow!",
                 from_number=from_number,
             )
+
+    # ── Scenario Planning Mode ─────────────────────────────────────────
+    # Check if this is a "what if" / hypothetical question. If so, route
+    # through the dedicated scenario planner which does structured CoT
+    # reasoning with full family context.
+    try:
+        scenario_reply = scenario_planner.handle_scenario_if_detected(
+            text=text,
+            from_number=from_number,
+            family_name=family_name,
+            family_id=family_id,
+            conversation_history=conversation_history,
+        )
+        if scenario_reply is not None:
+            logger.info("Scenario planner handled the query")
+            # Record token usage estimate
+            if family_id:
+                _est_tokens = (len(scenario_reply) + len(text)) // 4
+                token_budget.record_usage(family_id, prompt_tokens=_est_tokens, completion_tokens=len(scenario_reply) // 4)
+            # Update conversation history
+            _update_conversation_history(from_number, text, scenario_reply)
+            log_action(family_id, 'scenario_query', subject=text[:50], detail={'mode': 'scenario_planning'}, phone_number=from_number)
+            return _make_response(scenario_reply, from_number=from_number)
+    except Exception as _scenario_exc:
+        logger.warning("Scenario planner failed (non-fatal, falling through): %s", _scenario_exc)
 
     try:
         # Step 1: Expand query with synonyms and perform semantic search
