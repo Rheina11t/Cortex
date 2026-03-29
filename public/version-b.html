@@ -1761,6 +1761,209 @@ p { color: #2C2C2C; }
   .conv-wa-phone { max-width: 100%; }
 }
 
+/* ========== SCENARIO PLANNING SECTION ========== */
+.scenario { background: #fff; }
+.scenario-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.scenario-content { position: relative; z-index: 1; }
+.scenario-content h2 { margin-bottom: 16px; }
+.scenario-content > p.scenario-lead {
+  color: #7A7A7A;
+  font-size: 1.05rem;
+  line-height: 1.75;
+  margin-bottom: 32px;
+}
+/* Conflict/resolution pill chips below the copy */
+.scenario-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 36px;
+}
+.scenario-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 100px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1;
+}
+.scenario-chip-warn {
+  background: #FFF3CD;
+  color: #856404;
+  border: 1px solid rgba(133,100,4,0.18);
+}
+.scenario-chip-ok {
+  background: #e8f5f1;
+  color: #2d7a5e;
+  border: 1px solid rgba(74,140,122,0.2);
+}
+.scenario-chip-icon { font-size: 0.9rem; }
+/* Insight callout — mirrors .graph-note pattern */
+.scenario-insight {
+  font-size: 0.82rem;
+  color: #9A9A9A;
+  font-style: italic;
+  line-height: 1.65;
+  border-left: 3px solid #C8E0D8;
+  padding-left: 14px;
+  margin-top: 0;
+}
+.scenario-insight strong { color: #4A8C7A; font-style: normal; }
+/* Phone mockup side */
+.scenario-mockup { position: relative; }
+.scenario-phone {
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
+  max-width: 380px;
+  margin: 0 auto;
+}
+.scenario-phone .wa-header { background: #075E54; color: #fff; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+.scenario-phone .wa-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg,#4A8C7A,#6db89f); display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display',serif; font-weight: 700; font-size: 0.85rem; color: #fff; flex-shrink: 0; }
+.scenario-phone .wa-header-info { flex: 1; }
+.scenario-phone .wa-header-name { font-weight: 600; font-size: 0.95rem; }
+.scenario-phone .wa-header-status { font-size: 0.75rem; opacity: 0.8; }
+.scenario-chat {
+  background: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: auto;
+}
+.scenario-bubble {
+  max-width: 84%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: #1a1a1a;
+  word-break: break-word;
+}
+.scenario-bubble-user {
+  background: #DCF8C6;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.scenario-bubble-bot {
+  background: #fff;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.scenario-time {
+  font-size: 0.65rem;
+  color: #8a8a8a;
+  text-align: right;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.scenario-ticks { color: #53BDEB; font-size: 0.7rem; }
+/* Conflict lines inside the bot bubble */
+.scenario-conflict-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.scenario-ok-line {
+  font-size: 0.82rem;
+  color: #4a4a4a;
+  line-height: 1.45;
+  margin: 2px 0;
+}
+/* Input bar */
+.scenario-input-bar {
+  background: #F0F0F0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scenario-input-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 0.83rem;
+  color: #aaa;
+}
+.scenario-send-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #075E54;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.scenario-send-btn svg { width: 16px; height: 16px; fill: #fff; }
+/* Bottom fill for rounded phone corners */
+.scenario-phone::after {
+  content: '';
+  display: block;
+  background: #F0F0F0;
+  height: 36px;
+}
+/* Responsive */
+@media (max-width: 1024px) {
+  .scenario-inner {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+  .scenario-content {
+    text-align: center;
+  }
+  .scenario-chips {
+    justify-content: center;
+  }
+  .scenario-insight {
+    text-align: left;
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .scenario-phone {
+    max-width: 400px;
+  }
+}
+@media (max-width: 768px) {
+  .scenario-phone {
+    max-width: 100%;
+  }
+  .scenario-content {
+    text-align: center;
+  }
+}
+@media (max-width: 480px) {
+  .scenario-chips {
+    gap: 8px;
+  }
+  .scenario-chip {
+    font-size: 0.78rem;
+    padding: 6px 11px;
+  }
+  .scenario-content {
+    text-align: left;
+  }
+  .scenario-chips {
+    justify-content: flex-start;
+  }
+}
+
 /* ========== MOBILE OPTIMISATION FIXES ========== */
 /* Targeted fixes — does NOT change any desktop layout, colours, fonts, or content.
    Addresses: section 05 overlap, touch targets, phone mockup scaling,
@@ -2555,6 +2758,93 @@ body { min-height: 100%; overscroll-behavior-y: none; -webkit-overflow-scrolling
           <div style="background:#F0F0F0;height:36px;flex-shrink:0"></div>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== SCENARIO PLANNING ==================== -->
+<section class="scenario section" id="scenario-planning">
+  <div class="container">
+    <div class="scenario-inner">
+
+      <!-- Left: copy -->
+      <div class="scenario-content">
+        <p class="section-label">What-If Planning</p>
+        <h2>Plan for anything.<br>Even the unexpected.</h2>
+        <p class="scenario-lead">Ask FamilyBrain &ldquo;what if&rdquo; and it reasons through your whole family schedule to give you a real answer &mdash; not a guess.</p>
+
+        <!-- Conflict/resolution chips -->
+        <div class="scenario-chips">
+          <span class="scenario-chip scenario-chip-warn"><span class="scenario-chip-icon">&#9888;&#65039;</span>Conflict detected</span>
+          <span class="scenario-chip scenario-chip-warn"><span class="scenario-chip-icon">&#128203;</span>Permission slip flagged</span>
+          <span class="scenario-chip scenario-chip-ok"><span class="scenario-chip-icon">&#10003;</span>School runs covered</span>
+          <span class="scenario-chip scenario-chip-ok"><span class="scenario-chip-icon">&#10003;</span>Reminders set</span>
+        </div>
+
+        <!-- Insight callout -->
+        <p class="scenario-insight"><strong>FamilyBrain cross-referenced 6 events, 2 family members&rsquo; schedules, and 3 stored commitments</strong> to answer in seconds.</p>
+      </div>
+
+      <!-- Right: phone mockup -->
+      <div class="scenario-mockup">
+        <div class="scenario-phone">
+
+          <!-- WhatsApp header -->
+          <div class="wa-header">
+            <div class="wa-avatar">FB</div>
+            <div class="wa-header-info">
+              <div class="wa-header-name">FamilyBrain</div>
+              <div class="wa-header-status">online</div>
+            </div>
+          </div>
+
+          <!-- Chat area -->
+          <div class="scenario-chat">
+
+            <!-- User: what-if question -->
+            <div class="scenario-bubble scenario-bubble-user">
+              What if I have to work away Mon&ndash;Fri next week? Can Dan handle everything?
+              <div class="scenario-time">11:03 <span class="scenario-ticks" aria-label="Read">&#10003;&#10003;</span></div>
+            </div>
+
+            <!-- FamilyBrain: detailed response -->
+            <div class="scenario-bubble scenario-bubble-bot">
+              Dan can handle most of it &mdash; here&rsquo;s what needs sorting:
+              <br><br>
+              <div class="scenario-conflict-line"><span>&#9888;&#65039;</span><span><strong>Tuesday 4pm:</strong> Izzy&rsquo;s swimming. Dan has a work call until 5 &mdash; conflict.</span></div>
+              <div class="scenario-conflict-line"><span>&#9888;&#65039;</span><span><strong>Friday:</strong> School trip permission slip due. Needs signing before you leave.</span></div>
+              <br>
+              Everything else looks fine (school runs, Max&rsquo;s football Wed, Izzy&rsquo;s reading group Thu).
+              <br><br>
+              Want me to remind Dan about Tuesday and add a note about the permission slip?
+              <div class="scenario-time">11:03</div>
+            </div>
+
+            <!-- User: yes please -->
+            <div class="scenario-bubble scenario-bubble-user">
+              Yes please
+              <div class="scenario-time">11:04 <span class="scenario-ticks" aria-label="Read">&#10003;&#10003;</span></div>
+            </div>
+
+            <!-- FamilyBrain: confirmation -->
+            <div class="scenario-bubble scenario-bubble-bot">
+              Done &#9989; Dan gets a reminder Tuesday 3pm. Permission slip reminder added for Thursday evening.
+              <div class="scenario-time">11:04</div>
+            </div>
+
+          </div>
+
+          <!-- Input bar -->
+          <div class="scenario-input-bar">
+            <div class="scenario-input-field">Type a message</div>
+            <div class="scenario-send-btn">
+              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
