@@ -179,6 +179,116 @@ def get_recent_actions(family_id: str, action_type: Optional[str] = None, hours:
         logger.warning("Failed to get recent actions for family %s: %s", family_id, exc)
         return []
 
+# ---------------------------------------------------------------------------
+# GDPR Article 13 — First-message privacy notice (Track 1)
+# ---------------------------------------------------------------------------
+
+_PRIVACY_NOTICE = (
+    "Welcome to FamilyBrain! Before we start, a quick note on your data:\n"
+    "- We store your messages to power your family assistant\n"
+    "- Your data is held securely in the UK (ICO reg: ZC109957)\n"
+    "- You can delete everything anytime: just type /delete\n"
+    "- You can export your data: type /mydata\n"
+    "- Privacy policy: https://familybrain.co.uk/privacy\n\n"
+    "By continuing to use FamilyBrain, you agree to our terms. "
+    "Reply anything to get started!"
+)
+
+
+def _has_received_privacy_notice(phone_number: str) -> bool:
+    """Return True if this phone number has already received the privacy notice.
+
+    Checks the ``privacy_notice_sent_at`` column on ``whatsapp_members``.
+    Returns True (notice already sent) on any DB error to avoid re-sending
+    due to transient failures.
+    """
+    normalised = phone_number.replace("whatsapp:", "").strip()
+    try:
+        from supabase import create_client as _create_client
+        _sb = _create_client(
+            os.environ.get("SUPABASE_URL", ""),
+            os.environ.get("SUPABASE_SERVICE_KEY", ""),
+        )
+        result = (
+            _sb.table("whatsapp_members")
+            .select("privacy_notice_sent_at")
+            .eq("phone", normalised)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            return result.data[0].get("privacy_notice_sent_at") is not None
+        # Phone not in DB yet — treat as not sent
+        return False
+    except Exception as exc:
+        logger.warning(
+            "Privacy notice check failed for %s (defaulting to already-sent): %s",
+            phone_number, exc,
+        )
+        # Fail safe: assume sent to avoid spamming on DB outage
+        return True
+
+
+def _mark_privacy_notice_sent(phone_number: str) -> None:
+    """Record that the privacy notice has been sent to this phone number.
+
+    Updates ``privacy_notice_sent_at`` on ``whatsapp_members``.  Logs a
+    warning on failure but does not raise — the message has already been
+    delivered so a DB write failure is non-fatal.
+    """
+    normalised = phone_number.replace("whatsapp:", "").strip()
+    try:
+        from supabase import create_client as _create_client
+        _sb = _create_client(
+            os.environ.get("SUPABASE_URL", ""),
+            os.environ.get("SUPABASE_SERVICE_KEY", ""),
+        )
+        now_iso = datetime.now(pytz.UTC).isoformat()
+        _sb.table("whatsapp_members").update(
+            {"privacy_notice_sent_at": now_iso}
+        ).eq("phone", normalised).execute()
+        logger.info("Privacy notice marked as sent for %s", phone_number)
+        audit_log.audit_log(
+            "unknown",  # family_id resolved later in the flow
+            "privacy_notice_sent",
+            "gdpr_article_13",
+            {"phone": normalised, "sent_at": now_iso},
+            phone_number=normalised,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to mark privacy notice sent for %s: %s", phone_number, exc
+        )
+
+
+def _send_privacy_notice_if_needed(phone_number: str) -> bool:
+    """Send the GDPR Article 13 privacy notice if this is the member's first message.
+
+    Returns True if the notice was sent (caller should return after this to
+    let the member reply before processing their first message), False if the
+    notice was already sent and processing should continue normally.
+    """
+    if _has_received_privacy_notice(phone_number):
+        return False
+
+    logger.info("Sending first-message GDPR privacy notice to %s", phone_number)
+    try:
+        if _USE_META_API:
+            meta_whatsapp.send_text_message(phone_number, _PRIVACY_NOTICE)
+        else:
+            # Twilio path — use the proactive sender
+            _send_proactive_message(phone_number, _PRIVACY_NOTICE)
+    except Exception as exc:
+        logger.error(
+            "Failed to send privacy notice to %s: %s", phone_number, exc
+        )
+        # Do NOT mark as sent if delivery failed — try again next message
+        return False
+
+    _mark_privacy_notice_sent(phone_number)
+    return True
+
+
 def _lookup_phone_in_db(phone_number: str) -> Optional[tuple[str, str]]:
     """Look up a phone number in the whatsapp_members Supabase table.
     Returns (family_name, family_id) or None if not found.
@@ -2832,7 +2942,7 @@ def _handle_meta_webhook() -> Response:
     except Exception:
         pass
 
-    # --- Authorisation check ---
+       # --- Authorisation check ---
     family_name = _get_family_name(from_number)
     if family_name is None:
         logger.warning("Rejected message from unauthorised number: %s", from_number)
@@ -2843,7 +2953,16 @@ def _handle_meta_webhook() -> Response:
             "Please ask the bot owner to add your WhatsApp number.",
         )
         return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
-
+    # --- GDPR Article 13: first-message privacy notice ---
+    # Must be sent before any data processing occurs on the first message.
+    # Returns True if the notice was just sent; we acknowledge and wait for
+    # the member's next message before processing anything.
+    if _send_privacy_notice_if_needed(from_number):
+        logger.info(
+            "Privacy notice sent to %s — deferring first message processing",
+            from_number,
+        )
+        return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
     # --- Subscription status check ---
     _family_id_for_sub_check = _get_family_id_for_phone(from_number)
     if not stripe_billing.is_subscription_active(_family_id_for_sub_check):
@@ -2857,7 +2976,6 @@ def _handle_meta_webhook() -> Response:
             "To reactivate, visit familybrain.co.uk/subscribe",
         )
         return Response(json.dumps({"status": "ok"}), status=200, mimetype="application/json")
-
     # --- Route to appropriate handler ---
     if num_media > 0 and media_id:
         return _handle_media_message(
@@ -2867,14 +2985,11 @@ def _handle_meta_webhook() -> Response:
             family_name=family_name,
             from_number=from_number,
         )
-
     return _handle_text_message(
         text=message_body,
         family_name=family_name,
         from_number=from_number,
     )
-
-
 def _handle_twilio_webhook() -> Response:
     """Process an incoming Twilio webhook POST (legacy path)."""
     # Phase 5 Item 29: Generate correlation ID for this request
@@ -2901,7 +3016,7 @@ def _handle_twilio_webhook() -> Response:
         from_number, len(message_body), num_media,
     )
 
-    # --- Authorisation check ---
+     # --- Authorisation check ---
     family_name = _get_family_name(from_number)
     if family_name is None:
         logger.warning("Rejected message from unauthorised number: %s", from_number)
@@ -2911,7 +3026,16 @@ def _handle_twilio_webhook() -> Response:
             "Please ask the bot owner to add your WhatsApp number.",
             from_number=from_number,
         )
-
+    # --- GDPR Article 13: first-message privacy notice ---
+    # Must be sent before any data processing occurs on the first message.
+    # Returns True if the notice was just sent; we acknowledge and wait for
+    # the member's next message before processing anything.
+    if _send_privacy_notice_if_needed(from_number):
+        logger.info(
+            "Privacy notice sent to %s (Twilio) — deferring first message processing",
+            from_number,
+        )
+        return _empty_response()
     # --- Subscription status check ---
     _family_id_for_sub_check = _get_family_id_for_phone(from_number)
     if not stripe_billing.is_subscription_active(_family_id_for_sub_check):
@@ -2924,7 +3048,6 @@ def _handle_twilio_webhook() -> Response:
             "To reactivate, visit familybrain.co.uk/subscribe",
             from_number=from_number,
         )
-
     # --- Route to appropriate handler ---
     if num_media > 0:
         media_url: str = request.values.get("MediaUrl0", "")
@@ -2936,16 +3059,13 @@ def _handle_twilio_webhook() -> Response:
             family_name=family_name,
             from_number=from_number,
         )
-
     return _handle_text_message(
         text=message_body,
         family_name=family_name,
         from_number=from_number,
     )
-
-
 # ---------------------------------------------------------------------------
-# Google Calendar Connect Helper
+# Google Calendar Connect Helperer
 # ---------------------------------------------------------------------------
 def _send_gcal_connect_link(phone: str, family_id: str) -> tuple[str, str]:
     """Generate a one-time Google OAuth token and return (google_connect_url, webcal_url).

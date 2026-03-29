@@ -828,18 +828,27 @@ def _notify_referrer(referrer_phone: str, total_conversions: int) -> None:
 
 
 def _handle_subscription_deleted(subscription: dict[str, Any]) -> None:
-    """Mark a family as inactive when their Stripe subscription is cancelled."""
+    """Mark a family as inactive when their Stripe subscription is cancelled.
+
+    Also records ``subscription_cancelled_at`` so the data retention job can
+    enforce the 90-day post-cancellation grace period before permanent deletion.
+    """
     stripe_subscription_id: str = subscription.get("id", "")
     if not stripe_subscription_id:
         logger.warning("customer.subscription.deleted event missing subscription id")
         return
     try:
+        now_iso = datetime.now(timezone.utc).isoformat()
         sb = _get_supabase()
         sb.table("families").update({
             "subscription_status": "inactive",
             "status": "cancelled",
+            "subscription_cancelled_at": now_iso,
         }).eq("stripe_subscription_id", stripe_subscription_id).execute()
-        logger.info("Marked subscription inactive: %s", stripe_subscription_id)
+        logger.info(
+            "Marked subscription inactive and recorded cancellation timestamp: %s",
+            stripe_subscription_id,
+        )
     except Exception as exc:
         logger.error("Failed to mark subscription inactive (%s): %s", stripe_subscription_id, exc)
 
