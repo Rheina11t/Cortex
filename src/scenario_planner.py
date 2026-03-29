@@ -44,6 +44,14 @@ from . import entity_graph
 logger = logging.getLogger("open_brain.scenario_planner")
 
 # ---------------------------------------------------------------------------
+# Reflection loop configuration
+# ---------------------------------------------------------------------------
+
+_MAX_REFLECTION_ITERATIONS = 3
+"""Maximum number of reflection iterations (semantic search round-trips)
+during scenario reasoning before returning the final answer."""
+
+# ---------------------------------------------------------------------------
 # 1. SCENARIO DETECTION -- regex + LLM fallback
 # ---------------------------------------------------------------------------
 
@@ -388,6 +396,11 @@ SCENARIO PLANNING MODE:
    assessment (High / Medium / Low) and note any data gaps.
 </thinking>
 
+REFLECTION PROTOCOL:
+If during your analysis you realise you are missing critical information needed to resolve a conflict or gap, you may request additional data by outputting:
+<need_info>specific search query for the missing information</need_info>
+The system will search the family vault for this information and provide it. You may make up to 3 such requests. Only request information that would materially change your analysis -- do not request information you already have.
+
 Core rules (never break these):
 - Ground every statement strictly in the provided context. Do NOT invent events \
   or commitments that are not in the data.
@@ -624,6 +637,130 @@ def is_scenario_followup(text: str, phone: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 5b. REFLECTION LOOP (ReAct pattern for scenario reasoning)
+# ---------------------------------------------------------------------------
+
+
+def _extract_need_info(text: str) -> list[str]:
+    """Extract all <need_info>...</need_info> queries from LLM output.
+
+    Returns a list of search query strings, or an empty list if none found.
+    """
+    matches = re.findall(
+        r"<need_info>(.*?)</need_info>",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return [m.strip() for m in matches if m.strip()]
+
+
+def _strip_need_info_tags(text: str) -> str:
+    """Remove <need_info>...</need_info> blocks from text."""
+    return re.sub(
+        r"<need_info>.*?</need_info>",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+
+def _run_reflection_loop(
+    messages: list[dict[str, str]],
+    family_id: str,
+    max_iterations: int = _MAX_REFLECTION_ITERATIONS,
+) -> str:
+    """Run the scenario LLM call with a ReAct-style reflection loop.
+
+    If the LLM outputs ``<need_info>query</need_info>`` tags during its
+    reasoning, we intercept them, run a targeted semantic search for the
+    requested information, inject the results back into the conversation,
+    and prompt the LLM to continue.  This repeats up to *max_iterations*
+    times.
+
+    Returns the final cleaned response (thinking + need_info tags stripped).
+    """
+    for iteration in range(max_iterations + 1):
+        answer = brain.get_llm_reply(messages=messages, max_tokens=1200)
+        answer_text = answer if isinstance(answer, str) else str(answer)
+
+        # Check for reflection requests
+        info_requests = _extract_need_info(answer_text)
+
+        if not info_requests or iteration >= max_iterations:
+            # No more reflection needed, or we've hit the cap
+            if info_requests:
+                logger.info(
+                    "Reflection loop capped at %d iterations (still had %d requests)",
+                    max_iterations, len(info_requests),
+                )
+            return _strip_thinking_tags(_strip_need_info_tags(answer_text))
+
+        logger.info(
+            "Reflection iteration %d/%d: %d info requests: %s",
+            iteration + 1, max_iterations,
+            len(info_requests), info_requests,
+        )
+
+        # Run semantic searches for each requested piece of information
+        additional_context_parts: list[str] = []
+        for query in info_requests:
+            try:
+                results = brain.semantic_search(
+                    query,
+                    match_threshold=0.2,
+                    match_count=5,
+                    family_id=family_id,
+                )
+                if results:
+                    lines = [f"Search results for '{query}':"]
+                    for r in results:
+                        content = r.get("content", "")
+                        created = r.get("created_at", "")
+                        if created:
+                            try:
+                                from datetime import datetime, timezone
+                                ts = datetime.fromisoformat(
+                                    str(created).replace("Z", "+00:00")
+                                )
+                                ts_label = ts.strftime("%d %b %Y")
+                            except Exception:
+                                ts_label = str(created)[:10]
+                            lines.append(f"  - [{ts_label}] {content}")
+                        else:
+                            lines.append(f"  - {content}")
+                    additional_context_parts.append("\n".join(lines))
+                else:
+                    additional_context_parts.append(
+                        f"Search results for '{query}': No relevant memories found."
+                    )
+            except Exception as exc:
+                logger.warning("Reflection search failed for '%s': %s", query, exc)
+                additional_context_parts.append(
+                    f"Search results for '{query}': Search failed."
+                )
+
+        additional_text = "\n\n".join(additional_context_parts)
+
+        # Append the LLM's partial answer, the new context, and a continuation prompt
+        messages.append({"role": "assistant", "content": answer_text})
+        messages.append({
+            "role": "system",
+            "content": f"Additional context retrieved:\n{additional_text}",
+        })
+        messages.append({
+            "role": "user",
+            "content": (
+                "Continue your analysis with this additional information. "
+                "Do not repeat your previous analysis -- only add new insights "
+                "from the additional context."
+            ),
+        })
+
+    # Should not reach here, but safety fallback
+    return _strip_thinking_tags(_strip_need_info_tags(answer_text))
+
+
+# ---------------------------------------------------------------------------
 # 6. MAIN ENTRY POINT
 # ---------------------------------------------------------------------------
 
@@ -686,11 +823,8 @@ def handle_scenario_if_detected(
             # Create a new session
             _create_session(from_number, params, context, text)
 
-        # Call the LLM with extended token budget for scenario reasoning
-        answer = brain.get_llm_reply(messages=messages, max_tokens=1200)
-
-        # Strip any <thinking> tags from the response
-        answer_clean = _strip_thinking_tags(answer if isinstance(answer, str) else str(answer))
+        # Call the LLM with reflection loop for scenario reasoning
+        answer_clean = _run_reflection_loop(messages, family_id)
 
         # Update session with this turn
         _update_session(from_number, text, answer_clean)
